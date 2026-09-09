@@ -23,7 +23,6 @@ runtime characteristics, not because each package is a microservice.
 ```text
 maria-crm/
 ├── AGENTS.md
-├── CLAUDE.md
 ├── ARCHITECTURE.md
 ├── apps/
 │   ├── api/              # Fastify REST, webhooks, SSE, auth boundary
