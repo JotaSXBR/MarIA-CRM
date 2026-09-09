@@ -1,0 +1,22 @@
+# Only build inputs enter the context; local research, backups and secrets stay out.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!LICENSE
+!docker/
+!docker/api.Dockerfile
+!apps/
+!apps/api/
+!apps/api/package.json
+!apps/api/tsconfig.json
+!apps/api/tsconfig.build.json
+!apps/api/src/
+!apps/api/src/**
+**/node_modules
+**/dist
+**/.turbo
+**/.env*
+**/*.pem
+**/*.key

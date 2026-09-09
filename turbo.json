@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.json", ".nvmrc"],
+  "tasks": {
+    "dev": { "cache": false, "persistent": true, "env": ["HOST", "PORT"] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "typecheck": { "dependsOn": ["^typecheck"] },
+    "test": {},
+    "test:integration": { "cache": false },
+    "test:e2e": { "dependsOn": ["build"], "cache": false }
+  }
+}

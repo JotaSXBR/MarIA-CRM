@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm install --global pnpm@11.26.0 --ignore-scripts
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm verify
+      - run: pnpm audit --prod
+      - name: Build API image
+        run: docker build -f docker/api.Dockerfile -t maria-api:ci .
+      - name: Smoke-test container
+        shell: bash
+        run: |
+          set -euo pipefail
+          container=$(docker run -d --read-only --cap-drop ALL --security-opt no-new-privileges -p 127.0.0.1::3000 maria-api:ci)
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          test "$(docker exec "$container" node --version)" = "v24.21.0"
+          test "$(docker exec "$container" id -u)" != "0"
+          address=$(docker port "$container" 3000/tcp)
+          for attempt in {1..20}; do
+            response=$(curl --fail --silent --show-error "http://$address/health" 2>/dev/null) && break
+            if [ "$attempt" -eq 20 ]; then
+              docker logs "$container"
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$response" = '{"status":"ok"}'
+          docker stop --timeout 10 "$container"
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = "0"

@@ -53,3 +53,4 @@ AGENTS.md.old
 STACK-REVIEW-2026-09-09.md
 .claude/
 .codex/
+*.tsbuildinfo
