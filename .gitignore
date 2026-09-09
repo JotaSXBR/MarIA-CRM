@@ -44,6 +44,12 @@ temp/
 # Local backups
 Backups/
 
-# Third-party research material: keep authored analysis and metadata only
-research/sources/
-research/evidence/crm-modelo/
+# Local-only documentation and agent configuration
+docs/
+research/
+CLAUDE.md
+CODEX.md
+AGENTS.md.old
+STACK-REVIEW-2026-09-09.md
+.claude/
+.codex/
