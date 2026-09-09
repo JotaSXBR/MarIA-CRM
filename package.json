@@ -20,7 +20,7 @@
     "verify": "pnpm fmt:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm build"
   },
   "devDependencies": {
-    "@types/node": "24.13.4",
+    "@types/node": "26.4.1",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
     "prettier": "3.9.0",
