@@ -1,0 +1,19 @@
+{
+  "command": [
+    "bun",
+    "test"
+  ],
+  "env": {
+    "PATH": "/home/bkpdi/.codex/packages/standalone/releases/0.153.4-x86_64-unknown-linux-musl/codex-path:/home/bkpdi/.local/bin:/home/bkpdi/.codex/tmp/arg0/codex-arg0Kht3UN:/home/bkpdi/.codex/packages/standalone/releases/0.153.4-x86_64-unknown-linux-musl/codex-path:/home/bkpdi/.local/bin:/home/bkpdi/.bun/bin:/home/bkpdi/.grok/bin:/home/bkpdi/.nvm/versions/node/v24.16.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Program Files/WindowsApps/Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe:/mnt/c/Python314/Scripts/:/mnt/c/Python314/:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/:/mnt/c/WINDOWS/System32/OpenSSH/:/mnt/c/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR:/mnt/c/Program Files/dotnet/:/mnt/c/Program Files/Tailscale/:/mnt/c/Program Files/nodejs/:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/GitHub CLI/:/mnt/c/Users/bkpdi/AppData/Local/Microsoft/WindowsApps:/mnt/c/Users/bkpdi/AppData/Local/Programs/Antigravity IDE/bin:/mnt/c/Users/bkpdi/AppData/Roaming/npm:/mnt/c/Users/bkpdi/.dotnet/tools:/mnt/c/Users/bkpdi/AppData/Local/Programs/cursor/resources/app/bin:/mnt/c/Users/bkpdi/AppData/Local/Programs/VSCodium/bin:/mnt/c/Users/bkpdi/.bun/bin:/mnt/c/Users/bkpdi/AppData/Local/GitHubDesktop/bin:/mnt/c/Users/bkpdi/AppData/Local/Programs/DockerDesktop/resources/bin:/snap/bin",
+    "NODE_ENV": "test",
+    "ALLOW_NO_DB": "1",
+    "XDG_CACHE_HOME": "/tmp/maria-prisma-cache"
+  },
+  "exitCode": 1,
+  "runtime": "1.3.14",
+  "finishedAt": "2026-09-09T14:12:38.136Z",
+  "limitations": [
+    "ALLOW_NO_DB=1: database tests may skip",
+    "No live LLM/provider credentials supplied"
+  ]
+}
