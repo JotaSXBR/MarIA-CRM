@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+injectWorkspacePackages: true
+minimumReleaseAgeExclude:
+  - "@types/node@24.13.4"
+minimumReleaseAgeStrict: true

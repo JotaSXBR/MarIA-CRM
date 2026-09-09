@@ -1,0 +1,22 @@
+{
+  "name": "@maria/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/config.test.ts",
+    "test:integration": "vitest run test/health.integration.test.ts",
+    "test:e2e": "vitest run test/server.e2e.test.ts"
+  },
+  "dependencies": {
+    "fastify": "5.12.3"
+  }
+}
