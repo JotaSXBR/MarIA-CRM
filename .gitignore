@@ -1,0 +1,49 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+.turbo/
+dist/
+build/
+coverage/
+.cache/
+
+# Test and runtime output
+playwright-report/
+test-results/
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+
+# Local tooling and operating-system files
+.codex/
+.claude/settings.local.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local infrastructure state
+.docker-data/
+.local/
+tmp/
+temp/
+
+# Local backups
+Backups/
+
+# Third-party research material: keep authored analysis and metadata only
+research/sources/
+research/evidence/crm-modelo/
