@@ -40,7 +40,14 @@ jobs:
           test "$(docker exec "$container" node --version)" = "v24.21.0"
           test "$(docker exec "$container" id -u)" != "0"
           address=$(docker port "$container" 3000/tcp)
-          response=$(curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 1 "http://$address/health")
+          for attempt in {1..20}; do
+            response=$(curl --fail --silent --show-error "http://$address/health" 2>/dev/null) && break
+            if [ "$attempt" -eq 20 ]; then
+              docker logs "$container"
+              exit 1
+            fi
+            sleep 1
+          done
           test "$response" = '{"status":"ok"}'
           docker stop --timeout 10 "$container"
           test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = "0"
