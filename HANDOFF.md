@@ -30,7 +30,8 @@ The current slice adds `packages/database/src/schema.ts` and
 `packages/database/drizzle/0000_product_foundation.sql` for organizations, workspaces, contacts
 and companies. Contacts and companies use forced RLS keyed by `app.workspace_id`. Direct
 TypeScript checking passed; the full local gates are blocked by the WSL `rtk` socket failure and
-pnpm's unavailable store.
+pnpm's unavailable store. The changes are published in PR [#12](https://github.com/JotaSXBR/MarIA-CRM/pull/12);
+the PR is open and no checks have started yet.
 
 Repository Codex routing is versioned in `.codex/` and documented in `AGENTS.md`.
 
