@@ -27,7 +27,11 @@ test-results/
 *.db
 
 # Local tooling and operating-system files
-.codex/
+.codex/*
+!.codex/config.toml
+!.codex/agents/
+.codex/agents/*
+!.codex/agents/*.toml
 .claude/settings.local.json
 .idea/
 .DS_Store
@@ -52,5 +56,4 @@ CODEX.md
 AGENTS.md.old
 STACK-REVIEW-2026-09-09.md
 .claude/
-.codex/
 *.tsbuildinfo
