@@ -1,0 +1,10 @@
+# Verified against Codex CLI 0.154.0 and the account catalog on 2026-09-10.
+# Uses the normal service tier; no Fast/priority mode or extra context window.
+model = "gpt-6-astra"
+model_reasoning_effort = "low"
+sandbox_mode = "workspace-write"
+
+[agents]
+max_concurrent_threads_per_session = 2
+default_subagent_model = "gpt-5.6-luna"
+default_subagent_reasoning_effort = "low"
