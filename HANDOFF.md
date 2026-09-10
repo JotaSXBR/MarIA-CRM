@@ -15,16 +15,17 @@ The base web PR (#9) is merged and the user approved the visual result. Its prio
 
 ## Current work
 
-Branch: `feat/phase-0-database`. Implementation is saved; the Terra worker reached its
-usage limit and the coordinator completed integration. The security reviewer found no
-additional actionable issues. Check the PR for final CI status before continuing.
+Branch: `feat/phase-0-database`; [PR #10](https://github.com/JotaSXBR/MarIA-CRM/pull/10)
+is a draft awaiting human review. The Terra worker reached its usage limit; the coordinator
+completed integration. The security reviewer found no additional actionable issues.
 
 The database slice has Drizzle 0.45.2, a transaction-local workspace helper that rejects
 superuser/BYPASSRLS roles, and synthetic real-Postgres RLS tests with a shared one-connection
 pool. No product schema, API integration, auth, or migration is introduced.
 Local formatting, lint, typecheck, nine unit tests, API integration/E2E and all builds passed;
-production dependency audit found no known vulnerabilities. PostgreSQL integration
-still requires CI evidence because this WSL distro has no Docker runtime.
+production dependency audit found no known vulnerabilities. CI and CodeQL passed for
+implementation commit `4ae275c`, including real PostgreSQL RLS tests, all 12 tests,
+Docker build and container smoke. Confirm the latest PR head checks before merge.
 
 Existing local edits to `.gitignore`, `AGENTS.md` and `.codex/` belong to the user; keep
 them and do not include unrelated edits in database work. `AGENTS.md` also contains a
@@ -44,7 +45,8 @@ personal paths.
 
 ## Next actions
 
-Finish/watch CI, fix any failing check, then obtain human RLS/security approval before merge. Keep
+Obtain human approval of PR #10's workspace/RLS boundary, confirm green checks and merge.
+The generic instruction to continue development is not a recorded review of this new boundary. Keep
 product schema, migrations, runtime roles and API/auth work at their consuming slices;
 preserve RLS and transaction cleanup.
 
