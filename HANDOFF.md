@@ -26,6 +26,12 @@ production dependency audit found no known vulnerabilities. CI and CodeQL passed
 implementation commit `4ae275c`, including real PostgreSQL RLS tests, all 12 tests,
 Docker build and container smoke. Confirm the latest PR head checks before merge.
 
+The current slice adds `packages/database/src/schema.ts` and
+`packages/database/drizzle/0000_product_foundation.sql` for organizations, workspaces, contacts
+and companies. Contacts and companies use forced RLS keyed by `app.workspace_id`. Direct
+TypeScript checking passed; the full local gates are blocked by the WSL `rtk` socket failure and
+pnpm's unavailable store.
+
 Repository Codex routing is versioned in `.codex/` and documented in `AGENTS.md`.
 
 ## Environment
@@ -39,8 +45,8 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Choose the next small consuming slice. Product schema, migrations, runtime roles and
-API/auth work remain pending; preserve RLS and transaction cleanup.
+Choose the next small consuming slice. Runtime roles, auth, API integration and remaining product
+domains remain pending; preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript,
 secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
