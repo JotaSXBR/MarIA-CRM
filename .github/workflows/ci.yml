@@ -27,6 +27,10 @@ jobs:
           package-manager-cache: false
       - run: npm install --global pnpm@11.26.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate local database Compose configuration
+        run: docker compose -f docker/compose.yaml config --quiet
+        env:
+          POSTGRES_PASSWORD: compose-config-validation-only
       - run: pnpm verify
       - run: pnpm audit --prod
       - name: Build API image

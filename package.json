@@ -11,7 +11,7 @@
     "dev": "turbo run dev",
     "fmt": "prettier --ignore-path .gitignore --ignore-path .prettierignore --write .",
     "fmt:check": "prettier --ignore-path .gitignore --ignore-path .prettierignore --check .",
-    "lint": "oxlint --type-aware apps",
+    "lint": "oxlint --type-aware apps packages",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
