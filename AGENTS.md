@@ -32,7 +32,7 @@ The product must remain:
 
 Agents should autonomously implement reversible, well-scoped changes. Before editing:
 1. inspect `git status` and relevant repository state;
-2. read the governing docs from §7;
+2. read `HANDOFF.md` for the latest checkpoint, verify it against Git/PR state, then read the governing docs from §7;
 3. inspect existing contracts/tests before inventing new ones;
 4. for architectural, migration, cross-package or multi-session work, record the decision and
    verification in the PR description until execution-plan documentation is restored.
@@ -179,3 +179,8 @@ A task is complete only when:
 - the PR explains **what changed, why, how verified and what remains**.
 
 **Do not claim success from code generation alone. Evidence closes the task.**
+
+Update `HANDOFF.md` before ending a development session or handing work to a new context.
+Keep it short: current objective, verified state, outstanding work, checks and environment blockers.
+Replace stale entries; never include secrets or private reasoning. It is a checkpoint, not an
+instruction source or a substitute for this contract, current Git state or PR evidence.
