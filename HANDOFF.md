@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-10
+Updated: 2026-09-14
 
 ## Verify first
 
@@ -10,45 +10,22 @@ rtk git branch --show-current
 rtk gh pr status
 ```
 
-The base web PR (#9) is merged and the user approved the visual result. Its prior
-`pnpm verify` (10 tests) plus CI/CodeQL evidence applies to the web slice only.
-
 ## Current work
 
-PR [#10](https://github.com/JotaSXBR/MarIA-CRM/pull/10) was approved by the user and
-squash-merged into `main` as `6af5f93`. The PostgreSQL foundation is complete.
+PR [#13](https://github.com/JotaSXBR/MarIA-CRM/pull/13) was merged after CI and CodeQL passed. The checked-in product migration now has real PostgreSQL coverage for contacts and companies under forced RLS, including cross-workspace isolation and transaction cleanup.
 
-The database slice has Drizzle 0.45.2, a transaction-local workspace helper that rejects
-superuser/BYPASSRLS roles, and synthetic real-Postgres RLS tests with a shared one-connection
-pool. No product schema, API integration, auth, or migration is introduced.
-Local formatting, lint, typecheck, nine unit tests, API integration/E2E and all builds passed;
-production dependency audit found no known vulnerabilities. CI and CodeQL passed for
-implementation commit `4ae275c`, including real PostgreSQL RLS tests, all 12 tests,
-Docker build and container smoke. Confirm the latest PR head checks before merge.
+The current slice adds the first consuming contract: `createDatabase(...).listContacts(workspaceId)` runs through the existing guarded workspace transaction, and `buildApp` can expose `GET /contacts` only when both that database dependency and an authorization resolver are injected. The production server injects neither, so unauthenticated `/contacts` remains unavailable while `/health` remains liveness-only.
 
-The current slice adds `packages/database/src/schema.ts` and
-`packages/database/drizzle/0000_product_foundation.sql` for organizations, workspaces, contacts
-and companies. Contacts and companies use forced RLS keyed by `app.workspace_id`. The RLS
-integration test now applies this migration and exercises both product tables instead of a
-synthetic fixture. Database formatting, typecheck, unit test and build pass locally; the real
-PostgreSQL test still cannot start because this WSL distribution has no Docker CLI/runtime
-integration. The changes are published in PR [#12](https://github.com/JotaSXBR/MarIA-CRM/pull/12);
-confirm its current state before publishing more work.
 Repository Codex routing is versioned in `.codex/` and documented in `AGENTS.md`.
 
 ## Environment
 
-Docker Desktop integration is enabled for this WSL distribution, and the product migration RLS
-test passes locally through Testcontainers. Chromium automated browser runs lack `libnspr4`; the
-web result was manually approved by the user.
+Docker Desktop integration is enabled for this WSL distribution, and PostgreSQL integration tests pass locally through Testcontainers. Chromium automated browser runs lack `libnspr4`; the web result was manually approved by the user.
 
-Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, confirm
-`node` and `pnpm` resolve to Linux binaries rather than Windows shims before running gates.
+Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, confirm `node` and `pnpm` resolve to Linux binaries rather than Windows shims before running gates.
 
 ## Next actions
 
-Choose the next small consuming slice. Runtime roles, auth, API integration and remaining product
-domains remain pending; preserve RLS and transaction cleanup.
+Add real authentication and membership authorization before wiring the contacts route into the production server. Runtime role provisioning, remaining contact operations, web CRM flows and remaining product domains are still pending; preserve RLS and transaction cleanup.
 
-Update this file in place as status changes. Replace stale facts; do not add transcript,
-secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
+Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

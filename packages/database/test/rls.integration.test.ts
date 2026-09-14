@@ -104,12 +104,12 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
     ),
   ).rejects.toMatchObject({ code: "42501" });
 
-  const contacts = await database.withWorkspace(workspaceA, (tx) =>
-    tx.execute<{ workspace_id: string }>(
-      sql`select workspace_id from contacts`,
-    ),
-  );
-  expect(contacts.rows).toEqual([{ workspace_id: workspaceA }]);
+  expect(await database.listContacts(workspaceA)).toEqual([
+    expect.objectContaining({ name: "Contact A" }),
+  ]);
+  expect(await database.listContacts(workspaceB)).toEqual([
+    expect.objectContaining({ name: "Contact B" }),
+  ]);
   const companies = await database.withWorkspace(workspaceA, (tx) =>
     tx.execute<{ workspace_id: string }>(
       sql`select workspace_id from companies`,
