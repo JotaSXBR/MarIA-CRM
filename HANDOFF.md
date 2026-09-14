@@ -28,17 +28,19 @@ Docker build and container smoke. Confirm the latest PR head checks before merge
 
 The current slice adds `packages/database/src/schema.ts` and
 `packages/database/drizzle/0000_product_foundation.sql` for organizations, workspaces, contacts
-and companies. Contacts and companies use forced RLS keyed by `app.workspace_id`. Direct
-TypeScript checking passed; the full local gates are blocked by the WSL `rtk` socket failure and
-pnpm's unavailable store. The changes are published in PR [#12](https://github.com/JotaSXBR/MarIA-CRM/pull/12);
-the PR is open and no checks have started yet.
+and companies. Contacts and companies use forced RLS keyed by `app.workspace_id`. The RLS
+integration test now applies this migration and exercises both product tables instead of a
+synthetic fixture. Database formatting, typecheck, unit test and build pass locally; the real
+PostgreSQL test still cannot start because this WSL distribution has no Docker CLI/runtime
+integration. The changes are published in PR [#12](https://github.com/JotaSXBR/MarIA-CRM/pull/12);
+confirm its current state before publishing more work.
 Repository Codex routing is versioned in `.codex/` and documented in `AGENTS.md`.
 
 ## Environment
 
-WSL Docker integration is unavailable locally; CI is the real Testcontainers gate, with
-no tests skipped. Chromium automated browser runs lack `libnspr4`; the web result was
-manually approved by the user.
+Docker Desktop integration is enabled for this WSL distribution, and the product migration RLS
+test passes locally through Testcontainers. Chromium automated browser runs lack `libnspr4`; the
+web result was manually approved by the user.
 
 Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, confirm
 `node` and `pnpm` resolve to Linux binaries rather than Windows shims before running gates.
