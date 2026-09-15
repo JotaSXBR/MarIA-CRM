@@ -12,22 +12,13 @@ gh pr status
 
 ## Current work
 
-PR [#18](https://github.com/JotaSXBR/MarIA-CRM/pull/18) is open from `feat/local-auth-mvp` and awaits manual review and merge.
+PR [#18](https://github.com/JotaSXBR/MarIA-CRM/pull/18) merged. Branch `feat/contact-crud` adds workspace-scoped contact CRUD:
 
-This branch adds the local Auth MVP and CI/test infrastructure fixes:
-
-- Migration `0002_local_identity.sql` creates `users`, `sessions`, `memberships` and `invitations`; `memberships` and `invitations` are workspace-scoped with `FORCE ROW LEVEL SECURITY`.
-- New package `@maria/auth` exposes `AuthPort`: local `login`, `verifySession`, `authorizeWorkspace`, `createUser`, `ensureAdmin` and `seedAdmin`, using `bcryptjs` for password hashing and opaque session tokens stored in PostgreSQL.
-- `apps/api` now creates a PostgreSQL pool on startup, seeds the first admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`, and exposes `POST /auth/login`, `POST /admin/users` and authenticated `GET /contacts?workspaceId=...`.
-- `GET /contacts` requires a valid session token and an active workspace membership.
-- Shared Testcontainers helper exported via `@maria/database/testing` removes duplicated migration setup across database, auth and API tests.
-- TypeScript type-checking no longer requires building `@maria/database` first; `@maria/database` exports point `types` to source and `default` to `dist`.
-- Web tests use `@testing-library/react` + `happy-dom` instead of `react-dom/server`.
-- Root `vitest.config.ts` and `@vitest/coverage-v8` added; `pnpm test:coverage` runs the full suite with coverage.
-- `turbo.json` now builds workspace dependencies before running `test` and `test:integration`, so Vitest can resolve `@maria/*` package exports at runtime.
-- `docker/api.Dockerfile` copies `@maria/auth` and `@maria/database` source and builds them with `turbo run build --filter=@maria/api...`; `.dockerignore` includes the required files.
-- CI smoke test now starts a PostgreSQL container, applies migrations and then runs the API image with `DATABASE_URL`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` before hitting `/health`.
-- Integration tests cover login success/failure, session expiry, workspace authorization, cross-tenant isolation, missing/invalid token, missing membership and admin-only user creation. E2E test spins up the built server against a Testcontainers database and logs in as the seeded admin.
+- Migration `0003_contact_soft_delete.sql` adds `contacts.deleted_at` plus a partial `workspace_id` index on active rows.
+- `@maria/database` gains `getContact`, `createContact`, `updateContact` and `deleteContact`, all through `withWorkspace`; reads/updates/delete filter `deleted_at is null`. Delete is a soft delete via `UPDATE` because `maria_runtime` deliberately has no `DELETE` grant (least privilege preserved; user-approved decision).
+- `apps/api` adds `POST /contacts`, `GET /contacts/:id`, `PATCH /contacts/:id` and `DELETE /contacts/:id` (all with `?workspaceId=`), sharing one session+membership authorization helper. `DELETE` additionally requires the workspace `admin` role (403 for members).
+- API integration tests cover member CRUD, unauthenticated rejection, 404 on missing rows, admin-only delete and cross-tenant denial; the database RLS test proves cross-workspace CRUD isolation and that soft-deleted rows stay hidden; the E2E test runs a real create/read/update/delete roundtrip against the built server.
+- `.gitattributes` pins `eol=lf` so Windows checkouts stop breaking `pnpm fmt:check` with CRLF.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -41,6 +32,8 @@ Added Devin-specific skills and configuration in `.devin/`:
 - `maria-testing`: Testing strategy (unit, integration, E2E)
 - `maria-devin-adaptation`: Context adaptation for Devin operations
 - `config.json`: Project configuration and invariants
+- `hooks.v1.json` + `rtk-pretooluse.mjs`: project-scoped `PreToolUse` adapter that
+  rewrites supported Devin `exec` commands through RTK and fails open when RTK is unavailable
 
 Devin operates as a general-purpose agent with specialized skills, following AGENTS.md as the primary contract. Codex agents in `.codex/agents/` have been updated to reference these Devin skills for consistent patterns between both tools.
 
@@ -62,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge PR #18 manually. After it merges, add the remaining contact CRUD operations, workspace/org management in the admin panel, web CRM flows and Resend invitation delivery. Runtime credential/deployment wiring, worker/agent runtime and remaining product domains are still pending; preserve RLS and transaction cleanup.
+Review CI and merge the contact-CRUD PR manually. Remaining slices: workspace/org management in the admin panel, web CRM flows and Resend invitation delivery. Runtime credential/deployment wiring, worker/agent runtime and remaining product domains are still pending; preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

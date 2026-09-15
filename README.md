@@ -7,7 +7,9 @@ share the same workspace, inbox, contacts, companies, pipelines, tasks and knowl
 
 Phase 0 has started with a pnpm/Turborepo workspace and a Fastify API. `GET /health`
 returns `{"status":"ok"}` as a process liveness check, not database readiness.
-The initial product tables and an injectable contacts API contract are implemented. Authentication, production API/database wiring and workers are not implemented yet. The web app currently
+Local email/password authentication with workspace membership authorization is
+implemented; contacts expose workspace-scoped list, create, read, update and
+soft-delete endpoints. Workers are not implemented yet. The web app currently
 shows an accessible initial development screen; it has no CRM data or actions.
 
 ## Development
@@ -47,7 +49,12 @@ CI must install with `pnpm install --frozen-lockfile`.
 `@maria/database` provides a Drizzle connection and workspace-scoped transactions.
 The caller must authorize the workspace before entering a transaction. This helper
 sets transaction-local context; PostgreSQL RLS policies remain the isolation boundary.
-The injectable API contract can list workspace-scoped contacts, but the production server is not connected to the database until authentication is available. `/health` remains a liveness check.
+Workspace-scoped contact endpoints (`GET`/`POST /contacts` and
+`GET`/`PATCH`/`DELETE /contacts/:id`) require a valid session token and an
+active membership in the requested workspace. `DELETE` requires the workspace
+`admin` role and performs a soft delete (`deleted_at`) through `UPDATE`, so the
+runtime role keeps least privilege without a `DELETE` grant. `/health` remains a
+liveness check.
 
 For a persistent local PostgreSQL 18.6 instance, set `POSTGRES_PASSWORD` in your shell
 to a local development password, then run:
