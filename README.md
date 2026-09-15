@@ -7,7 +7,7 @@ share the same workspace, inbox, contacts, companies, pipelines, tasks and knowl
 
 Phase 0 has started with a pnpm/Turborepo workspace and a Fastify API. `GET /health`
 returns `{"status":"ok"}` as a process liveness check, not database readiness.
-CRM features, persistent product tables, authentication and workers are not implemented yet. The web app currently
+The initial product tables and an injectable contacts API contract are implemented. Authentication, production API/database wiring and workers are not implemented yet. The web app currently
 shows an accessible initial development screen; it has no CRM data or actions.
 
 ## Development
@@ -47,7 +47,7 @@ CI must install with `pnpm install --frozen-lockfile`.
 `@maria/database` provides a Drizzle connection and workspace-scoped transactions.
 The caller must authorize the workspace before entering a transaction. This helper
 sets transaction-local context; PostgreSQL RLS policies remain the isolation boundary.
-The API is not connected to the database yet, and `/health` remains a liveness check.
+The injectable API contract can list workspace-scoped contacts, but the production server is not connected to the database until authentication is available. `/health` remains a liveness check.
 
 For a persistent local PostgreSQL 18.6 instance, set `POSTGRES_PASSWORD` in your shell
 to a local development password, then run:
@@ -64,9 +64,7 @@ The `maria_admin` account is for local administration, never application runtime
 Runtime roles must be non-superusers without `BYPASSRLS` or ownership of protected tables.
 
 The integration suite starts its own disposable database, separate from this local
-volume. A synthetic RLS table proves cross-workspace isolation and transaction cleanup;
-it is not a product schema or migration. Product schemas, reviewed migrations, runtime
-role provisioning and pgvector are deferred until their first consuming feature.
+volume. It applies the checked-in product migration and proves cross-workspace isolation and transaction cleanup through contacts and companies. Remaining product schemas, runtime role provisioning and pgvector are deferred until their first consuming feature.
 Drizzle ORM (Apache-2.0), node-postgres (MIT), and Testcontainers (MIT, test-only) use
 the established stack; an in-memory substitute cannot verify PostgreSQL RLS behavior.
 New dependencies are pinned and installed without approving lifecycle scripts.
@@ -102,7 +100,7 @@ still need to require `CI / verify` and `CodeQL / analyze` in branch protection 
 enable secret scanning/push protection. GHCR publication and staging/production
 deployment are not configured yet; production must promote the tested image digest.
 
-Next Phase 0 slices: PostgreSQL foundations and web CRM flows, followed by deployment wiring.
+Next Phase 0 slices: web CRM flows and deployment wiring.
 Tenant-owned endpoints require authentication, RLS and cross-tenant tests before exposure.
 
 ## Start here
