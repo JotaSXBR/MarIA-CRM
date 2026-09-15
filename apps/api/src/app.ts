@@ -1,17 +1,17 @@
 import Fastify, { type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 
+type ContactListItem = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  createdAt: Date;
+};
+
 type ContactDependencies = {
   database: {
-    listContacts: (workspaceId: string) => Promise<
-      {
-        id: string;
-        name: string;
-        email: string | null;
-        phone: string | null;
-        createdAt: Date;
-      }[]
-    >;
+    listContacts: (workspaceId: string) => Promise<ContactListItem[]>;
   };
   authorizeWorkspace: (request: FastifyRequest) => Promise<string | undefined>;
 };
@@ -21,7 +21,7 @@ export function buildApp(dependencies?: ContactDependencies) {
 
   // Register rate limiting plugin
   app.register(rateLimit, {
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: 100,
     timeWindow: "1 minute",
   });
   app.get(
@@ -47,7 +47,7 @@ export function buildApp(dependencies?: ContactDependencies) {
       {
         config: {
           rateLimit: {
-            max: 50, // More restrictive limit for protected routes
+            max: 50,
             timeWindow: "1 minute",
           },
         },

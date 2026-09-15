@@ -8,12 +8,11 @@ const uuid =
 
 export function createDatabase(pool: Pool) {
   const db = drizzle({ client: pool });
+  type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   const withWorkspace = async <T>(
     workspaceId: string,
-    callback: (
-      tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    ) => Promise<T>,
+    callback: (tx: DrizzleTx) => Promise<T>,
   ) => {
     if (!uuid.test(workspaceId)) {
       throw new TypeError("workspaceId must be a UUID");
@@ -25,7 +24,8 @@ export function createDatabase(pool: Pool) {
         from pg_roles
         where rolname = current_user
       `);
-      if (rows[0]?.unsafe !== false) {
+      const isUnsafe = rows[0]?.unsafe ?? true;
+      if (isUnsafe) {
         throw new Error("database role must not be superuser or BYPASSRLS");
       }
       await tx.execute(

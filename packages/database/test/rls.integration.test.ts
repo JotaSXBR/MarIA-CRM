@@ -22,6 +22,13 @@ async function expectRlsRejection(operation: Promise<unknown>) {
   await expect(operation).rejects.toMatchObject({ cause: { code: "42501" } });
 }
 
+async function getWorkspaceContext(client: Pool) {
+  const result = await client.query<{ workspace_id: string }>(
+    "select current_setting('app.workspace_id', true) as workspace_id",
+  );
+  return result.rows[0]?.workspace_id ?? "";
+}
+
 beforeAll(async () => {
   container = await new PostgreSqlContainer(image).start();
   admin = new Pool({ connectionString: container.getConnectionUri() });
@@ -67,21 +74,33 @@ afterAll(async () => {
   await container?.stop();
 }, 30000);
 
+async function queryRolePrivileges(client: Pool) {
+  const result = await client.query<{
+    rolcanlogin: boolean;
+    rolsuper: boolean;
+    rolcreaterole: boolean;
+    rolcreatedb: boolean;
+    rolreplication: boolean;
+    rolbypassrls: boolean;
+    can_connect: boolean;
+    can_use_schema: boolean;
+    can_use_contacts: boolean;
+    can_delete_contacts: boolean;
+  }>(`
+    select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
+      rolbypassrls,
+      has_database_privilege(current_user, current_database(), 'CONNECT') as can_connect,
+      has_schema_privilege(current_user, 'public', 'USAGE') as can_use_schema,
+      has_table_privilege(current_user, 'contacts', 'SELECT, INSERT, UPDATE') as can_use_contacts,
+      has_table_privilege(current_user, 'contacts', 'DELETE') as can_delete_contacts
+    from pg_roles
+    where rolname = current_user
+  `);
+  return result.rows;
+}
+
 test("product RLS scopes reads and writes and leaves no context on its pooled connection", async () => {
-  expect(
-    (
-      await runtime.query(`
-        select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
-          rolbypassrls,
-          has_database_privilege(current_user, current_database(), 'CONNECT') as can_connect,
-          has_schema_privilege(current_user, 'public', 'USAGE') as can_use_schema,
-          has_table_privilege(current_user, 'contacts', 'SELECT, INSERT, UPDATE') as can_use_contacts,
-          has_table_privilege(current_user, 'contacts', 'DELETE') as can_delete_contacts
-        from pg_roles
-        where rolname = current_user
-      `)
-    ).rows,
-  ).toEqual([
+  expect(await queryRolePrivileges(runtime)).toEqual([
     {
       rolcanlogin: true,
       rolsuper: false,
@@ -177,26 +196,14 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       throw new Error("rollback");
     }),
   ).rejects.toThrow("rollback");
-  expect(
-    (
-      await runtime.query(
-        "select current_setting('app.workspace_id', true) as workspace_id",
-      )
-    ).rows,
-  ).toEqual([{ workspace_id: "" }]);
+  expect(await getWorkspaceContext(runtime)).toBe("");
   expect((await runtime.query("select * from contacts")).rows).toEqual([]);
   const count = await database.withWorkspace(workspaceA, (tx) =>
     tx.execute<{ count: string }>(sql`select count(*) from contacts`),
   );
   expect(count.rows).toEqual([{ count: "2" }]);
 
-  expect(
-    (
-      await runtime.query(
-        "select current_setting('app.workspace_id', true) as workspace_id",
-      )
-    ).rows,
-  ).toEqual([{ workspace_id: "" }]);
+  expect(await getWorkspaceContext(runtime)).toBe("");
   expect((await runtime.query("select * from companies")).rows).toEqual([]);
   await expect(
     createDatabase(admin).withWorkspace(workspaceA, async () => undefined),
