@@ -1,7 +1,16 @@
-import { and, eq, isNull, sql, type SQLWrapper } from "drizzle-orm";
+import { and, desc, eq, isNull, sql, type SQLWrapper } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { generateKeyBetween } from "fractional-indexing";
 import type { Pool } from "pg";
-import { companies, contacts, organizations, workspaces } from "./schema.ts";
+import {
+  companies,
+  contacts,
+  deals,
+  organizations,
+  pipelines,
+  stages,
+  workspaces,
+} from "./schema.ts";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,7 +72,88 @@ export function createDatabase(pool: Pool) {
     createdAt: companies.createdAt,
   };
 
+  const pipelineColumns = {
+    id: pipelines.id,
+    name: pipelines.name,
+    position: pipelines.position,
+    createdAt: pipelines.createdAt,
+  };
+
+  const stageColumns = {
+    id: stages.id,
+    pipelineId: stages.pipelineId,
+    name: stages.name,
+    position: stages.position,
+    createdAt: stages.createdAt,
+  };
+
+  const dealColumns = {
+    id: deals.id,
+    pipelineId: deals.pipelineId,
+    stageId: deals.stageId,
+    title: deals.title,
+    valueCents: deals.valueCents,
+    contactId: deals.contactId,
+    companyId: deals.companyId,
+    position: deals.position,
+    createdAt: deals.createdAt,
+  };
+
   const notDeleted = (deletedAt: SQLWrapper) => isNull(deletedAt);
+
+  const lastPosition = async (
+    tx: DrizzleTx,
+    table: typeof pipelines | typeof stages | typeof deals,
+  ) => {
+    const rows = await tx
+      .select({ position: table.position })
+      .from(table)
+      .where(notDeleted(table.deletedAt))
+      .orderBy(desc(table.position))
+      .limit(1);
+    return rows[0]?.position ?? null;
+  };
+
+  const dealRefsValid = async (
+    tx: DrizzleTx,
+    input: {
+      pipelineId: string;
+      stageId: string;
+      contactId?: string | null | undefined;
+      companyId?: string | null | undefined;
+    },
+  ) => {
+    const stage = await tx
+      .select({ pipelineId: stages.pipelineId })
+      .from(stages)
+      .where(and(eq(stages.id, input.stageId), notDeleted(stages.deletedAt)))
+      .limit(1);
+    if (!stage[0] || stage[0].pipelineId !== input.pipelineId) return false;
+    if (input.contactId) {
+      const contact = await tx
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(
+          and(eq(contacts.id, input.contactId), notDeleted(contacts.deletedAt)),
+        )
+        .limit(1);
+      if (!contact[0]) return false;
+    }
+    if (input.companyId) {
+      const company = await tx
+        .select({ id: companies.id })
+        .from(companies)
+        .where(
+          and(
+            eq(companies.id, input.companyId),
+            notDeleted(companies.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!company[0]) return false;
+    }
+    return true;
+  };
 
   return {
     close: () => pool.end(),
@@ -211,6 +301,303 @@ export function createDatabase(pool: Pool) {
       if (!row) throw new Error("workspace insert returned no row");
       return row;
     },
+    listPipelines: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(pipelineColumns)
+          .from(pipelines)
+          .where(notDeleted(pipelines.deletedAt))
+          .orderBy(pipelines.position, pipelines.id),
+      ),
+    createPipeline: (workspaceId: string, input: { name: string }) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const position = generateKeyBetween(
+          await lastPosition(tx, pipelines),
+          null,
+        );
+        const rows = await tx
+          .insert(pipelines)
+          .values({ workspaceId, name: input.name, position })
+          .returning(pipelineColumns);
+        const row = rows[0];
+        if (!row) throw new Error("pipeline insert returned no row");
+        return row;
+      }),
+    updatePipeline: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(pipelines)
+          .set(input)
+          .where(and(eq(pipelines.id, id), notDeleted(pipelines.deletedAt)))
+          .returning(pipelineColumns);
+        return rows[0];
+      }),
+    deletePipeline: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const pipeline = await tx
+          .select({ id: pipelines.id })
+          .from(pipelines)
+          .where(and(eq(pipelines.id, id), notDeleted(pipelines.deletedAt)))
+          .limit(1);
+        if (!pipeline[0]) return "not-found";
+        const activeDeals = await tx
+          .select({ id: deals.id })
+          .from(deals)
+          .where(and(eq(deals.pipelineId, id), notDeleted(deals.deletedAt)))
+          .limit(1);
+        if (activeDeals[0]) return "has-deals";
+        await tx
+          .update(pipelines)
+          .set({ deletedAt: new Date() })
+          .where(eq(pipelines.id, id));
+        return "deleted";
+      }),
+    listStages: (workspaceId: string, pipelineId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(stageColumns)
+          .from(stages)
+          .where(
+            and(
+              eq(stages.pipelineId, pipelineId),
+              notDeleted(stages.deletedAt),
+            ),
+          )
+          .orderBy(stages.position, stages.id),
+      ),
+    createStage: (
+      workspaceId: string,
+      pipelineId: string,
+      input: { name: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const pipeline = await tx
+          .select({ id: pipelines.id })
+          .from(pipelines)
+          .where(
+            and(eq(pipelines.id, pipelineId), notDeleted(pipelines.deletedAt)),
+          )
+          .limit(1);
+        if (!pipeline[0]) return undefined;
+        const last = await tx
+          .select({ position: stages.position })
+          .from(stages)
+          .where(
+            and(
+              eq(stages.pipelineId, pipelineId),
+              notDeleted(stages.deletedAt),
+            ),
+          )
+          .orderBy(desc(stages.position))
+          .limit(1);
+        const rows = await tx
+          .insert(stages)
+          .values({
+            workspaceId,
+            pipelineId,
+            name: input.name,
+            position: generateKeyBetween(last[0]?.position ?? null, null),
+          })
+          .returning(stageColumns);
+        const row = rows[0];
+        if (!row) throw new Error("stage insert returned no row");
+        return row;
+      }),
+    updateStage: (workspaceId: string, id: string, input: { name?: string }) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(stages)
+          .set(input)
+          .where(and(eq(stages.id, id), notDeleted(stages.deletedAt)))
+          .returning(stageColumns);
+        return rows[0];
+      }),
+    deleteStage: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const stage = await tx
+          .select({ id: stages.id })
+          .from(stages)
+          .where(and(eq(stages.id, id), notDeleted(stages.deletedAt)))
+          .limit(1);
+        if (!stage[0]) return "not-found";
+        const activeDeals = await tx
+          .select({ id: deals.id })
+          .from(deals)
+          .where(and(eq(deals.stageId, id), notDeleted(deals.deletedAt)))
+          .limit(1);
+        if (activeDeals[0]) return "has-deals";
+        await tx
+          .update(stages)
+          .set({ deletedAt: new Date() })
+          .where(eq(stages.id, id));
+        return "deleted";
+      }),
+    listDeals: (workspaceId: string, pipelineId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(dealColumns)
+          .from(deals)
+          .where(
+            and(eq(deals.pipelineId, pipelineId), notDeleted(deals.deletedAt)),
+          )
+          .orderBy(deals.position, deals.id),
+      ),
+    getDeal: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(dealColumns)
+          .from(deals)
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .limit(1);
+        return rows[0];
+      }),
+    createDeal: (
+      workspaceId: string,
+      input: {
+        pipelineId: string;
+        stageId: string;
+        title: string;
+        valueCents?: number | null;
+        contactId?: string | null;
+        companyId?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const refsValid = await dealRefsValid(tx, input);
+        if (!refsValid) return undefined;
+        const last = await tx
+          .select({ position: deals.position })
+          .from(deals)
+          .where(
+            and(eq(deals.stageId, input.stageId), notDeleted(deals.deletedAt)),
+          )
+          .orderBy(desc(deals.position))
+          .limit(1);
+        const rows = await tx
+          .insert(deals)
+          .values({
+            workspaceId,
+            pipelineId: input.pipelineId,
+            stageId: input.stageId,
+            title: input.title,
+            valueCents: input.valueCents ?? null,
+            contactId: input.contactId ?? null,
+            companyId: input.companyId ?? null,
+            position: generateKeyBetween(last[0]?.position ?? null, null),
+          })
+          .returning(dealColumns);
+        const row = rows[0];
+        if (!row) throw new Error("deal insert returned no row");
+        return row;
+      }),
+    updateDeal: (
+      workspaceId: string,
+      id: string,
+      input: {
+        title?: string;
+        valueCents?: number | null;
+        contactId?: string | null;
+        companyId?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const deal = await tx
+          .select({ pipelineId: deals.pipelineId, stageId: deals.stageId })
+          .from(deals)
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .limit(1);
+        if (!deal[0]) return undefined;
+        const refsValid = await dealRefsValid(tx, {
+          pipelineId: deal[0].pipelineId,
+          stageId: deal[0].stageId,
+          contactId: input.contactId,
+          companyId: input.companyId,
+        });
+        if (!refsValid) return undefined;
+        const set: {
+          title?: string;
+          valueCents?: number | null;
+          contactId?: string | null;
+          companyId?: string | null;
+        } = {};
+        if (input.title !== undefined) set.title = input.title;
+        if (input.valueCents !== undefined) set.valueCents = input.valueCents;
+        if (input.contactId !== undefined) set.contactId = input.contactId;
+        if (input.companyId !== undefined) set.companyId = input.companyId;
+        if (Object.keys(set).length === 0) return undefined;
+        const rows = await tx
+          .update(deals)
+          .set(set)
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .returning(dealColumns);
+        return rows[0];
+      }),
+    moveDeal: (
+      workspaceId: string,
+      id: string,
+      input: {
+        stageId: string;
+        prevDealId?: string | null;
+        nextDealId?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const deal = await tx
+          .select({ pipelineId: deals.pipelineId })
+          .from(deals)
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .limit(1);
+        if (!deal[0]) return undefined;
+        const stage = await tx
+          .select({ pipelineId: stages.pipelineId })
+          .from(stages)
+          .where(
+            and(eq(stages.id, input.stageId), notDeleted(stages.deletedAt)),
+          )
+          .limit(1);
+        if (!stage[0]) return undefined;
+        const neighbor = async (dealId: string | null | undefined) => {
+          if (!dealId) return null;
+          const rows = await tx
+            .select({ position: deals.position })
+            .from(deals)
+            .where(
+              and(
+                eq(deals.id, dealId),
+                eq(deals.stageId, input.stageId),
+                notDeleted(deals.deletedAt),
+              ),
+            )
+            .limit(1);
+          return rows[0]?.position ?? undefined;
+        };
+        const prev = await neighbor(input.prevDealId);
+        const next = await neighbor(input.nextDealId);
+        if (prev === undefined || next === undefined) return undefined;
+        const rows = await tx
+          .update(deals)
+          .set({
+            stageId: input.stageId,
+            pipelineId: stage[0].pipelineId,
+            position: generateKeyBetween(prev, next),
+          })
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .returning(dealColumns);
+        return rows[0];
+      }),
+    deleteDeal: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(deals)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
+          .returning({ id: deals.id });
+        return rows.length > 0;
+      }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
     // Same contract for user-scoped reads (e.g. own memberships via app.user_id).

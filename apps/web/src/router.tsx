@@ -10,6 +10,7 @@ import { LoginPage } from "./routes/login.tsx";
 import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
 import { CompaniesPage } from "./routes/companies.tsx";
+import { PipelinesPage } from "./routes/pipelines.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -32,8 +33,14 @@ const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/contacts" });
+    throw redirect({ to: "/pipelines" });
   },
+});
+
+const pipelinesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/pipelines",
+  component: PipelinesPage,
 });
 
 const contactsRoute = createRoute({
@@ -50,7 +57,12 @@ const companiesRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   loginRoute,
-  appRoute.addChildren([indexRoute, contactsRoute, companiesRoute]),
+  appRoute.addChildren([
+    indexRoute,
+    pipelinesRoute,
+    contactsRoute,
+    companiesRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

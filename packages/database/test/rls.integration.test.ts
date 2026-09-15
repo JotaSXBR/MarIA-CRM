@@ -68,6 +68,10 @@ async function queryRolePrivileges(client: Pool) {
     can_use_sessions: boolean;
     can_use_memberships: boolean;
     can_use_invitations: boolean;
+    can_use_pipelines: boolean;
+    can_use_stages: boolean;
+    can_use_deals: boolean;
+    can_delete_deals: boolean;
   }>(`
     select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
       rolbypassrls,
@@ -78,7 +82,11 @@ async function queryRolePrivileges(client: Pool) {
       has_table_privilege(current_user, 'users', 'SELECT, INSERT, UPDATE') as can_use_users,
       has_table_privilege(current_user, 'sessions', 'SELECT, INSERT, DELETE') as can_use_sessions,
       has_table_privilege(current_user, 'memberships', 'SELECT, INSERT, UPDATE, DELETE') as can_use_memberships,
-      has_table_privilege(current_user, 'invitations', 'SELECT, INSERT, UPDATE') as can_use_invitations
+      has_table_privilege(current_user, 'invitations', 'SELECT, INSERT, UPDATE') as can_use_invitations,
+      has_table_privilege(current_user, 'pipelines', 'SELECT, INSERT, UPDATE') as can_use_pipelines,
+      has_table_privilege(current_user, 'stages', 'SELECT, INSERT, UPDATE') as can_use_stages,
+      has_table_privilege(current_user, 'deals', 'SELECT, INSERT, UPDATE') as can_use_deals,
+      has_table_privilege(current_user, 'deals', 'DELETE') as can_delete_deals
     from pg_roles
     where rolname = current_user
   `);
@@ -102,6 +110,10 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       can_use_sessions: true,
       can_use_memberships: true,
       can_use_invitations: true,
+      can_use_pipelines: true,
+      can_use_stages: true,
+      can_use_deals: true,
+      can_delete_deals: false,
     },
   ]);
   expect(
@@ -110,44 +122,34 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
         select c.relname, r.rolsuper, r.rolbypassrls, c.relforcerowsecurity,
           c.relowner = r.oid as owns_table
         from pg_roles r cross join pg_class c
-        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations')
+        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals')
         order by c.relname
       `)
     ).rows,
-  ).toEqual([
-    {
-      relname: "companies",
+  ).toEqual(
+    [
+      "companies",
+      "contacts",
+      "deals",
+      "invitations",
+      "memberships",
+      "pipelines",
+      "stages",
+    ].map((relname) => ({
+      relname,
       rolsuper: false,
       rolbypassrls: false,
       relforcerowsecurity: true,
       owns_table: false,
-    },
-    {
-      relname: "contacts",
-      rolsuper: false,
-      rolbypassrls: false,
-      relforcerowsecurity: true,
-      owns_table: false,
-    },
-    {
-      relname: "invitations",
-      rolsuper: false,
-      rolbypassrls: false,
-      relforcerowsecurity: true,
-      owns_table: false,
-    },
-    {
-      relname: "memberships",
-      rolsuper: false,
-      rolbypassrls: false,
-      relforcerowsecurity: true,
-      owns_table: false,
-    },
-  ]);
+    })),
+  );
   expect((await runtime.query("select * from contacts")).rows).toEqual([]);
   expect((await runtime.query("select * from companies")).rows).toEqual([]);
   expect((await runtime.query("select * from memberships")).rows).toEqual([]);
   expect((await runtime.query("select * from invitations")).rows).toEqual([]);
+  expect((await runtime.query("select * from pipelines")).rows).toEqual([]);
+  expect((await runtime.query("select * from stages")).rows).toEqual([]);
+  expect((await runtime.query("select * from deals")).rows).toEqual([]);
   await expect(
     runtime.query(
       "insert into contacts (workspace_id, name) values ($1, 'unscoped')",
@@ -340,4 +342,112 @@ test("company CRUD stays workspace-scoped and soft-deletes under the runtime rol
       ])
     ).rows[0]?.deleted_at,
   ).not.toBeNull();
+});
+
+test("pipeline/stage/deal CRUD stays workspace-scoped with scoped ref validation", async () => {
+  const pipeline = await database.createPipeline(workspaceA, {
+    name: "Vendas",
+  });
+  expect(pipeline).toMatchObject({ name: "Vendas" });
+  expect((await database.listPipelines(workspaceA)).map((p) => p.id)).toContain(
+    pipeline.id,
+  );
+  expect(await database.listPipelines(workspaceB)).toEqual([]);
+
+  const stageA1 = await database.createStage(workspaceA, pipeline.id, {
+    name: "Novo",
+  });
+  const stageA2 = await database.createStage(workspaceA, pipeline.id, {
+    name: "Fechado",
+  });
+  expect(stageA1).toMatchObject({ name: "Novo", pipelineId: pipeline.id });
+  expect(stageA1!.position < stageA2!.position).toBe(true);
+  expect(await database.listStages(workspaceB, pipeline.id)).toEqual([]);
+
+  // Cross-workspace pipeline must not produce a stage (scoped read, not FK)
+  expect(
+    await database.createStage(workspaceB, pipeline.id, { name: "Cross" }),
+  ).toBeUndefined();
+
+  const contactA = (await database.listContacts(workspaceA))[0];
+  const contactB = (await database.listContacts(workspaceB))[0];
+  const companyB = (await database.listCompanies(workspaceB))[0];
+
+  const deal = await database.createDeal(workspaceA, {
+    pipelineId: pipeline.id,
+    stageId: stageA1!.id,
+    title: "Deal A",
+    valueCents: 10000,
+    contactId: contactA!.id,
+  });
+  expect(deal).toMatchObject({ title: "Deal A", stageId: stageA1!.id });
+
+  // Cross-workspace references must be rejected even though FKs would accept them
+  expect(
+    await database.createDeal(workspaceA, {
+      pipelineId: pipeline.id,
+      stageId: stageA1!.id,
+      title: "Cross contact",
+      contactId: contactB!.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createDeal(workspaceA, {
+      pipelineId: pipeline.id,
+      stageId: stageA1!.id,
+      title: "Cross company",
+      companyId: companyB!.id,
+    }),
+  ).toBeUndefined();
+
+  // Move with neighbor positions: between two deals in the target stage
+  const other = await database.createDeal(workspaceA, {
+    pipelineId: pipeline.id,
+    stageId: stageA2!.id,
+    title: "Deal B",
+  });
+  const moved = await database.moveDeal(workspaceA, deal!.id, {
+    stageId: stageA2!.id,
+    nextDealId: other!.id,
+  });
+  expect(moved).toMatchObject({ stageId: stageA2!.id });
+  expect(moved!.position < other!.position).toBe(true);
+  const movedAfter = await database.moveDeal(workspaceA, deal!.id, {
+    stageId: stageA2!.id,
+    prevDealId: other!.id,
+  });
+  expect(movedAfter!.position > other!.position).toBe(true);
+
+  // Unknown deal/stage/neighbor or cross-workspace move returns undefined
+  expect(
+    await database.moveDeal(workspaceB, deal!.id, { stageId: stageA1!.id }),
+  ).toBeUndefined();
+  expect(
+    await database.moveDeal(workspaceA, deal!.id, { stageId: randomUUID() }),
+  ).toBeUndefined();
+  expect(
+    await database.moveDeal(workspaceA, deal!.id, {
+      stageId: stageA1!.id,
+      prevDealId: randomUUID(),
+    }),
+  ).toBeUndefined();
+
+  // Cannot delete a pipeline or stage while it has active deals
+  expect(await database.deleteStage(workspaceA, stageA2!.id)).toBe("has-deals");
+  expect(await database.deletePipeline(workspaceA, pipeline.id)).toBe(
+    "has-deals",
+  );
+
+  expect(await database.deleteDeal(workspaceB, deal!.id)).toBe(false);
+  expect(await database.deleteDeal(workspaceA, deal!.id)).toBe(true);
+  expect(await database.getDeal(workspaceA, deal!.id)).toBeUndefined();
+  expect(await database.deleteDeal(workspaceA, other!.id)).toBe(true);
+  expect(await database.deleteStage(workspaceA, stageA2!.id)).toBe("deleted");
+  expect(await database.deleteStage(workspaceA, stageA2!.id)).toBe("not-found");
+  expect(await database.deletePipeline(workspaceA, pipeline.id)).toBe(
+    "deleted",
+  );
+  expect(
+    (await database.listPipelines(workspaceA)).map((p) => p.id),
+  ).not.toContain(pipeline.id);
 });

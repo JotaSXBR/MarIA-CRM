@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   pgTable,
@@ -124,6 +125,84 @@ export const memberships = pgTable(
       table.userId,
       table.workspaceId,
     ),
+  ],
+);
+
+export const pipelines = pgTable(
+  "pipelines",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text().notNull(),
+    position: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("pipelines_workspace_id_idx").on(table.workspaceId),
+    index("pipelines_workspace_active_idx")
+      .on(table.workspaceId)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
+export const stages = pgTable(
+  "stages",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    pipelineId: uuid("pipeline_id")
+      .references(() => pipelines.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text().notNull(),
+    position: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("stages_workspace_id_idx").on(table.workspaceId),
+    index("stages_pipeline_active_idx")
+      .on(table.pipelineId)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
+export const deals = pgTable(
+  "deals",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    pipelineId: uuid("pipeline_id")
+      .references(() => pipelines.id, { onDelete: "cascade" })
+      .notNull(),
+    stageId: uuid("stage_id")
+      .references(() => stages.id, { onDelete: "cascade" })
+      .notNull(),
+    title: text().notNull(),
+    valueCents: bigint("value_cents", { mode: "number" }),
+    contactId: uuid("contact_id").references(() => contacts.id),
+    companyId: uuid("company_id").references(() => companies.id),
+    position: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("deals_workspace_id_idx").on(table.workspaceId),
+    index("deals_stage_active_idx")
+      .on(table.stageId)
+      .where(sql`deleted_at is null`),
   ],
 );
 

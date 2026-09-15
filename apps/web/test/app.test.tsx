@@ -54,6 +54,9 @@ test("login stores the session token and lands on contacts", async () => {
         { status: 200 },
       );
     }
+    if (url.includes("/pipelines")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
     if (url.includes("/contacts")) {
       return new Response(
         JSON.stringify([
@@ -80,13 +83,87 @@ test("login stores the session token and lands on contacts", async () => {
 
   expect(localStorage.getItem("maria.token")).toBe("session-token");
   expect(
-    await screen.findByRole("heading", { name: "Contatos" }),
+    await screen.findByRole("heading", { name: "Pipelines" }),
   ).toBeDefined();
-  expect(await screen.findByText("Maria")).toBeDefined();
+});
+
+test("pipelines board renders stages and deals for the workspace", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const pipelineId = "123e4567-e89b-12d3-a456-426614174010";
+  const stageId = "123e4567-e89b-12d3-a456-426614174011";
+  setToken("session-token");
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          { workspaceId, workspaceName: "Workspace", role: "admin" },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes(`/pipelines/${pipelineId}/stages`)) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: stageId,
+            pipelineId,
+            name: "Novo",
+            position: "a0",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/deals")) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123e4567-e89b-12d3-a456-426614174012",
+            pipelineId,
+            stageId,
+            title: "Proposta ACME",
+            valueCents: 150000,
+            contactId: null,
+            companyId: null,
+            position: "a0",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/pipelines")) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: pipelineId,
+            name: "Vendas",
+            position: "a0",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/pipelines");
+
+  expect(
+    await screen.findByRole("heading", { name: "Pipelines" }),
+  ).toBeDefined();
+  expect(await screen.findByRole("heading", { name: "Novo" })).toBeDefined();
+  expect(await screen.findByText("Proposta ACME")).toBeDefined();
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).includes(`/contacts?workspaceId=${workspaceId}`),
+        String(input).includes(
+          `/deals?pipelineId=${pipelineId}&workspaceId=${workspaceId}`,
+        ),
       ),
     ).toBe(true),
   );

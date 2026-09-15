@@ -12,13 +12,13 @@ gh pr status
 
 ## Current work
 
-PR [#23](https://github.com/JotaSXBR/MarIA-CRM/pull/23) merged. Branch `feat/web-app` adds the first real web UI plus the API support it needs:
+PR [#24](https://github.com/JotaSXBR/MarIA-CRM/pull/24) merged (web SPA). Branch `feat/pipelines-deals` adds pipelines/stages/deals with a Kanban board:
 
-- Migration `0006_membership_user_scope.sql` replaces the memberships policy with `workspace_id = app.workspace_id OR user_id = app.user_id` for reads; `WITH CHECK` stays workspace-only, so writes still require workspace context.
-- `@maria/database` gains `withUser(userId, cb)` (transaction-local `app.user_id`, same role-safety check as `withWorkspace`; both now share `scopedTransaction`).
-- `@maria/auth` gains `listUserWorkspaces`; `apps/api` exposes `GET /me/workspaces` for any authenticated session.
-- `apps/web` is a real SPA now: TanStack Router (code-based route tree, `beforeLoad` auth guard) + TanStack Query + Tailwind v4 via `@tailwindcss/vite`; Vite dev proxy forwards `/auth`, `/me`, `/admin`, `/contacts`, `/companies`, `/health` to `localhost:3000` (no CORS changes). Pages: `/login`, authenticated shell with sidebar + workspace picker, `/contacts` and `/companies` (list/create/edit; delete only for workspace admins).
-- Session token lives in `localStorage`; workspace selection persists across reloads.
+- Migration `0007_pipelines.sql` creates `pipelines`, `stages`, `deals` — all with `workspace_id`, RLS + FORCE, soft delete (`deleted_at`), least-privilege grants for `maria_runtime` (no DELETE), and active-row partial indexes.
+- Ordering uses `fractional-indexing` position strings: stages sort inside a pipeline, deals inside a stage. `POST /deals/:id/move` takes `stageId` + `prevDealId`/`nextDealId` neighbors and computes the new key between them.
+- FK-scoped reads (research lesson): `createStage`/`createDeal`/`updateDeal`/`moveDeal` verify referenced pipeline, stage, contact and company rows inside `withWorkspace` — RLS does not stop cross-tenant FK references on write.
+- `DELETE /pipelines/:id` and `DELETE /stages/:id` require workspace admin and return 409 while the pipeline/stage still has active deals.
+- `apps/web` gains `/pipelines`: Kanban board with dnd-kit (`@dnd-kit/core` + `sortable`), per-stage deal creation, admin-only delete/pipeline/stage controls. Index and post-login now land on `/pipelines`.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -55,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the web-app PR manually. Remaining slices: pipelines/stages/deals (Kanban), then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, admin-panel UI screens, contact detail pages. Preserve RLS and transaction cleanup.
+Review CI and merge the pipelines/deals PR manually. Remaining slices: deal detail/edit (contact/company pickers), admin-panel UI screens, then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

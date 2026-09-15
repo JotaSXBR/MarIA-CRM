@@ -34,6 +34,20 @@ function createDatabaseStub() {
     createCompany: vi.fn(),
     updateCompany: vi.fn().mockResolvedValue(undefined),
     deleteCompany: vi.fn().mockResolvedValue(false),
+    listPipelines: vi.fn().mockResolvedValue([]),
+    createPipeline: vi.fn(),
+    updatePipeline: vi.fn().mockResolvedValue(undefined),
+    deletePipeline: vi.fn().mockResolvedValue("not-found"),
+    listStages: vi.fn().mockResolvedValue([]),
+    createStage: vi.fn().mockResolvedValue(undefined),
+    updateStage: vi.fn().mockResolvedValue(undefined),
+    deleteStage: vi.fn().mockResolvedValue("not-found"),
+    listDeals: vi.fn().mockResolvedValue([]),
+    getDeal: vi.fn().mockResolvedValue(undefined),
+    createDeal: vi.fn().mockResolvedValue(undefined),
+    updateDeal: vi.fn().mockResolvedValue(undefined),
+    moveDeal: vi.fn().mockResolvedValue(undefined),
+    deleteDeal: vi.fn().mockResolvedValue(false),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -698,6 +712,217 @@ test("admin management covers users, organizations, workspaces and memberships",
         })
       ).statusCode,
     ).toBe(409);
+  } finally {
+    await app.close();
+  }
+});
+
+test("pipelines, stages and deals enforce auth and membership", async () => {
+  const workspaceId = randomUUID();
+  const database = createDatabaseStub();
+  const auth = createAuthStub();
+  const app = buildApp({ database, auth });
+  try {
+    for (const url of [
+      `/pipelines?workspaceId=${workspaceId}`,
+      `/deals?workspaceId=${workspaceId}&pipelineId=${randomUUID()}`,
+    ]) {
+      expect((await app.inject(url)).statusCode).toBe(401);
+    }
+    expect(database.listPipelines).not.toHaveBeenCalled();
+    expect(database.listDeals).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+test("pipeline CRUD roundtrips through the authorized workspace", async () => {
+  const workspaceId = randomUUID();
+  const pipelineId = randomUUID();
+  const database = createDatabaseStub();
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "admin@example.com",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "admin" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const pipeline = {
+      id: pipelineId,
+      name: "Vendas",
+      position: "a0",
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    };
+    database.createPipeline.mockResolvedValue(pipeline);
+    const created = await app.inject({
+      method: "POST",
+      url: `/pipelines?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Vendas" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().id).toBe(pipelineId);
+    expect(database.createPipeline).toHaveBeenCalledWith(workspaceId, {
+      name: "Vendas",
+    });
+
+    database.updatePipeline.mockResolvedValue({
+      ...pipeline,
+      name: "Renamed",
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/pipelines/${pipelineId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { name: "Renamed" },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    database.deletePipeline.mockResolvedValue("has-deals");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/pipelines/${pipelineId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(409);
+    database.deletePipeline.mockResolvedValue("deleted");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/pipelines/${pipelineId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(204);
+  } finally {
+    await app.close();
+  }
+});
+
+test("stages and deals reject members for delete and 404 on invalid refs", async () => {
+  const workspaceId = randomUUID();
+  const pipelineId = randomUUID();
+  const stageId = randomUUID();
+  const database = createDatabaseStub();
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "member@example.com",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/stages/${stageId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/deals/${randomUUID()}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(403);
+
+    // createStage returns undefined when the pipeline does not exist / is cross-workspace
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/pipelines/${pipelineId}/stages?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { name: "Qualificação" },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    // createDeal returns undefined when stage/contact/company refs are invalid
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/deals?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { pipelineId, stageId, title: "Deal" },
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("deal move forwards stage and neighbor positions to the database", async () => {
+  const workspaceId = randomUUID();
+  const dealId = randomUUID();
+  const stageId = randomUUID();
+  const prevId = randomUUID();
+  const nextId = randomUUID();
+  const database = createDatabaseStub();
+  const moved = {
+    id: dealId,
+    pipelineId: randomUUID(),
+    stageId,
+    title: "Deal",
+    valueCents: null,
+    contactId: null,
+    companyId: null,
+    position: "a1",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  database.moveDeal.mockResolvedValue(moved);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "member@example.com",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/deals/${dealId}/move?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { stageId, prevDealId: prevId, nextDealId: nextId },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(database.moveDeal).toHaveBeenCalledWith(workspaceId, dealId, {
+      stageId,
+      prevDealId: prevId,
+      nextDealId: nextId,
+    });
+    database.moveDeal.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/deals/${dealId}/move?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { stageId: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(404);
   } finally {
     await app.close();
   }
