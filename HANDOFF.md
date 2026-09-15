@@ -23,6 +23,7 @@ PR [#27](https://github.com/JotaSXBR/MarIA-CRM/pull/27) merged (deal editor + de
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
 Deferred simplifications from the code-simplifier review (not applied):
+
 - `lastPosition` helper should take an extra filter and be reused by `createStage`/`createDeal` (they repeat the query inline).
 - Soft-delete/existence-check blocks in `deletePipeline`/`deleteStage`/`deleteDeal`/`deleteContact`/`deleteCompany` could share a `softDeleteById` helper.
 - The repeated `DELETE /:id` route boilerplate in `app.ts` (auth → workspace admin → delete → status map) could be a small wrapper.
