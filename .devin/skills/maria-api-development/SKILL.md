@@ -5,6 +5,7 @@ Skill para desenvolvimento de API Fastify no MarIA CRM.
 ## Quando usar
 
 Use esta skill quando:
+
 - Criando novos endpoints REST
 - Implementando rotas com authorization
 - Configurando rate limiting
@@ -15,6 +16,7 @@ Use esta skill quando:
 ## Padrões API
 
 ### Dependency Injection Pattern
+
 ```typescript
 // apps/api/src/app.ts
 type RouteDependencies = {
@@ -26,27 +28,29 @@ type RouteDependencies = {
 
 export function buildApp(dependencies?: RouteDependencies) {
   const app = Fastify({ logger: true });
-  
+
   if (dependencies) {
     // Registrar rota apenas quando dependencies são injetadas
     app.get("/endpoint", handler);
   }
-  
+
   return app;
 }
 ```
 
 ### Authorization Pattern
+
 ```typescript
 async (request, reply) => {
   const workspaceId = await dependencies.authorizeWorkspace(request);
   if (!workspaceId) return reply.code(401).send();
   // Continuar com operação scoped
   return dependencies.database.operation(workspaceId);
-}
+};
 ```
 
 ### Schema Validation
+
 ```typescript
 schema: {
   response: {
@@ -67,6 +71,7 @@ schema: {
 ## Rate Limiting
 
 ### Global Plugin
+
 ```typescript
 app.register(rateLimit, {
   max: 100,
@@ -75,28 +80,31 @@ app.register(rateLimit, {
 ```
 
 ### Route-Specific Override
+
 ```typescript
 app.get(
   "/protected",
   {
     config: {
       rateLimit: {
-        max: 50,      // Mais restritivo para rotas protegidas
+        max: 50, // Mais restritivo para rotas protegidas
         timeWindow: "1 minute",
       },
     },
   },
-  handler
+  handler,
 );
 ```
 
 ## Endpoints Implementados
 
 ### Current
+
 - `GET /health` - Liveness check (não verifica DB)
 - `GET /contacts` - Injectable (requer auth + database dependency)
 
 ### Próximos (Phase 0)
+
 - Authentication/authorization endpoints
 - CRUD completo de contacts
 - Companies CRUD
@@ -115,6 +123,7 @@ app.get(
 ## Testing Patterns
 
 ### Unit Tests
+
 ```typescript
 // apps/api/test/endpoint.test.ts
 import { buildApp } from "../src/app.ts";
@@ -130,6 +139,7 @@ test("endpoint returns 401 without auth", async () => {
 ```
 
 ### Integration Tests
+
 ```typescript
 // apps/api/test/endpoint.integration.test.ts
 test("endpoint returns data with auth", async () => {
@@ -146,6 +156,7 @@ test("endpoint returns data with auth", async () => {
 ```
 
 ### E2E Tests
+
 ```typescript
 // apps/api/test/server.e2e.test.ts
 test("built server responds over HTTP", async () => {
@@ -160,35 +171,42 @@ test("built server responds over HTTP", async () => {
 ## Webhook Patterns
 
 ### Meta WhatsApp Webhook
+
 ```typescript
-app.post("/webhooks/whatsapp/meta", {
-  config: { rateLimit: { max: 1000, timeWindow: "1 minute" } },
-  schema: {
-    body: {
-      type: "object",
-      properties: {
-        object: { type: "string" },
-        entry: { type: "array" },
+app.post(
+  "/webhooks/whatsapp/meta",
+  {
+    config: { rateLimit: { max: 1000, timeWindow: "1 minute" } },
+    schema: {
+      body: {
+        type: "object",
+        properties: {
+          object: { type: "string" },
+          entry: { type: "array" },
+        },
       },
     },
   },
-}, async (request, reply) => {
-  // 1. Validar signature X-Hub-Signature
-  // 2. Normalizar payload
-  // 3. Persistir com outbox
-  // 4. Retornar 200 rápido
-  reply.code(200).send();
-});
+  async (request, reply) => {
+    // 1. Validar signature X-Hub-Signature
+    // 2. Normalizar payload
+    // 3. Persistir com outbox
+    // 4. Retornar 200 rápido
+    reply.code(200).send();
+  },
+);
 ```
 
 ## SSE/WebSocket
 
 ### Quando usar SSE (default)
+
 - Server-sent events para updates
 - One-way server → client
 - Simplifica setup vs WebSocket
 
 ### Quando usar WebSocket
+
 - Full duplex necessário
 - Real-time bidirectional
 - Justificado por caso de uso específico
@@ -196,6 +214,7 @@ app.post("/webhooks/whatsapp/meta", {
 ## Logging
 
 Fastify usa Pino automaticamente:
+
 ```typescript
 app.log.info({ workspaceId }, "Processing request");
 ```
@@ -203,6 +222,7 @@ app.log.info({ workspaceId }, "Processing request");
 ## Graceful Shutdown
 
 SIGTERM e SIGINT são tratados automaticamente pelo Fastify:
+
 ```typescript
 // In server.ts
 process.on("SIGTERM", async () => {

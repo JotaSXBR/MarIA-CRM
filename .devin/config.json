@@ -18,7 +18,20 @@
     "tool": "Turborepo 2.10.x",
     "apps": ["api", "web"],
     "packages": ["database"],
-    "futurePackages": ["auth", "contracts", "domain", "ai-gateway", "agent-runtime", "messaging", "channel-waha", "channel-meta", "mcp-server", "storage", "evals", "telemetry"]
+    "futurePackages": [
+      "auth",
+      "contracts",
+      "domain",
+      "ai-gateway",
+      "agent-runtime",
+      "messaging",
+      "channel-waha",
+      "channel-meta",
+      "mcp-server",
+      "storage",
+      "evals",
+      "telemetry"
+    ]
   },
   "criticalInvariants": [
     "Tenant isolation with PostgreSQL RLS as security boundary",
@@ -48,12 +61,7 @@
     "maria-testing",
     "maria-devin-adaptation"
   ],
-  "contractFiles": [
-    "AGENTS.md",
-    "ARCHITECTURE.md",
-    "HANDOFF.md",
-    "README.md"
-  ],
+  "contractFiles": ["AGENTS.md", "ARCHITECTURE.md", "HANDOFF.md", "README.md"],
   "rules": {
     "neverWorkOnMain": true,
     "alwaysRunVerifyBeforeCommit": true,

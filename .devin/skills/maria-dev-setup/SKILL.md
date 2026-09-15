@@ -5,6 +5,7 @@ Skill para configurar e manter o ambiente de desenvolvimento do MarIA CRM.
 ## Quando usar
 
 Use esta skill quando:
+
 - Configurando o ambiente de desenvolvimento pela primeira vez
 - Precisando verificar se o ambiente está configurado corretamente
 - Executando comandos de desenvolvimento e verificação
@@ -13,6 +14,7 @@ Use esta skill quando:
 ## Comandos Principais
 
 ### Setup Inicial
+
 ```bash
 # Verificar Node.js version
 node --version  # Deve ser 24.21.x
@@ -31,6 +33,7 @@ pnpm verify
 ```
 
 ### Desenvolvimento
+
 ```bash
 # Iniciar dev servers (API:3000, Web:5173)
 pnpm dev
@@ -46,6 +49,7 @@ pnpm build
 ```
 
 ### Banco de Dados Local
+
 ```bash
 # Iniciar PostgreSQL local
 docker compose -f docker/compose.yaml up -d --wait
@@ -67,6 +71,7 @@ docker compose -f docker/compose.yaml down
 ## Stack Versionada
 
 Todas as dependências são versionadas explicitamente:
+
 - TypeScript 7.0.x (strict mode)
 - Fastify 5.x
 - React 19.2.x
@@ -95,21 +100,25 @@ Todas as dependências são versionadas explicitamente:
 ## Troubleshooting
 
 ### Formatação
+
 ```bash
 pnpm fmt  # Formata automaticamente
 ```
 
 ### Type errors
+
 ```bash
 pnpm typecheck  # Verifica TypeScript strict
 ```
 
 ### Integration tests falhando
+
 - Verificar se Docker Desktop está rodando
 - Verificar WSL integration (Windows)
 - Verificar se não há portas conflitantes
 
 ### Build falhando
+
 ```bash
 pnpm clean  # Limpa caches do Turbo
 pnpm build  # Rebuild

@@ -61,10 +61,10 @@ docker compose -f docker/compose.yaml down
 The database listens only on `127.0.0.1:5432`. Its named volume survives `down`;
 the password initializes a new volume and does not rotate an existing database password.
 The `maria_admin` account is for local administration, never application runtime.
-Runtime roles must be non-superusers without `BYPASSRLS` or ownership of protected tables.
+The checked-in runtime-role migration provisions `maria_runtime` as a login without a password, privileged role attributes or table ownership, then grants only connection, schema usage and the contact/company operations currently consumed. Deployment must set its credential through the environment's secret manager; no database password is stored in migrations. The migration fails closed if an existing role is unsafe.
 
 The integration suite starts its own disposable database, separate from this local
-volume. It applies the checked-in product migration and proves cross-workspace isolation and transaction cleanup through contacts and companies. Remaining product schemas, runtime role provisioning and pgvector are deferred until their first consuming feature.
+volume. It applies the checked-in migrations and proves runtime-role restrictions, cross-workspace isolation and transaction cleanup through contacts and companies. Remaining product schemas and pgvector are deferred until their first consuming feature.
 Drizzle ORM (Apache-2.0), node-postgres (MIT), and Testcontainers (MIT, test-only) use
 the established stack; an in-memory substitute cannot verify PostgreSQL RLS behavior.
 New dependencies are pinned and installed without approving lifecycle scripts.
