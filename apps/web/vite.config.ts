@@ -14,6 +14,9 @@ export default defineConfig({
       "/admin": api,
       "/contacts": api,
       "/companies": api,
+      "/pipelines": api,
+      "/stages": api,
+      "/deals": api,
     },
   },
 });

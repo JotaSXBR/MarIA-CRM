@@ -12,15 +12,15 @@ gh pr status
 
 ## Current work
 
-PR [#24](https://github.com/JotaSXBR/MarIA-CRM/pull/24) merged (web SPA). Branch `feat/pipelines-deals` adds pipelines/stages/deals with a Kanban board:
+PR [#25](https://github.com/JotaSXBR/MarIA-CRM/pull/25) merged (pipelines/stages/deals + Kanban). PR [#26](https://github.com/JotaSXBR/MarIA-CRM/pull/26) merged (uuid 14.0.2 override for Dependabot alert). Branch `feat/deal-detail` adds deal editing to the Kanban board:
 
-- Migration `0007_pipelines.sql` creates `pipelines`, `stages`, `deals` — all with `workspace_id`, RLS + FORCE, soft delete (`deleted_at`), least-privilege grants for `maria_runtime` (no DELETE), and active-row partial indexes.
-- Ordering uses `fractional-indexing` position strings: stages sort inside a pipeline, deals inside a stage. `POST /deals/:id/move` takes `stageId` + `prevDealId`/`nextDealId` neighbors and computes the new key between them.
-- FK-scoped reads (research lesson): `createStage`/`createDeal`/`updateDeal`/`moveDeal` verify referenced pipeline, stage, contact and company rows inside `withWorkspace` — RLS does not stop cross-tenant FK references on write.
-- `DELETE /pipelines/:id` and `DELETE /stages/:id` require workspace admin and return 409 while the pipeline/stage still has active deals.
-- `apps/web` gains `/pipelines`: Kanban board with dnd-kit (`@dnd-kit/core` + `sortable`), per-stage deal creation, admin-only delete/pipeline/stage controls. Index and post-login now land on `/pipelines`.
+- Clicking a deal card opens a `DealEditor` dialog (title, value in BRL ↔ `value_cents`, contact and company pickers fed by `/contacts` + `/companies`, admin-only delete).
+- `apps/web/vite.config.ts` proxy now forwards `/pipelines`, `/stages`, `/deals` — without it the board 404s in dev.
+- Test note: happy-dom does not submit forms on submit-button click; use `fireEvent.submit(form)` in web tests.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
+
+Local dev (manual test): `docker compose -f docker/compose.yaml up -d` with `POSTGRES_PASSWORD`, apply `packages/database/drizzle/*.sql` via psql, set `maria_runtime` password, run API with `DATABASE_URL`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`, `pnpm --filter @maria/web dev`.
 
 ## Devin Adaptation
 
@@ -55,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the pipelines/deals PR manually. Remaining slices: deal detail/edit (contact/company pickers), admin-panel UI screens, then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages. Preserve RLS and transaction cleanup.
+Review CI and merge the deal-detail PR manually. Remaining slices: admin-panel UI screens, then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
