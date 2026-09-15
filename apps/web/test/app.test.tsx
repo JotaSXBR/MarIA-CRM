@@ -301,3 +301,69 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
     ).toBe(true),
   );
 });
+
+test("admin page renders sections for global admins and denies members", async () => {
+  const userId = "123e4567-e89b-12d3-a456-426614174030";
+  setToken("session-token");
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/me")) {
+      return new Response(
+        JSON.stringify({
+          userId,
+          email: "admin@example.com",
+          name: "Admin",
+          isAdmin: true,
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/me/workspaces")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (url.includes("/admin/users")) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: userId,
+            email: "admin@example.com",
+            name: "Admin",
+            isAdmin: true,
+            active: true,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/admin/organizations")) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123e4567-e89b-12d3-a456-426614174031",
+            name: "Org",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/admin/workspaces")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/admin");
+
+  expect(
+    await screen.findByRole("heading", { name: "Administração" }),
+  ).toBeDefined();
+  expect(
+    (await screen.findAllByText("admin@example.com")).length,
+  ).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Usuários" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Organizações" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Workspaces" })).toBeDefined();
+});

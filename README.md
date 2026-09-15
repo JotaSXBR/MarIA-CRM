@@ -12,8 +12,8 @@ implemented; contacts, companies and pipelines/stages/deals expose
 workspace-scoped list, create, read, update and soft-delete endpoints, and
 `/admin/*` covers user, organization, workspace and membership management for
 global admins. Workers are not implemented yet. The web app has a login flow,
-workspace selection, a drag-and-drop Kanban board, and contacts/companies CRUD
-screens backed by the API.
+workspace selection, a drag-and-drop Kanban board, contacts/companies CRUD
+screens, and an admin panel backed by the API.
 
 ## Development
 

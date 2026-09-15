@@ -8,12 +8,21 @@ export type WorkspaceMembership = {
   role: "admin" | "member";
 };
 
+export type SessionUser = {
+  userId: string;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+};
+
 const WORKSPACE_KEY = "maria.workspace";
 
 type WorkspaceContextValue = {
   memberships: WorkspaceMembership[];
   workspace: WorkspaceMembership | undefined;
   selectWorkspace: (workspaceId: string) => void;
+  session: SessionUser | undefined;
+  sessionLoaded: boolean;
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -22,6 +31,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { data: memberships = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => api<WorkspaceMembership[]>("/me/workspaces"),
+  });
+  const { data: session, isFetched: sessionLoaded } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api<SessionUser>("/me"),
   });
   const [selectedId, setSelectedId] = useState(() =>
     localStorage.getItem(WORKSPACE_KEY),
@@ -38,6 +51,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(WORKSPACE_KEY, workspaceId);
           setSelectedId(workspaceId);
         },
+        session,
+        sessionLoaded,
       }}
     >
       {children}

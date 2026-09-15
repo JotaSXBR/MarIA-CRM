@@ -98,6 +98,7 @@ test("contacts use the authorized workspace", async () => {
     verifySession: async () => ({
       userId,
       email: "user@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async () => ({ role: "member" }),
@@ -128,6 +129,7 @@ test("contacts reject an authenticated user without workspace membership", async
     verifySession: async () => ({
       userId,
       email: "user@example.com",
+      name: "User",
       isAdmin: false,
     }),
   });
@@ -152,6 +154,7 @@ test("admin endpoint creates a user when caller is admin", async () => {
     verifySession: async () => ({
       userId: "admin-id",
       email: "admin@example.com",
+      name: "User",
       isAdmin: true,
     }),
     createUser,
@@ -187,6 +190,7 @@ test("admin endpoint rejects non-admin callers", async () => {
     verifySession: async () => ({
       userId: "member-id",
       email: "member@example.com",
+      name: "User",
       isAdmin: false,
     }),
   });
@@ -226,6 +230,7 @@ test("members can create, read and update contacts in their workspace", async ()
     verifySession: async () => ({
       userId,
       email: "user@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async () => ({ role: "member" }),
@@ -281,7 +286,7 @@ test("contact mutations reject unauthenticated requests and missing rows return 
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
       token === "member-token"
-        ? { userId, email: "user@example.com", isAdmin: false }
+        ? { userId, email: "user@example.com", name: "User", isAdmin: false }
         : undefined,
     authorizeWorkspace: async () => ({ role: "member" }),
   });
@@ -331,6 +336,7 @@ test("only workspace admins can delete contacts", async () => {
     verifySession: async (token?: string) => ({
       userId: token === "admin-token" ? "admin-id" : "member-id",
       email: "user@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
@@ -382,7 +388,9 @@ test("companies follow the same workspace membership contract", async () => {
   database.deleteCompany.mockResolvedValue(true);
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
-      token ? { userId, email: "user@example.com", isAdmin: false } : undefined,
+      token
+        ? { userId, email: "user@example.com", name: "User", isAdmin: false }
+        : undefined,
     authorizeWorkspace: async (_userId?: string, wsId?: string) =>
       wsId === workspaceId ? { role: "admin" } : undefined,
   });
@@ -463,9 +471,19 @@ test("admin management routes require a global admin session", async () => {
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
       token === "admin-token"
-        ? { userId: "admin-id", email: "admin@example.com", isAdmin: true }
+        ? {
+            userId: "admin-id",
+            email: "admin@example.com",
+            name: "User",
+            isAdmin: true,
+          }
         : token === "member-token"
-          ? { userId: "member-id", email: "m@example.com", isAdmin: false }
+          ? {
+              userId: "member-id",
+              email: "m@example.com",
+              name: "User",
+              isAdmin: false,
+            }
           : undefined,
   });
   const app = buildApp({ database, auth });
@@ -492,7 +510,12 @@ test("me/workspaces lists the caller's workspace memberships", async () => {
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
       token === "token"
-        ? { userId: "user-id", email: "user@example.com", isAdmin: false }
+        ? {
+            userId: "user-id",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }
         : undefined,
     listUserWorkspaces: vi.fn(async () => [
       { workspaceId, workspaceName: "Workspace", role: "member" as const },
@@ -529,7 +552,12 @@ test("admin management covers users, organizations, workspaces and memberships",
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
       token === "admin-token"
-        ? { userId: "admin-id", email: "admin@example.com", isAdmin: true }
+        ? {
+            userId: "admin-id",
+            email: "admin@example.com",
+            name: "User",
+            isAdmin: true,
+          }
         : undefined,
     listUsers: vi.fn(async () => [
       {
@@ -744,6 +772,7 @@ test("pipeline CRUD roundtrips through the authorized workspace", async () => {
     verifySession: async () => ({
       userId: randomUUID(),
       email: "admin@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async () => ({ role: "admin" }),
@@ -818,6 +847,7 @@ test("stages and deals reject members for delete and 404 on invalid refs", async
     verifySession: async () => ({
       userId: randomUUID(),
       email: "member@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async () => ({ role: "member" }),
@@ -894,6 +924,7 @@ test("deal move forwards stage and neighbor positions to the database", async ()
     verifySession: async () => ({
       userId: randomUUID(),
       email: "member@example.com",
+      name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async () => ({ role: "member" }),
@@ -923,6 +954,36 @@ test("deal move forwards stage and neighbor positions to the database", async ()
         })
       ).statusCode,
     ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /me returns the session identity and 401s without a token", async () => {
+  const userId = randomUUID();
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId,
+      email: "admin@example.com",
+      name: "Admin",
+      isAdmin: true,
+    }),
+  });
+  const app = buildApp({ database: createDatabaseStub(), auth });
+  try {
+    expect((await app.inject("/me")).statusCode).toBe(401);
+    const response = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { authorization: "Bearer token" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      userId,
+      email: "admin@example.com",
+      name: "Admin",
+      isAdmin: true,
+    });
   } finally {
     await app.close();
   }
