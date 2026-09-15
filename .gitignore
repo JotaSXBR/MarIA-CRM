@@ -33,6 +33,8 @@ test-results/
 .codex/agents/*
 !.codex/agents/*.toml
 .claude/settings.local.json
+.devin/hooks.v1.json
+.devin/rtk-pretooluse.mjs
 .idea/
 .DS_Store
 Thumbs.db

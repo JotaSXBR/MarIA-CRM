@@ -64,6 +64,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the admin-panel PR manually. Remaining slices: WAHA messaging, then the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Preserve RLS and transaction cleanup.
+Admin panel PR #28 merged; refactor PR #29 (scoped deal-ref validation + `minProperties: 1` on PATCH bodies) is open pending merge; `docs/decision-records` adds `adr/` and fixes doc drift. Remaining slices: WAHA messaging, then the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
