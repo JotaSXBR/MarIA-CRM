@@ -24,6 +24,9 @@ This branch adds the local Auth MVP and CI/test infrastructure fixes:
 - TypeScript type-checking no longer requires building `@maria/database` first; `@maria/database` exports point `types` to source and `default` to `dist`.
 - Web tests use `@testing-library/react` + `happy-dom` instead of `react-dom/server`.
 - Root `vitest.config.ts` and `@vitest/coverage-v8` added; `pnpm test:coverage` runs the full suite with coverage.
+- `turbo.json` now builds workspace dependencies before running `test` and `test:integration`, so Vitest can resolve `@maria/*` package exports at runtime.
+- `docker/api.Dockerfile` copies `@maria/auth` and `@maria/database` source and builds them with `turbo run build --filter=@maria/api...`; `.dockerignore` includes the required files.
+- CI smoke test now starts a PostgreSQL container, applies migrations and then runs the API image with `DATABASE_URL`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` before hitting `/health`.
 - Integration tests cover login success/failure, session expiry, workspace authorization, cross-tenant isolation, missing/invalid token, missing membership and admin-only user creation. E2E test spins up the built server against a Testcontainers database and logs in as the seeded admin.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.

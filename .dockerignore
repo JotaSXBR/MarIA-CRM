@@ -4,6 +4,7 @@
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
 !tsconfig.json
+!turbo.json
 !LICENSE
 !docker/
 !docker/api.Dockerfile
@@ -14,6 +15,17 @@
 !apps/api/tsconfig.build.json
 !apps/api/src/
 !apps/api/src/**
+!packages/
+!packages/auth/
+!packages/auth/package.json
+!packages/auth/tsconfig*.json
+!packages/auth/src/
+!packages/auth/src/**
+!packages/database/
+!packages/database/package.json
+!packages/database/tsconfig*.json
+!packages/database/src/
+!packages/database/src/**
 **/node_modules
 **/dist
 **/.turbo
