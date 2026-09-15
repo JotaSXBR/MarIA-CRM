@@ -1,39 +1,13 @@
-import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { expect, test } from "vitest";
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { Pool } from "pg";
-
-const image =
-  "postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af";
-
-async function runMigrations(admin: Pool) {
-  for (const migration of [
-    "0000_product_foundation.sql",
-    "0001_runtime_role.sql",
-    "0002_local_identity.sql",
-  ]) {
-    await admin.query(
-      await readFile(
-        new URL(
-          `../../../packages/database/drizzle/${migration}`,
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
-  }
-  await admin.query("alter role maria_runtime password 'runtime'");
-}
+import { startTestDatabase } from "@maria/database/testing";
 
 test("built server responds over HTTP, logs in, and shuts down on SIGTERM", async () => {
-  const container = await new PostgreSqlContainer(image).start();
-  const admin = new Pool({ connectionString: container.getConnectionUri() });
+  const testDatabase = await startTestDatabase();
   try {
-    await runMigrations(admin);
-    const uri = new URL(container.getConnectionUri());
+    const uri = new URL(testDatabase.container.getConnectionUri());
     uri.username = "maria_runtime";
     uri.password = "runtime";
     const child = spawn(process.execPath, ["dist/server.js"], {
@@ -91,7 +65,6 @@ test("built server responds over HTTP, logs in, and shuts down on SIGTERM", asyn
       await exited;
     }
   } finally {
-    await admin.end();
-    await container.stop();
+    await testDatabase.close();
   }
 }, 120000);

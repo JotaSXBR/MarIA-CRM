@@ -9,11 +9,15 @@
   ],
   "exports": {
     "./schema": {
-      "types": "./dist/schema.d.ts",
+      "types": "./src/schema.ts",
       "default": "./dist/schema.js"
     },
+    "./testing": {
+      "types": "./test/utils/postgres.ts",
+      "default": "./test/utils/postgres.ts"
+    },
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "default": "./dist/index.js"
     }
   },

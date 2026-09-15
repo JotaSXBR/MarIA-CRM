@@ -1,43 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { createDatabase } from "@maria/database";
+import { startTestDatabase } from "@maria/database/testing";
 import { createLocalAuth } from "../src/index.ts";
 
-const image =
-  "postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af";
-
-let container: StartedPostgreSqlContainer;
 let admin: Pool;
 let runtime: Pool;
 let database: ReturnType<typeof createDatabase>;
 let auth: ReturnType<typeof createLocalAuth>;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer(image).start();
-  admin = new Pool({ connectionString: container.getConnectionUri() });
-  for (const migration of [
-    "0000_product_foundation.sql",
-    "0001_runtime_role.sql",
-    "0002_local_identity.sql",
-  ]) {
-    await admin.query(
-      await readFile(
-        new URL(`../../database/drizzle/${migration}`, import.meta.url),
-        "utf8",
-      ),
-    );
-  }
-  await admin.query("alter role maria_runtime password 'runtime'");
-  const uri = new URL(container.getConnectionUri());
-  uri.username = "maria_runtime";
-  uri.password = "runtime";
-  runtime = new Pool({ connectionString: uri.toString(), max: 1 });
+  const testDatabase = await startTestDatabase();
+  admin = testDatabase.admin;
+  runtime = testDatabase.runtime;
   database = createDatabase(runtime);
   auth = createLocalAuth(runtime, database, {
     adminEmail: "admin@example.com",
@@ -48,7 +24,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await runtime?.end();
   await admin?.end();
-  await container?.stop();
 }, 30000);
 
 test("local auth supports login, session verification and workspace authorization", async () => {

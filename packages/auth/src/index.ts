@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcrypt";
+import bcryptjs from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gt } from "drizzle-orm";
 import type { Pool } from "pg";
@@ -38,6 +38,27 @@ export type LocalAuthConfig = {
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
+async function hashPassword(password: string, rounds = 10): Promise<string> {
+  return new Promise((resolve, reject) => {
+    bcryptjs.hash(password, rounds, (error, hash) => {
+      if (error) reject(error);
+      else resolve(hash);
+    });
+  });
+}
+
+async function verifyPassword(
+  password: string,
+  hash: string,
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    bcryptjs.compare(password, hash, (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    });
+  });
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -60,7 +81,7 @@ export function createLocalAuth(
       .where(eq(users.email, normalized));
     const user = rows[0];
     if (!user || !user.active) return undefined;
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) return undefined;
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -130,7 +151,7 @@ export function createLocalAuth(
       .from(users)
       .where(eq(users.email, normalized));
     if (existing[0]) return undefined;
-    const passwordHash = await bcrypt.hash(input.password, 10);
+    const passwordHash = await hashPassword(input.password);
     const rows = await db
       .insert(users)
       .values({
@@ -171,7 +192,7 @@ export function createLocalAuth(
       .from(users)
       .where(eq(users.email, normalized));
     if (rows[0]) return;
-    const passwordHash = await bcrypt.hash(config.adminPassword, 10);
+    const passwordHash = await hashPassword(config.adminPassword);
     await db.insert(users).values({
       email: normalized,
       name: "Admin",

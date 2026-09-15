@@ -20,13 +20,13 @@
   },
   "dependencies": {
     "@maria/database": "workspace:*",
-    "bcrypt": "5.1.1",
+    "bcryptjs": "2.4.3",
     "drizzle-orm": "0.45.2",
     "pg": "8.16.3"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "11.7.0",
-    "@types/bcrypt": "5.0.2",
+    "@types/bcryptjs": "2.4.6",
     "@types/pg": "8.15.5",
     "vitest": "5.0.0"
   }

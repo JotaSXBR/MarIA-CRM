@@ -16,11 +16,13 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
+    "test:coverage": "vitest run --coverage",
     "build": "turbo run build",
     "verify": "pnpm fmt:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm build"
   },
   "devDependencies": {
     "@types/node": "26.4.1",
+    "@vitest/coverage-v8": "5.0.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
     "prettier": "3.9.6",

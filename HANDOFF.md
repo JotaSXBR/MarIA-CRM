@@ -14,12 +14,16 @@ gh pr status
 
 PR [#18](https://github.com/JotaSXBR/MarIA-CRM/pull/18) is open from `feat/local-auth-mvp` and awaits manual review and merge.
 
-This branch adds the local Auth MVP:
+This branch adds the local Auth MVP and CI/test infrastructure fixes:
 
 - Migration `0002_local_identity.sql` creates `users`, `sessions`, `memberships` and `invitations`; `memberships` and `invitations` are workspace-scoped with `FORCE ROW LEVEL SECURITY`.
-- New package `@maria/auth` exposes `AuthPort`: local `login`, `verifySession`, `authorizeWorkspace`, `createUser`, `ensureAdmin` and `seedAdmin`, using `bcrypt` for password hashing and opaque session tokens stored in PostgreSQL.
+- New package `@maria/auth` exposes `AuthPort`: local `login`, `verifySession`, `authorizeWorkspace`, `createUser`, `ensureAdmin` and `seedAdmin`, using `bcryptjs` for password hashing and opaque session tokens stored in PostgreSQL.
 - `apps/api` now creates a PostgreSQL pool on startup, seeds the first admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`, and exposes `POST /auth/login`, `POST /admin/users` and authenticated `GET /contacts?workspaceId=...`.
 - `GET /contacts` requires a valid session token and an active workspace membership.
+- Shared Testcontainers helper exported via `@maria/database/testing` removes duplicated migration setup across database, auth and API tests.
+- TypeScript type-checking no longer requires building `@maria/database` first; `@maria/database` exports point `types` to source and `default` to `dist`.
+- Web tests use `@testing-library/react` + `happy-dom` instead of `react-dom/server`.
+- Root `vitest.config.ts` and `@vitest/coverage-v8` added; `pnpm test:coverage` runs the full suite with coverage.
 - Integration tests cover login success/failure, session expiry, workspace authorization, cross-tenant isolation, missing/invalid token, missing membership and admin-only user creation. E2E test spins up the built server against a Testcontainers database and logs in as the seeded admin.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
