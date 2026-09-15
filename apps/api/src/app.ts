@@ -1,4 +1,5 @@
 import Fastify, { type FastifyRequest } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 
 type ContactDependencies = {
   database: {
@@ -17,6 +18,12 @@ type ContactDependencies = {
 
 export function buildApp(dependencies?: ContactDependencies) {
   const app = Fastify({ logger: true });
+  
+  // Register rate limiting plugin
+  app.register(rateLimit, {
+    max: 100, // limit each IP to 100 requests per windowMs
+    timeWindow: "1 minute",
+  });
   app.get(
     "/health",
     {
@@ -38,6 +45,12 @@ export function buildApp(dependencies?: ContactDependencies) {
     app.get(
       "/contacts",
       {
+        config: {
+          rateLimit: {
+            max: 50, // More restrictive limit for protected routes
+            timeWindow: "1 minute",
+          },
+        },
         schema: {
           response: {
             200: {
