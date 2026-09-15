@@ -18,7 +18,7 @@ type ContactDependencies = {
 
 export function buildApp(dependencies?: ContactDependencies) {
   const app = Fastify({ logger: true });
-  
+
   // Register rate limiting plugin
   app.register(rateLimit, {
     max: 100, // limit each IP to 100 requests per windowMs
