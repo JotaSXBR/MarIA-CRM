@@ -8,11 +8,12 @@ share the same workspace, inbox, contacts, companies, pipelines, tasks and knowl
 Phase 0 has started with a pnpm/Turborepo workspace and a Fastify API. `GET /health`
 returns `{"status":"ok"}` as a process liveness check, not database readiness.
 Local email/password authentication with workspace membership authorization is
-implemented; contacts and companies expose workspace-scoped list, create, read,
-update and soft-delete endpoints, and `/admin/*` covers user, organization,
-workspace and membership management for global admins. Workers are not
-implemented yet. The web app has a login flow, workspace selection, and
-contacts/companies CRUD screens backed by the API.
+implemented; contacts, companies and pipelines/stages/deals expose
+workspace-scoped list, create, read, update and soft-delete endpoints, and
+`/admin/*` covers user, organization, workspace and membership management for
+global admins. Workers are not implemented yet. The web app has a login flow,
+workspace selection, a drag-and-drop Kanban board, and contacts/companies CRUD
+screens backed by the API.
 
 ## Development
 
@@ -58,6 +59,13 @@ require a valid session token and an active membership in the requested
 workspace. `DELETE` requires the workspace `admin` role and performs a soft
 delete (`deleted_at`) through `UPDATE`, so the runtime role keeps least
 privilege without a `DELETE` grant. `/health` remains a liveness check.
+
+Pipelines, stages and deals follow the same contract (`/pipelines`,
+`/pipelines/:id/stages`, `/deals`, `/deals/:id/move`). Cards and columns are
+ordered by fractional-indexing position strings; deal references to contacts,
+companies, pipelines and stages are validated by scoped reads inside the
+workspace transaction rather than relying on foreign keys for tenancy. A
+pipeline or stage with active deals cannot be deleted (409).
 
 Global-admin routes under `/admin` (`GET`/`PATCH /admin/users`,
 `GET`/`POST /admin/organizations`, `GET`/`POST /admin/workspaces`,

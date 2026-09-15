@@ -214,6 +214,86 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
       );
       expect(companyGone.status).toBe(404);
 
+      const pipelineCreated = await fetch(
+        `${address}/pipelines?workspaceId=${workspaceA}`,
+        {
+          method: "POST",
+          headers: json,
+          body: JSON.stringify({ name: "E2E Pipeline" }),
+        },
+      );
+      expect(pipelineCreated.status).toBe(201);
+      const pipeline = (await pipelineCreated.json()) as { id: string };
+
+      const createStage = async (name: string) => {
+        const response = await fetch(
+          `${address}/pipelines/${pipeline.id}/stages?workspaceId=${workspaceA}`,
+          {
+            method: "POST",
+            headers: json,
+            body: JSON.stringify({ name }),
+          },
+        );
+        expect(response.status).toBe(201);
+        return (await response.json()) as { id: string; position: string };
+      };
+      const stageOne = await createStage("Novo");
+      const stageTwo = await createStage("Fechado");
+      expect(stageOne.position < stageTwo.position).toBe(true);
+
+      const stages = await fetch(
+        `${address}/pipelines/${pipeline.id}/stages?workspaceId=${workspaceA}`,
+        { headers: authed },
+      );
+      expect(stages.status).toBe(200);
+      expect((await stages.json()) as { id: string }[]).toHaveLength(2);
+
+      const dealCreated = await fetch(
+        `${address}/deals?workspaceId=${workspaceA}`,
+        {
+          method: "POST",
+          headers: json,
+          body: JSON.stringify({
+            pipelineId: pipeline.id,
+            stageId: stageOne.id,
+            title: "E2E Deal",
+            valueCents: 5000,
+          }),
+        },
+      );
+      expect(dealCreated.status).toBe(201);
+      const deal = (await dealCreated.json()) as {
+        id: string;
+        stageId: string;
+        position: string;
+      };
+      expect(deal.stageId).toBe(stageOne.id);
+
+      const moved = await fetch(
+        `${address}/deals/${deal.id}/move?workspaceId=${workspaceA}`,
+        {
+          method: "POST",
+          headers: json,
+          body: JSON.stringify({ stageId: stageTwo.id }),
+        },
+      );
+      expect(moved.status).toBe(200);
+      expect((await moved.json()) as { stageId: string }).toMatchObject({
+        stageId: stageTwo.id,
+      });
+
+      const dealDeleted = await fetch(
+        `${address}/deals/${deal.id}?workspaceId=${workspaceA}`,
+        { method: "DELETE", headers: authed },
+      );
+      expect(dealDeleted.status).toBe(204);
+
+      const stageDeleted = await fetch(
+        `${address}/stages/${stageTwo.id}?workspaceId=${workspaceA}`,
+        { method: "DELETE", headers: authed },
+      );
+      expect(stageDeleted.status).toBe(204);
+
       child.kill("SIGTERM");
       const [exitCode, signal] = await exited;
       if (process.platform === "win32") {

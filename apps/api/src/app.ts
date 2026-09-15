@@ -36,6 +36,33 @@ type CompanyPatch = {
   name?: string;
 };
 
+type Pipeline = {
+  id: string;
+  name: string;
+  position: string;
+  createdAt: Date;
+};
+
+type Stage = {
+  id: string;
+  pipelineId: string;
+  name: string;
+  position: string;
+  createdAt: Date;
+};
+
+type Deal = {
+  id: string;
+  pipelineId: string;
+  stageId: string;
+  title: string;
+  valueCents: number | null;
+  contactId: string | null;
+  companyId: string | null;
+  position: string;
+  createdAt: Date;
+};
+
 type AppDependencies = {
   database: {
     listContacts: (workspaceId: string) => Promise<Contact[]>;
@@ -68,6 +95,68 @@ type AppDependencies = {
       input: CompanyPatch,
     ) => Promise<Company | undefined>;
     deleteCompany: (workspaceId: string, id: string) => Promise<boolean>;
+    listPipelines: (workspaceId: string) => Promise<Pipeline[]>;
+    createPipeline: (
+      workspaceId: string,
+      input: { name: string },
+    ) => Promise<Pipeline>;
+    updatePipeline: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string },
+    ) => Promise<Pipeline | undefined>;
+    deletePipeline: (
+      workspaceId: string,
+      id: string,
+    ) => Promise<"deleted" | "not-found" | "has-deals">;
+    listStages: (workspaceId: string, pipelineId: string) => Promise<Stage[]>;
+    createStage: (
+      workspaceId: string,
+      pipelineId: string,
+      input: { name: string },
+    ) => Promise<Stage | undefined>;
+    updateStage: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string },
+    ) => Promise<Stage | undefined>;
+    deleteStage: (
+      workspaceId: string,
+      id: string,
+    ) => Promise<"deleted" | "not-found" | "has-deals">;
+    listDeals: (workspaceId: string, pipelineId: string) => Promise<Deal[]>;
+    getDeal: (workspaceId: string, id: string) => Promise<Deal | undefined>;
+    createDeal: (
+      workspaceId: string,
+      input: {
+        pipelineId: string;
+        stageId: string;
+        title: string;
+        valueCents?: number | null;
+        contactId?: string | null;
+        companyId?: string | null;
+      },
+    ) => Promise<Deal | undefined>;
+    updateDeal: (
+      workspaceId: string,
+      id: string,
+      input: {
+        title?: string;
+        valueCents?: number | null;
+        contactId?: string | null;
+        companyId?: string | null;
+      },
+    ) => Promise<Deal | undefined>;
+    moveDeal: (
+      workspaceId: string,
+      id: string,
+      input: {
+        stageId: string;
+        prevDealId?: string | null;
+        nextDealId?: string | null;
+      },
+    ) => Promise<Deal | undefined>;
+    deleteDeal: (workspaceId: string, id: string) => Promise<boolean>;
     listOrganizations: () => Promise<
       { id: string; name: string; createdAt: Date }[]
     >;
@@ -1006,6 +1095,496 @@ export function buildApp(dependencies?: AppDependencies) {
           authorized.workspaceId,
           id,
         );
+        if (!deleted) return reply.code(404).send();
+        return reply.code(204).send();
+      },
+    );
+
+    const pipelineSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "name", "position", "createdAt"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        position: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const stageSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "pipelineId", "name", "position", "createdAt"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        pipelineId: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        position: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const dealSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "pipelineId",
+        "stageId",
+        "title",
+        "valueCents",
+        "contactId",
+        "companyId",
+        "position",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        pipelineId: { type: "string", format: "uuid" },
+        stageId: { type: "string", format: "uuid" },
+        title: { type: "string" },
+        valueCents: { type: ["integer", "null"] },
+        contactId: { type: ["string", "null"], format: "uuid" },
+        companyId: { type: ["string", "null"], format: "uuid" },
+        position: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const nameBodySchema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["name"],
+      properties: { name: { type: "string", minLength: 1 } },
+    } as const;
+
+    app.get(
+      "/pipelines",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: pipelineSchema },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        return database.listPipelines(authorized.workspaceId);
+      },
+    );
+
+    app.post(
+      "/pipelines",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          body: nameBodySchema,
+          response: { 201: pipelineSchema, 401: { type: "null" } },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { name } = request.body as { name: string };
+        const created = await database.createPipeline(authorized.workspaceId, {
+          name,
+        });
+        return reply.code(201).send(created);
+      },
+    );
+
+    app.patch(
+      "/pipelines/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            properties: { name: { type: "string", minLength: 1 } },
+          },
+          response: {
+            200: pipelineSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const updated = await database.updatePipeline(
+          authorized.workspaceId,
+          id,
+          request.body as { name?: string },
+        );
+        if (!updated) return reply.code(404).send();
+        return updated;
+      },
+    );
+
+    app.delete(
+      "/pipelines/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+            409: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const result = await database.deletePipeline(
+          authorized.workspaceId,
+          id,
+        );
+        if (result === "not-found") return reply.code(404).send();
+        if (result === "has-deals") return reply.code(409).send();
+        return reply.code(204).send();
+      },
+    );
+
+    app.get(
+      "/pipelines/:id/stages",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: stageSchema },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        return database.listStages(authorized.workspaceId, id);
+      },
+    );
+
+    app.post(
+      "/pipelines/:id/stages",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: nameBodySchema,
+          response: {
+            201: stageSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { name } = request.body as { name: string };
+        const created = await database.createStage(authorized.workspaceId, id, {
+          name,
+        });
+        if (!created) return reply.code(404).send();
+        return reply.code(201).send(created);
+      },
+    );
+
+    app.patch(
+      "/stages/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            properties: { name: { type: "string", minLength: 1 } },
+          },
+          response: {
+            200: stageSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const updated = await database.updateStage(
+          authorized.workspaceId,
+          id,
+          request.body as { name?: string },
+        );
+        if (!updated) return reply.code(404).send();
+        return updated;
+      },
+    );
+
+    app.delete(
+      "/stages/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+            409: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const result = await database.deleteStage(authorized.workspaceId, id);
+        if (result === "not-found") return reply.code(404).send();
+        if (result === "has-deals") return reply.code(409).send();
+        return reply.code(204).send();
+      },
+    );
+
+    const dealsQuerySchema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "pipelineId"],
+      properties: {
+        workspaceId: { type: "string", format: "uuid" },
+        pipelineId: { type: "string", format: "uuid" },
+      },
+    } as const;
+
+    app.get(
+      "/deals",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          querystring: dealsQuerySchema,
+          response: {
+            200: { type: "array", items: dealSchema },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { pipelineId } = request.query as { pipelineId: string };
+        return database.listDeals(authorized.workspaceId, pipelineId);
+      },
+    );
+
+    app.post(
+      "/deals",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["pipelineId", "stageId", "title"],
+            properties: {
+              pipelineId: { type: "string", format: "uuid" },
+              stageId: { type: "string", format: "uuid" },
+              title: { type: "string", minLength: 1 },
+              valueCents: { type: ["integer", "null"] },
+              contactId: { type: ["string", "null"], format: "uuid" },
+              companyId: { type: ["string", "null"], format: "uuid" },
+            },
+          },
+          response: {
+            201: dealSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const created = await database.createDeal(
+          authorized.workspaceId,
+          request.body as {
+            pipelineId: string;
+            stageId: string;
+            title: string;
+            valueCents?: number | null;
+            contactId?: string | null;
+            companyId?: string | null;
+          },
+        );
+        if (!created) return reply.code(404).send();
+        return reply.code(201).send(created);
+      },
+    );
+
+    app.get(
+      "/deals/:id",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: dealSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const deal = await database.getDeal(authorized.workspaceId, id);
+        if (!deal) return reply.code(404).send();
+        return deal;
+      },
+    );
+
+    app.patch(
+      "/deals/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              title: { type: "string", minLength: 1 },
+              valueCents: { type: ["integer", "null"] },
+              contactId: { type: ["string", "null"], format: "uuid" },
+              companyId: { type: ["string", "null"], format: "uuid" },
+            },
+          },
+          response: {
+            200: dealSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const updated = await database.updateDeal(
+          authorized.workspaceId,
+          id,
+          request.body as {
+            title?: string;
+            valueCents?: number | null;
+            contactId?: string | null;
+            companyId?: string | null;
+          },
+        );
+        if (!updated) return reply.code(404).send();
+        return updated;
+      },
+    );
+
+    app.post(
+      "/deals/:id/move",
+      {
+        config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["stageId"],
+            properties: {
+              stageId: { type: "string", format: "uuid" },
+              prevDealId: { type: ["string", "null"], format: "uuid" },
+              nextDealId: { type: ["string", "null"], format: "uuid" },
+            },
+          },
+          response: {
+            200: dealSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { stageId, prevDealId, nextDealId } = request.body as {
+          stageId: string;
+          prevDealId?: string | null;
+          nextDealId?: string | null;
+        };
+        const moved = await database.moveDeal(authorized.workspaceId, id, {
+          stageId,
+          prevDealId: prevDealId ?? null,
+          nextDealId: nextDealId ?? null,
+        });
+        if (!moved) return reply.code(404).send();
+        return moved;
+      },
+    );
+
+    app.delete(
+      "/deals/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const deleted = await database.deleteDeal(authorized.workspaceId, id);
         if (!deleted) return reply.code(404).send();
         return reply.code(204).send();
       },

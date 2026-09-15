@@ -42,6 +42,13 @@ function ShellLayout() {
         </div>
         <nav className="flex-1 space-y-1 p-2 text-sm">
           <Link
+            to="/pipelines"
+            className="block rounded-lg px-3 py-2 hover:bg-slate-100"
+            activeProps={{ className: "bg-indigo-50 text-indigo-700" }}
+          >
+            Pipelines
+          </Link>
+          <Link
             to="/contacts"
             className="block rounded-lg px-3 py-2 hover:bg-slate-100"
             activeProps={{ className: "bg-indigo-50 text-indigo-700" }}
