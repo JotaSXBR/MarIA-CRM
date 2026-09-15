@@ -49,12 +49,12 @@ CI must install with `pnpm install --frozen-lockfile`.
 `@maria/database` provides a Drizzle connection and workspace-scoped transactions.
 The caller must authorize the workspace before entering a transaction. This helper
 sets transaction-local context; PostgreSQL RLS policies remain the isolation boundary.
-Workspace-scoped contact endpoints (`GET`/`POST /contacts` and
-`GET`/`PATCH`/`DELETE /contacts/:id`) require a valid session token and an
-active membership in the requested workspace. `DELETE` requires the workspace
-`admin` role and performs a soft delete (`deleted_at`) through `UPDATE`, so the
-runtime role keeps least privilege without a `DELETE` grant. `/health` remains a
-liveness check.
+Workspace-scoped contact and company endpoints (`GET`/`POST /contacts`,
+`GET`/`PATCH`/`DELETE /contacts/:id`, and the same set under `/companies`)
+require a valid session token and an active membership in the requested
+workspace. `DELETE` requires the workspace `admin` role and performs a soft
+delete (`deleted_at`) through `UPDATE`, so the runtime role keeps least
+privilege without a `DELETE` grant. `/health` remains a liveness check.
 
 For a persistent local PostgreSQL 18.6 instance, set `POSTGRES_PASSWORD` in your shell
 to a local development password, then run:

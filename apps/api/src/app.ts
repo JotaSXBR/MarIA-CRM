@@ -22,6 +22,20 @@ type ContactPatch = {
   phone?: string | null;
 };
 
+type Company = {
+  id: string;
+  name: string;
+  createdAt: Date;
+};
+
+type CompanyInput = {
+  name: string;
+};
+
+type CompanyPatch = {
+  name?: string;
+};
+
 type AppDependencies = {
   database: {
     listContacts: (workspaceId: string) => Promise<Contact[]>;
@@ -39,6 +53,21 @@ type AppDependencies = {
       input: ContactPatch,
     ) => Promise<Contact | undefined>;
     deleteContact: (workspaceId: string, id: string) => Promise<boolean>;
+    listCompanies: (workspaceId: string) => Promise<Company[]>;
+    getCompany: (
+      workspaceId: string,
+      id: string,
+    ) => Promise<Company | undefined>;
+    createCompany: (
+      workspaceId: string,
+      input: CompanyInput,
+    ) => Promise<Company>;
+    updateCompany: (
+      workspaceId: string,
+      id: string,
+      input: CompanyPatch,
+    ) => Promise<Company | undefined>;
+    deleteCompany: (workspaceId: string, id: string) => Promise<boolean>;
   };
   auth: AuthPort;
 };
@@ -60,6 +89,24 @@ const contactSchema = {
     phone: { type: ["string", "null"] },
     createdAt: { type: "string", format: "date-time" },
   },
+} as const;
+
+const companySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "name", "createdAt"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    createdAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
+const idParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id"],
+  properties: { id: { type: "string", format: "uuid" } },
 } as const;
 
 const workspaceQuerySchema = {
@@ -99,7 +146,7 @@ export function buildApp(dependencies?: AppDependencies) {
   if (dependencies) {
     const { auth, database } = dependencies;
 
-    const authorizeContactRequest = async (
+    const authorizeWorkspaceRequest = async (
       request: FastifyRequest,
       reply: FastifyReply,
     ) => {
@@ -249,7 +296,7 @@ export function buildApp(dependencies?: AppDependencies) {
         },
       },
       async (request, reply) => {
-        const authorized = await authorizeContactRequest(request, reply);
+        const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         return database.listContacts(authorized.workspaceId);
       },
@@ -283,7 +330,7 @@ export function buildApp(dependencies?: AppDependencies) {
         },
       },
       async (request, reply) => {
-        const authorized = await authorizeContactRequest(request, reply);
+        const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         const input = request.body as ContactInput;
         const contact = await database.createContact(
@@ -304,12 +351,7 @@ export function buildApp(dependencies?: AppDependencies) {
           },
         },
         schema: {
-          params: {
-            type: "object",
-            additionalProperties: false,
-            required: ["id"],
-            properties: { id: { type: "string", format: "uuid" } },
-          },
+          params: idParamsSchema,
           querystring: workspaceQuerySchema,
           response: {
             200: contactSchema,
@@ -319,7 +361,7 @@ export function buildApp(dependencies?: AppDependencies) {
         },
       },
       async (request, reply) => {
-        const authorized = await authorizeContactRequest(request, reply);
+        const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         const { id } = request.params as { id: string };
         const contact = await database.getContact(authorized.workspaceId, id);
@@ -338,12 +380,7 @@ export function buildApp(dependencies?: AppDependencies) {
           },
         },
         schema: {
-          params: {
-            type: "object",
-            additionalProperties: false,
-            required: ["id"],
-            properties: { id: { type: "string", format: "uuid" } },
-          },
+          params: idParamsSchema,
           querystring: workspaceQuerySchema,
           body: {
             type: "object",
@@ -363,7 +400,7 @@ export function buildApp(dependencies?: AppDependencies) {
         },
       },
       async (request, reply) => {
-        const authorized = await authorizeContactRequest(request, reply);
+        const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         const { id } = request.params as { id: string };
         const input = request.body as ContactPatch;
@@ -387,12 +424,7 @@ export function buildApp(dependencies?: AppDependencies) {
           },
         },
         schema: {
-          params: {
-            type: "object",
-            additionalProperties: false,
-            required: ["id"],
-            properties: { id: { type: "string", format: "uuid" } },
-          },
+          params: idParamsSchema,
           querystring: workspaceQuerySchema,
           response: {
             204: { type: "null" },
@@ -403,13 +435,184 @@ export function buildApp(dependencies?: AppDependencies) {
         },
       },
       async (request, reply) => {
-        const authorized = await authorizeContactRequest(request, reply);
+        const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         if (authorized.membership.role !== "admin") {
           return reply.code(403).send();
         }
         const { id } = request.params as { id: string };
         const deleted = await database.deleteContact(
+          authorized.workspaceId,
+          id,
+        );
+        if (!deleted) return reply.code(404).send();
+        return reply.code(204).send();
+      },
+    );
+
+    app.get(
+      "/companies",
+      {
+        config: {
+          rateLimit: {
+            max: 50,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          querystring: workspaceQuerySchema,
+          response: {
+            200: {
+              type: "array",
+              items: companySchema,
+            },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        return database.listCompanies(authorized.workspaceId);
+      },
+    );
+
+    app.post(
+      "/companies",
+      {
+        config: {
+          rateLimit: {
+            max: 30,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name"],
+            properties: {
+              name: { type: "string", minLength: 1 },
+            },
+          },
+          response: {
+            201: companySchema,
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const input = request.body as CompanyInput;
+        const company = await database.createCompany(
+          authorized.workspaceId,
+          input,
+        );
+        return reply.code(201).send(company);
+      },
+    );
+
+    app.get(
+      "/companies/:id",
+      {
+        config: {
+          rateLimit: {
+            max: 50,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: companySchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const company = await database.getCompany(authorized.workspaceId, id);
+        if (!company) return reply.code(404).send();
+        return company;
+      },
+    );
+
+    app.patch(
+      "/companies/:id",
+      {
+        config: {
+          rateLimit: {
+            max: 30,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            minProperties: 1,
+            properties: {
+              name: { type: "string", minLength: 1 },
+            },
+          },
+          response: {
+            200: companySchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const input = request.body as CompanyPatch;
+        const company = await database.updateCompany(
+          authorized.workspaceId,
+          id,
+          input,
+        );
+        if (!company) return reply.code(404).send();
+        return company;
+      },
+    );
+
+    app.delete(
+      "/companies/:id",
+      {
+        config: {
+          rateLimit: {
+            max: 30,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const deleted = await database.deleteCompany(
           authorized.workspaceId,
           id,
         );

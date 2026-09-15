@@ -1,7 +1,7 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql, type SQLWrapper } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { contacts } from "./schema.ts";
+import { companies, contacts } from "./schema.ts";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -43,7 +43,13 @@ export function createDatabase(pool: Pool) {
     createdAt: contacts.createdAt,
   };
 
-  const active = () => isNull(contacts.deletedAt);
+  const companyColumns = {
+    id: companies.id,
+    name: companies.name,
+    createdAt: companies.createdAt,
+  };
+
+  const notDeleted = (deletedAt: SQLWrapper) => isNull(deletedAt);
 
   return {
     close: () => pool.end(),
@@ -52,7 +58,7 @@ export function createDatabase(pool: Pool) {
         tx
           .select(contactColumns)
           .from(contacts)
-          .where(active())
+          .where(notDeleted(contacts.deletedAt))
           .orderBy(contacts.createdAt, contacts.id),
       ),
     getContact: (workspaceId: string, id: string) =>
@@ -60,7 +66,7 @@ export function createDatabase(pool: Pool) {
         const rows = await tx
           .select(contactColumns)
           .from(contacts)
-          .where(and(eq(contacts.id, id), active()))
+          .where(and(eq(contacts.id, id), notDeleted(contacts.deletedAt)))
           .limit(1);
         return rows[0];
       }),
@@ -86,7 +92,7 @@ export function createDatabase(pool: Pool) {
         const rows = await tx
           .update(contacts)
           .set(input)
-          .where(and(eq(contacts.id, id), active()))
+          .where(and(eq(contacts.id, id), notDeleted(contacts.deletedAt)))
           .returning(contactColumns);
         return rows[0];
       }),
@@ -95,8 +101,57 @@ export function createDatabase(pool: Pool) {
         const rows = await tx
           .update(contacts)
           .set({ deletedAt: new Date() })
-          .where(and(eq(contacts.id, id), active()))
+          .where(and(eq(contacts.id, id), notDeleted(contacts.deletedAt)))
           .returning({ id: contacts.id });
+        return rows.length > 0;
+      }),
+    listCompanies: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(companyColumns)
+          .from(companies)
+          .where(notDeleted(companies.deletedAt))
+          .orderBy(companies.createdAt, companies.id),
+      ),
+    getCompany: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(companyColumns)
+          .from(companies)
+          .where(and(eq(companies.id, id), notDeleted(companies.deletedAt)))
+          .limit(1);
+        return rows[0];
+      }),
+    createCompany: (workspaceId: string, input: { name: string }) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .insert(companies)
+          .values({ workspaceId, ...input })
+          .returning(companyColumns);
+        const row = rows[0];
+        if (!row) throw new Error("company insert returned no row");
+        return row;
+      }),
+    updateCompany: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(companies)
+          .set(input)
+          .where(and(eq(companies.id, id), notDeleted(companies.deletedAt)))
+          .returning(companyColumns);
+        return rows[0];
+      }),
+    deleteCompany: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(companies)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(companies.id, id), notDeleted(companies.deletedAt)))
+          .returning({ id: companies.id });
         return rows.length > 0;
       }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.

@@ -30,6 +30,11 @@ function createDatabaseStub() {
     createContact: vi.fn(),
     updateContact: vi.fn().mockResolvedValue(undefined),
     deleteContact: vi.fn().mockResolvedValue(false),
+    listCompanies: vi.fn().mockResolvedValue([]),
+    getCompany: vi.fn().mockResolvedValue(undefined),
+    createCompany: vi.fn(),
+    updateCompany: vi.fn().mockResolvedValue(undefined),
+    deleteCompany: vi.fn().mockResolvedValue(false),
   };
 }
 
@@ -340,6 +345,97 @@ test("only workspace admins can delete contacts", async () => {
       headers: { authorization: "Bearer admin-token" },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("companies follow the same workspace membership contract", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const company = {
+    id: randomUUID(),
+    name: "Company",
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.createCompany.mockResolvedValue(company);
+  database.getCompany.mockResolvedValue(company);
+  database.updateCompany.mockResolvedValue({ ...company, name: "Renamed" });
+  database.deleteCompany.mockResolvedValue(true);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token ? { userId, email: "user@example.com", isAdmin: false } : undefined,
+    authorizeWorkspace: async (_userId?: string, wsId?: string) =>
+      wsId === workspaceId ? { role: "admin" } : undefined,
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/companies?workspaceId=${workspaceId}`,
+          payload: { name: "Nope" },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(database.createCompany).not.toHaveBeenCalled();
+
+    const otherWorkspace = randomUUID();
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/companies/${company.id}?workspaceId=${otherWorkspace}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(database.getCompany).not.toHaveBeenCalled();
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/companies?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Company" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toEqual({
+      ...company,
+      createdAt: company.createdAt.toISOString(),
+    });
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/companies/${company.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Renamed" },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().name).toBe("Renamed");
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/companies/${company.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(database.deleteCompany).toHaveBeenCalledWith(
+      workspaceId,
+      company.id,
+    );
+
+    database.deleteCompany.mockResolvedValue(false);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/companies/${company.id}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(404);
   } finally {
     await app.close();
   }
