@@ -12,13 +12,15 @@ gh pr status
 
 ## Current work
 
-PR [#27](https://github.com/JotaSXBR/MarIA-CRM/pull/27) merged (deal editor + dev-proxy fix). Branch `feat/admin-panel` adds the admin UI:
+All open PRs merged; `main` is clean and synced. Recent landed work (PRs #27–#30):
 
+- Deal editor dialog on the Kanban board + Vite dev-proxy fix for `/pipelines`/`/stages`/`/deals`.
 - `GET /me` returns `{userId, email, name, isAdmin}`; `verifySession` now includes `name`.
 - `WorkspaceProvider` also fetches `/me` and exposes `session`/`sessionLoaded`; the sidebar shows "Administração" only for global admins.
 - `/admin` page (guarded client-side by `session.isAdmin`; the API still enforces `isAdmin` server-side): user list + create (with optional initial workspace/role), activate/deactivate, organizations list/create, workspaces list/create (org picker), members-per-workspace management (role change, add, remove).
+- Code-simplifier pass (PR #29): `updateDeal` validates only contact/company refs (`contactCompanyRefsValid` split out of `dealRefsValid`); all PATCH bodies declare `minProperties: 1`.
+- `adr/` now holds versioned decision records (0001–0007); AGENTS.md §3 requires an ADR for architectural decisions. `docs/` stays local-only (gitignored).
 - Test note: happy-dom does not submit forms on submit-button click; use `fireEvent.submit(form)` in web tests.
-- Code-simplifier pass applied on this branch: `updateDeal` now validates only contact/company refs (`contactCompanyRefsValid` split out of `dealRefsValid`); all PATCH bodies now declare `minProperties: 1` so an empty patch is a 400, not a Drizzle `.set({})` failure.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -64,6 +66,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Admin panel PR #28 merged; refactor PR #29 (scoped deal-ref validation + `minProperties: 1` on PATCH bodies) is open pending merge; `docs/decision-records` adds `adr/` and fixes doc drift. Remaining slices: WAHA messaging, then the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction cleanup.
+Next slice: WAHA messaging (start with the decision memo: provider adapter shape, webhook authenticity, conversation/message model). Agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
