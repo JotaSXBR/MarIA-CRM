@@ -129,6 +129,16 @@ export function createDatabase(pool: Pool) {
       .where(and(eq(stages.id, input.stageId), notDeleted(stages.deletedAt)))
       .limit(1);
     if (!stage[0] || stage[0].pipelineId !== input.pipelineId) return false;
+    return contactCompanyRefsValid(tx, input);
+  };
+
+  const contactCompanyRefsValid = async (
+    tx: DrizzleTx,
+    input: {
+      contactId?: string | null | undefined;
+      companyId?: string | null | undefined;
+    },
+  ) => {
     if (input.contactId) {
       const contact = await tx
         .select({ id: contacts.id })
@@ -506,14 +516,12 @@ export function createDatabase(pool: Pool) {
     ) =>
       withWorkspace(workspaceId, async (tx) => {
         const deal = await tx
-          .select({ pipelineId: deals.pipelineId, stageId: deals.stageId })
+          .select({ id: deals.id })
           .from(deals)
           .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
           .limit(1);
         if (!deal[0]) return undefined;
-        const refsValid = await dealRefsValid(tx, {
-          pipelineId: deal[0].pipelineId,
-          stageId: deal[0].stageId,
+        const refsValid = await contactCompanyRefsValid(tx, {
           contactId: input.contactId,
           companyId: input.companyId,
         });

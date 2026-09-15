@@ -18,8 +18,15 @@ PR [#27](https://github.com/JotaSXBR/MarIA-CRM/pull/27) merged (deal editor + de
 - `WorkspaceProvider` also fetches `/me` and exposes `session`/`sessionLoaded`; the sidebar shows "Administração" only for global admins.
 - `/admin` page (guarded client-side by `session.isAdmin`; the API still enforces `isAdmin` server-side): user list + create (with optional initial workspace/role), activate/deactivate, organizations list/create, workspaces list/create (org picker), members-per-workspace management (role change, add, remove).
 - Test note: happy-dom does not submit forms on submit-button click; use `fireEvent.submit(form)` in web tests.
+- Code-simplifier pass applied on this branch: `updateDeal` now validates only contact/company refs (`contactCompanyRefsValid` split out of `dealRefsValid`); all PATCH bodies now declare `minProperties: 1` so an empty patch is a 400, not a Drizzle `.set({})` failure.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
+
+Deferred simplifications from the code-simplifier review (not applied):
+- `lastPosition` helper should take an extra filter and be reused by `createStage`/`createDeal` (they repeat the query inline).
+- Soft-delete/existence-check blocks in `deletePipeline`/`deleteStage`/`deleteDeal`/`deleteContact`/`deleteCompany` could share a `softDeleteById` helper.
+- The repeated `DELETE /:id` route boilerplate in `app.ts` (auth → workspace admin → delete → status map) could be a small wrapper.
+- `admin.tsx` mutations repeat identical `onSuccess`/`onError`; a local `useAdminMutation` would deduplicate.
 
 Local dev (manual test): `docker compose -f docker/compose.yaml up -d` with `POSTGRES_PASSWORD`, apply `packages/database/drizzle/*.sql` via psql, set `maria_runtime` password, run API with `DATABASE_URL`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`, `pnpm --filter @maria/web dev`.
 
