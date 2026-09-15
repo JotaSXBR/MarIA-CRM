@@ -15,6 +15,7 @@ const migrations = [
   "0003_contact_soft_delete.sql",
   "0004_company_soft_delete.sql",
   "0005_admin_grants.sql",
+  "0006_membership_user_scope.sql",
 ];
 
 export type TestDatabase = {

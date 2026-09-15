@@ -122,6 +122,26 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
         ),
       ).toBe(true);
 
+      const memberLogin = await fetch(`${address}/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "e2e-member@example.com",
+          password: "member-password",
+        }),
+      });
+      expect(memberLogin.status).toBe(200);
+      const { token: memberToken } = (await memberLogin.json()) as {
+        token: string;
+      };
+      const myWorkspaces = await fetch(`${address}/me/workspaces`, {
+        headers: { authorization: `Bearer ${memberToken}` },
+      });
+      expect(myWorkspaces.status).toBe(200);
+      expect(await myWorkspaces.json()).toEqual([
+        { workspaceId: workspaceB, workspaceName: "B", role: "member" },
+      ]);
+
       const created = await fetch(
         `${address}/contacts?workspaceId=${workspaceA}`,
         {

@@ -12,13 +12,13 @@ gh pr status
 
 ## Current work
 
-PR [#22](https://github.com/JotaSXBR/MarIA-CRM/pull/22) merged. Branch `feat/admin-management` adds the global-admin management surface:
+PR [#23](https://github.com/JotaSXBR/MarIA-CRM/pull/23) merged. Branch `feat/web-app` adds the first real web UI plus the API support it needs:
 
-- Migration `0005_admin_grants.sql` grants `maria_runtime` `SELECT/INSERT/UPDATE` on the global `organizations`/`workspaces` tables and adds a unique index on `memberships (user_id, workspace_id)` (previously unenforced).
-- `@maria/database` gains `listOrganizations`/`createOrganization`/`listWorkspaces`/`createWorkspace` (global tables, no workspace scope; `createWorkspace` returns undefined for a missing org).
-- `@maria/auth` gains `listUsers`, `updateUser` (name/active), `listMembers`, `addMembership` (created/duplicate/not-found), `updateMembershipRole` and `removeMembership`. Membership ops run via `withWorkspace`; anti-lockout guards refuse demoting/removing a workspace's last admin and deactivating the last active global admin.
-- `apps/api` adds `/admin/*` routes guarded by a shared `requireAdmin` helper (`session.isAdmin`): users list/patch, organizations list/create, workspaces list/create, workspace members list, membership create/patch/delete.
-- Tests: API contract coverage for all new routes; a Testcontainers auth test proves the new grants work under `maria_runtime` and the last-admin guards hold; the E2E now provisions org, workspaces, membership and a member user entirely through the admin API.
+- Migration `0006_membership_user_scope.sql` replaces the memberships policy with `workspace_id = app.workspace_id OR user_id = app.user_id` for reads; `WITH CHECK` stays workspace-only, so writes still require workspace context.
+- `@maria/database` gains `withUser(userId, cb)` (transaction-local `app.user_id`, same role-safety check as `withWorkspace`; both now share `scopedTransaction`).
+- `@maria/auth` gains `listUserWorkspaces`; `apps/api` exposes `GET /me/workspaces` for any authenticated session.
+- `apps/web` is a real SPA now: TanStack Router (code-based route tree, `beforeLoad` auth guard) + TanStack Query + Tailwind v4 via `@tailwindcss/vite`; Vite dev proxy forwards `/auth`, `/me`, `/admin`, `/contacts`, `/companies`, `/health` to `localhost:3000` (no CORS changes). Pages: `/login`, authenticated shell with sidebar + workspace picker, `/contacts` and `/companies` (list/create/edit; delete only for workspace admins).
+- Session token lives in `localStorage`; workspace selection persists across reloads.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -55,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the admin-management PR manually. Remaining slices: web CRM flows (login + contacts/companies), then pipelines/stages/deals. Resend invitations are paused indefinitely; WAHA messaging and the agent runtime come after the non-AI features. Preserve RLS and transaction cleanup.
+Review CI and merge the web-app PR manually. Remaining slices: pipelines/stages/deals (Kanban), then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, admin-panel UI screens, contact detail pages. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

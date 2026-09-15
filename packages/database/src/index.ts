@@ -10,12 +10,12 @@ export function createDatabase(pool: Pool) {
   const db = drizzle({ client: pool });
   type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-  const withWorkspace = async <T>(
-    workspaceId: string,
+  const scopedTransaction = async <T>(
+    setting: { name: string; value: string },
     callback: (tx: DrizzleTx) => Promise<T>,
   ) => {
-    if (!uuid.test(workspaceId)) {
-      throw new TypeError("workspaceId must be a UUID");
+    if (!uuid.test(setting.value)) {
+      throw new TypeError(`${setting.name} must be a UUID`);
     }
 
     return db.transaction(async (tx) => {
@@ -29,11 +29,25 @@ export function createDatabase(pool: Pool) {
         throw new Error("database role must not be superuser or BYPASSRLS");
       }
       await tx.execute(
-        sql`select set_config('app.workspace_id', ${workspaceId}, true)`,
+        sql`select set_config(${setting.name}, ${setting.value}, true)`,
       );
       return callback(tx);
     });
   };
+
+  const withWorkspace = <T>(
+    workspaceId: string,
+    callback: (tx: DrizzleTx) => Promise<T>,
+  ) =>
+    scopedTransaction(
+      { name: "app.workspace_id", value: workspaceId },
+      callback,
+    );
+
+  const withUser = <T>(
+    userId: string,
+    callback: (tx: DrizzleTx) => Promise<T>,
+  ) => scopedTransaction({ name: "app.user_id", value: userId }, callback);
 
   const contactColumns = {
     id: contacts.id,
@@ -199,6 +213,8 @@ export function createDatabase(pool: Pool) {
     },
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
+    // Same contract for user-scoped reads (e.g. own memberships via app.user_id).
+    withUser,
   };
 }
 
