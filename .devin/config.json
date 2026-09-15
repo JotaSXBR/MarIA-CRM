@@ -1,0 +1,95 @@
+{
+  "project": "MarIA CRM",
+  "description": "Multi-tenant agent-native CRM with AI agents and human operators sharing the same workspace",
+  "license": "AGPL-3.0-only",
+  "baseline": {
+    "node": "24.21.0 LTS",
+    "packageManager": "pnpm@11.26.0",
+    "typescript": "7.0.x strict",
+    "database": "PostgreSQL 18.6 + pgvector 0.8.6",
+    "orm": "Drizzle ORM 0.45.2",
+    "api": "Fastify 5.x",
+    "frontend": "React 19.2.x + Vite 8.2.x",
+    "tests": "Vitest 5 + Testcontainers + Playwright",
+    "lint": "Oxlint type-aware",
+    "format": "Prettier 3.9.0"
+  },
+  "monorepo": {
+    "tool": "Turborepo 2.10.x",
+    "apps": ["api", "web"],
+    "packages": ["database"],
+    "futurePackages": [
+      "auth",
+      "contracts",
+      "domain",
+      "ai-gateway",
+      "agent-runtime",
+      "messaging",
+      "channel-waha",
+      "channel-meta",
+      "mcp-server",
+      "storage",
+      "evals",
+      "telemetry"
+    ]
+  },
+  "criticalInvariants": [
+    "Tenant isolation with PostgreSQL RLS as security boundary",
+    "Control Plane ≠ Execution Plane (drafts vs immutable versions)",
+    "Durable agent execution (state in PostgreSQL, not in-memory)",
+    "Effect ledger with idempotency (effect_key + effect_receipts)",
+    "Anti-stale human takeover (conversation epoch)",
+    "Tool security (no shell execution in execution plane)"
+  ],
+  "rootCommands": {
+    "install": "pnpm install",
+    "dev": "pnpm dev",
+    "fmt": "pnpm fmt",
+    "fmt:check": "pnpm fmt:check",
+    "lint": "pnpm lint",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm test",
+    "test:integration": "pnpm test:integration",
+    "test:e2e": "pnpm test:e2e",
+    "build": "pnpm build",
+    "verify": "pnpm verify"
+  },
+  "devinSkills": [
+    "maria-dev-setup",
+    "maria-database-rls",
+    "maria-api-development",
+    "maria-testing",
+    "maria-devin-adaptation"
+  ],
+  "contractFiles": ["AGENTS.md", "ARCHITECTURE.md", "HANDOFF.md", "README.md"],
+  "rules": {
+    "neverWorkOnMain": true,
+    "alwaysRunVerifyBeforeCommit": true,
+    "rlsRequiredForTenantData": true,
+    "useWithWorkspaceForScopedOps": true,
+    "crossTenantTestsRequired": true,
+    "noDrizzlePushInProduction": true,
+    "dockerRequiredForIntegrationTests": true,
+    "humanApprovalForSecurityChanges": true
+  },
+  "currentPhase": "Phase 0",
+  "phase0Status": {
+    "completed": [
+      "Database foundation with RLS",
+      "Fastify API with health endpoint",
+      "React web app foundation",
+      "Integration tests with Testcontainers",
+      "CI/CD with verify gates"
+    ],
+    "pending": [
+      "Authentication and authorization",
+      "Runtime role provisioning",
+      "Contacts CRUD complete",
+      "Web CRM flows",
+      "Companies CRUD",
+      "Pipelines and deals",
+      "Channels and messaging",
+      "Agent runtime"
+    ]
+  }
+}

@@ -25,19 +25,18 @@ async function expectRlsRejection(operation: Promise<unknown>) {
 beforeAll(async () => {
   container = await new PostgreSqlContainer(image).start();
   admin = new Pool({ connectionString: container.getConnectionUri() });
-  await admin.query(
-    "create role maria_runtime login password 'runtime' nosuperuser nobypassrls",
-  );
-  await admin.query(
-    await readFile(
-      new URL("../drizzle/0000_product_foundation.sql", import.meta.url),
-      "utf8",
-    ),
-  );
-  await admin.query(`
-    grant usage on schema public to maria_runtime;
-    grant select, insert, update on contacts, companies to maria_runtime;
-  `);
+  for (const migration of [
+    "0000_product_foundation.sql",
+    "0001_runtime_role.sql",
+  ]) {
+    await admin.query(
+      await readFile(
+        new URL(`../drizzle/${migration}`, import.meta.url),
+        "utf8",
+      ),
+    );
+  }
+  await admin.query("alter role maria_runtime password 'runtime'");
   const organization = randomUUID();
   await admin.query(
     "insert into organizations (id, name) values ($1, 'Organization')",
@@ -69,6 +68,33 @@ afterAll(async () => {
 }, 30000);
 
 test("product RLS scopes reads and writes and leaves no context on its pooled connection", async () => {
+  expect(
+    (
+      await runtime.query(`
+        select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
+          rolbypassrls,
+          has_database_privilege(current_user, current_database(), 'CONNECT') as can_connect,
+          has_schema_privilege(current_user, 'public', 'USAGE') as can_use_schema,
+          has_table_privilege(current_user, 'contacts', 'SELECT, INSERT, UPDATE') as can_use_contacts,
+          has_table_privilege(current_user, 'contacts', 'DELETE') as can_delete_contacts
+        from pg_roles
+        where rolname = current_user
+      `)
+    ).rows,
+  ).toEqual([
+    {
+      rolcanlogin: true,
+      rolsuper: false,
+      rolcreaterole: false,
+      rolcreatedb: false,
+      rolreplication: false,
+      rolbypassrls: false,
+      can_connect: true,
+      can_use_schema: true,
+      can_use_contacts: true,
+      can_delete_contacts: false,
+    },
+  ]);
   expect(
     (
       await runtime.query(`
@@ -179,4 +205,12 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
   await expect(
     database.withWorkspace(workspaceA, async () => undefined),
   ).rejects.toThrow("database role must not be superuser or BYPASSRLS");
+  await expect(
+    admin.query(
+      await readFile(
+        new URL("../drizzle/0001_runtime_role.sql", import.meta.url),
+        "utf8",
+      ),
+    ),
+  ).rejects.toThrow("maria_runtime has unsafe role attributes");
 });
