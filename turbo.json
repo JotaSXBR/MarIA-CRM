@@ -5,8 +5,8 @@
     "dev": { "cache": false, "persistent": true, "env": ["HOST", "PORT"] },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": {},
-    "test:integration": { "cache": false },
+    "test": { "dependsOn": ["^build"] },
+    "test:integration": { "dependsOn": ["^build"], "cache": false },
     "test:e2e": { "dependsOn": ["build"], "cache": false }
   }
 }
