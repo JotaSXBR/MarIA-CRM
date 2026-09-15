@@ -333,6 +333,36 @@ export function buildApp(dependencies?: AppDependencies) {
     );
 
     app.get(
+      "/me",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          response: {
+            200: {
+              type: "object",
+              additionalProperties: false,
+              required: ["userId", "email", "name", "isAdmin"],
+              properties: {
+                userId: { type: "string", format: "uuid" },
+                email: { type: "string" },
+                name: { type: "string" },
+                isAdmin: { type: "boolean" },
+              },
+            },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const token = extractBearerToken(request);
+        if (!token) return reply.code(401).send();
+        const session = await auth.verifySession(token);
+        if (!session) return reply.code(401).send();
+        return session;
+      },
+    );
+
+    app.get(
       "/me/workspaces",
       {
         config: { rateLimit: { max: 30, timeWindow: "1 minute" } },

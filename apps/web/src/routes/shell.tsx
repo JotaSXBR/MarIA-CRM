@@ -4,7 +4,7 @@ import { useWorkspace, WorkspaceProvider } from "../lib/workspace.tsx";
 
 function ShellLayout() {
   const navigate = useNavigate();
-  const { memberships, workspace, selectWorkspace } = useWorkspace();
+  const { memberships, workspace, selectWorkspace, session } = useWorkspace();
 
   const logout = async () => {
     setToken(null);
@@ -62,6 +62,15 @@ function ShellLayout() {
           >
             Empresas
           </Link>
+          {session?.isAdmin ? (
+            <Link
+              to="/admin"
+              className="block rounded-lg px-3 py-2 hover:bg-slate-100"
+              activeProps={{ className: "bg-indigo-50 text-indigo-700" }}
+            >
+              Administração
+            </Link>
+          ) : null}
         </nav>
         <button
           onClick={logout}

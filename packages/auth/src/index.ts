@@ -20,7 +20,10 @@ export type AuthPort = {
   ): Promise<{ token: string } | undefined>;
   verifySession(
     token: string,
-  ): Promise<{ userId: string; email: string; isAdmin: boolean } | undefined>;
+  ): Promise<
+    | { userId: string; email: string; name: string; isAdmin: boolean }
+    | undefined
+  >;
   authorizeWorkspace(
     userId: string,
     workspaceId: string,
@@ -145,7 +148,8 @@ export function createLocalAuth(
   const verifySession = async (
     token: string,
   ): Promise<
-    { userId: string; email: string; isAdmin: boolean } | undefined
+    | { userId: string; email: string; name: string; isAdmin: boolean }
+    | undefined
   > => {
     const rows = await db
       .select({ user: users })
@@ -163,6 +167,7 @@ export function createLocalAuth(
     return {
       userId: row.user.id,
       email: row.user.email,
+      name: row.user.name,
       isAdmin: row.user.isAdmin,
     };
   };

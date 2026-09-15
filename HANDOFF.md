@@ -12,10 +12,11 @@ gh pr status
 
 ## Current work
 
-PR [#25](https://github.com/JotaSXBR/MarIA-CRM/pull/25) merged (pipelines/stages/deals + Kanban). PR [#26](https://github.com/JotaSXBR/MarIA-CRM/pull/26) merged (uuid 14.0.2 override for Dependabot alert). Branch `feat/deal-detail` adds deal editing to the Kanban board:
+PR [#27](https://github.com/JotaSXBR/MarIA-CRM/pull/27) merged (deal editor + dev-proxy fix). Branch `feat/admin-panel` adds the admin UI:
 
-- Clicking a deal card opens a `DealEditor` dialog (title, value in BRL ↔ `value_cents`, contact and company pickers fed by `/contacts` + `/companies`, admin-only delete).
-- `apps/web/vite.config.ts` proxy now forwards `/pipelines`, `/stages`, `/deals` — without it the board 404s in dev.
+- `GET /me` returns `{userId, email, name, isAdmin}`; `verifySession` now includes `name`.
+- `WorkspaceProvider` also fetches `/me` and exposes `session`/`sessionLoaded`; the sidebar shows "Administração" only for global admins.
+- `/admin` page (guarded client-side by `session.isAdmin`; the API still enforces `isAdmin` server-side): user list + create (with optional initial workspace/role), activate/deactivate, organizations list/create, workspaces list/create (org picker), members-per-workspace management (role change, add, remove).
 - Test note: happy-dom does not submit forms on submit-button click; use `fireEvent.submit(form)` in web tests.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
@@ -55,6 +56,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the deal-detail PR manually. Remaining slices: admin-panel UI screens, then WAHA messaging; the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI. Preserve RLS and transaction cleanup.
+Review CI and merge the admin-panel PR manually. Remaining slices: WAHA messaging, then the agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
