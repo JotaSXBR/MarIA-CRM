@@ -6,6 +6,8 @@ allowBuilds:
   protobufjs: false
   ssh2: false
 injectWorkspacePackages: true
+overrides:
+  uuid: "14.0.2"
 minimumReleaseAgeExclude:
   - "@types/node@24.13.4"
 minimumReleaseAgeStrict: true
