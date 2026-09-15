@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
@@ -57,23 +56,72 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
       }>("select id from users where email = 'admin@example.com'");
       const adminId = adminRows[0]?.id;
       expect(adminId).toBeDefined();
-      const organization = randomUUID();
-      const workspaceA = randomUUID();
-      const workspaceB = randomUUID();
-      await testDatabase.admin.query(
-        "insert into organizations (id, name) values ($1, 'E2E Org')",
-        [organization],
-      );
-      await testDatabase.admin.query(
-        "insert into workspaces (id, org_id, name) values ($1, $3, 'A'), ($2, $3, 'B')",
-        [workspaceA, workspaceB, organization],
-      );
-      await testDatabase.admin.query(
-        "insert into memberships (user_id, workspace_id, role) values ($1, $2, 'admin')",
-        [adminId, workspaceA],
-      );
 
       const authed = { authorization: `Bearer ${token}` };
+      const json = { ...authed, "content-type": "application/json" };
+
+      const organization = await fetch(`${address}/admin/organizations`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ name: "E2E Org" }),
+      });
+      expect(organization.status).toBe(201);
+      const { id: orgId } = (await organization.json()) as { id: string };
+
+      const createWorkspace = async (name: string) => {
+        const response = await fetch(`${address}/admin/workspaces`, {
+          method: "POST",
+          headers: json,
+          body: JSON.stringify({ orgId, name }),
+        });
+        expect(response.status).toBe(201);
+        return ((await response.json()) as { id: string }).id;
+      };
+      const workspaceA = await createWorkspace("A");
+      const workspaceB = await createWorkspace("B");
+
+      const membership = await fetch(`${address}/admin/memberships`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          userId: adminId,
+          workspaceId: workspaceA,
+          role: "admin",
+        }),
+      });
+      expect(membership.status).toBe(201);
+
+      const members = await fetch(
+        `${address}/admin/workspaces/${workspaceA}/members`,
+        { headers: authed },
+      );
+      expect(members.status).toBe(200);
+      expect(((await members.json()) as { userId: string }[])[0]?.userId).toBe(
+        adminId,
+      );
+
+      const createdUser = await fetch(`${address}/admin/users`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          email: "e2e-member@example.com",
+          name: "E2E Member",
+          password: "member-password",
+          workspaceId: workspaceB,
+          role: "member",
+        }),
+      });
+      expect(createdUser.status).toBe(200);
+      const users = await fetch(`${address}/admin/users`, {
+        headers: authed,
+      });
+      expect(users.status).toBe(200);
+      expect(
+        ((await users.json()) as { email: string }[]).some(
+          (row) => row.email === "e2e-member@example.com",
+        ),
+      ).toBe(true);
+
       const created = await fetch(
         `${address}/contacts?workspaceId=${workspaceA}`,
         {

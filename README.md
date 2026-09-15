@@ -56,6 +56,14 @@ workspace. `DELETE` requires the workspace `admin` role and performs a soft
 delete (`deleted_at`) through `UPDATE`, so the runtime role keeps least
 privilege without a `DELETE` grant. `/health` remains a liveness check.
 
+Global-admin routes under `/admin` (`GET`/`PATCH /admin/users`,
+`GET`/`POST /admin/organizations`, `GET`/`POST /admin/workspaces`,
+`GET /admin/workspaces/:id/members` and `POST`/`PATCH`/`DELETE
+/admin/memberships`) require a session whose user has `is_admin`. Membership
+writes run inside workspace-scoped transactions and refuse to remove or demote
+a workspace's last admin; user deactivation likewise refuses the last active
+global admin (409).
+
 For a persistent local PostgreSQL 18.6 instance, set `POSTGRES_PASSWORD` in your shell
 to a local development password, then run:
 

@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -119,7 +120,10 @@ export const memberships = pgTable(
   },
   (table) => [
     index("memberships_workspace_id_idx").on(table.workspaceId),
-    index("memberships_user_workspace_idx").on(table.userId, table.workspaceId),
+    uniqueIndex("memberships_user_workspace_key").on(
+      table.userId,
+      table.workspaceId,
+    ),
   ],
 );
 

@@ -4,7 +4,12 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gt } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { Database } from "@maria/database";
-import { memberships, sessions, users } from "@maria/database/schema";
+import {
+  memberships,
+  sessions,
+  users,
+  workspaces,
+} from "@maria/database/schema";
 
 export type UserRole = "admin" | "member";
 
@@ -27,6 +32,43 @@ export type AuthPort = {
     workspaceId?: string | undefined;
     role?: UserRole | undefined;
   }): Promise<{ userId: string } | undefined>;
+  listUsers(): Promise<
+    {
+      id: string;
+      email: string;
+      name: string;
+      isAdmin: boolean;
+      active: boolean;
+      createdAt: Date;
+    }[]
+  >;
+  updateUser(
+    userId: string,
+    input: { name?: string | undefined; active?: boolean | undefined },
+  ): Promise<"updated" | "not-found" | "last-admin">;
+  listMembers(workspaceId: string): Promise<
+    {
+      id: string;
+      userId: string;
+      role: UserRole;
+      email: string;
+      name: string;
+    }[]
+  >;
+  addMembership(input: {
+    userId: string;
+    workspaceId: string;
+    role: UserRole;
+  }): Promise<"created" | "duplicate" | "not-found">;
+  updateMembershipRole(
+    workspaceId: string,
+    membershipId: string,
+    role: UserRole,
+  ): Promise<"updated" | "not-found" | "last-admin">;
+  removeMembership(
+    workspaceId: string,
+    membershipId: string,
+  ): Promise<"removed" | "not-found" | "last-admin">;
   ensureAdmin(userId: string): Promise<boolean>;
   seedAdmin(): Promise<void>;
 };
@@ -175,6 +217,163 @@ export function createLocalAuth(
     return { userId: user.id };
   };
 
+  const listUsers = async () =>
+    db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        isAdmin: users.isAdmin,
+        active: users.active,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .orderBy(users.createdAt, users.id);
+
+  const countActiveAdmins = async (tx: Pick<typeof db, "select">) => {
+    const rows = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.isAdmin, true), eq(users.active, true)));
+    return rows.length;
+  };
+
+  const updateUser = async (
+    userId: string,
+    input: { name?: string | undefined; active?: boolean | undefined },
+  ): Promise<"updated" | "not-found" | "last-admin"> => {
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ isAdmin: users.isAdmin, active: users.active })
+        .from(users)
+        .where(eq(users.id, userId));
+      const user = rows[0];
+      if (!user) return "not-found";
+      if (
+        input.active === false &&
+        user.isAdmin &&
+        user.active &&
+        (await countActiveAdmins(tx)) <= 1
+      ) {
+        return "last-admin";
+      }
+      const set: { name?: string; active?: boolean } = {};
+      if (input.name !== undefined) set.name = input.name;
+      if (input.active !== undefined) set.active = input.active;
+      if (Object.keys(set).length === 0) return "updated";
+      await tx.update(users).set(set).where(eq(users.id, userId));
+      return "updated";
+    });
+  };
+
+  const listMembers = async (workspaceId: string) =>
+    database.withWorkspace(workspaceId, async (tx) =>
+      tx
+        .select({
+          id: memberships.id,
+          userId: memberships.userId,
+          role: memberships.role,
+          email: users.email,
+          name: users.name,
+        })
+        .from(memberships)
+        .innerJoin(users, eq(memberships.userId, users.id))
+        .where(eq(memberships.workspaceId, workspaceId)),
+    );
+
+  const addMembership = async (input: {
+    userId: string;
+    workspaceId: string;
+    role: UserRole;
+  }): Promise<"created" | "duplicate" | "not-found"> => {
+    const user = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .limit(1);
+    if (!user[0]) return "not-found";
+    const workspace = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.id, input.workspaceId))
+      .limit(1);
+    if (!workspace[0]) return "not-found";
+    return database.withWorkspace(input.workspaceId, async (tx) => {
+      const rows = await tx
+        .insert(memberships)
+        .values(input)
+        .onConflictDoNothing()
+        .returning({ id: memberships.id });
+      return rows[0] ? "created" : "duplicate";
+    });
+  };
+
+  const isLastWorkspaceAdmin = async (
+    tx: Pick<typeof db, "select">,
+    workspaceId: string,
+    membershipId: string,
+  ): Promise<boolean> => {
+    const rows = await tx
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.workspaceId, workspaceId),
+          eq(memberships.role, "admin"),
+        ),
+      );
+    return rows.length === 1 && rows[0]?.id === membershipId;
+  };
+
+  const updateMembershipRole = async (
+    workspaceId: string,
+    membershipId: string,
+    role: UserRole,
+  ): Promise<"updated" | "not-found" | "last-admin"> => {
+    return database.withWorkspace(workspaceId, async (tx) => {
+      const rows = await tx
+        .select({ role: memberships.role })
+        .from(memberships)
+        .where(eq(memberships.id, membershipId));
+      const membership = rows[0];
+      if (!membership) return "not-found";
+      if (
+        membership.role === "admin" &&
+        role !== "admin" &&
+        (await isLastWorkspaceAdmin(tx, workspaceId, membershipId))
+      ) {
+        return "last-admin";
+      }
+      await tx
+        .update(memberships)
+        .set({ role })
+        .where(eq(memberships.id, membershipId));
+      return "updated";
+    });
+  };
+
+  const removeMembership = async (
+    workspaceId: string,
+    membershipId: string,
+  ): Promise<"removed" | "not-found" | "last-admin"> => {
+    return database.withWorkspace(workspaceId, async (tx) => {
+      const rows = await tx
+        .select({ role: memberships.role })
+        .from(memberships)
+        .where(eq(memberships.id, membershipId));
+      const membership = rows[0];
+      if (!membership) return "not-found";
+      if (
+        membership.role === "admin" &&
+        (await isLastWorkspaceAdmin(tx, workspaceId, membershipId))
+      ) {
+        return "last-admin";
+      }
+      await tx.delete(memberships).where(eq(memberships.id, membershipId));
+      return "removed";
+    });
+  };
+
   const ensureAdmin = async (userId: string): Promise<boolean> => {
     const rows = await db
       .select({ isAdmin: users.isAdmin, active: users.active })
@@ -206,6 +405,12 @@ export function createLocalAuth(
     verifySession,
     authorizeWorkspace,
     createUser,
+    listUsers,
+    updateUser,
+    listMembers,
+    addMembership,
+    updateMembershipRole,
+    removeMembership,
     ensureAdmin,
     seedAdmin,
   };

@@ -1,26 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, vi } from "vitest";
+import type { AuthPort } from "@maria/auth";
 import { buildApp } from "../src/app.ts";
 
-function createAuthStub(
-  overrides: Partial<{
-    login: () => Promise<{ token: string } | undefined>;
-    verifySession: () => Promise<
-      { userId: string; email: string; isAdmin: boolean } | undefined
-    >;
-    authorizeWorkspace: () => Promise<{ role: "admin" | "member" } | undefined>;
-    createUser: () => Promise<{ userId: string } | undefined>;
-  }> = {},
-) {
-  return {
+function createAuthStub(overrides: Partial<AuthPort> = {}) {
+  const stub = {
     login: vi.fn().mockResolvedValue(undefined),
     verifySession: vi.fn().mockResolvedValue(undefined),
     authorizeWorkspace: vi.fn().mockResolvedValue(undefined),
     createUser: vi.fn().mockResolvedValue(undefined),
+    listUsers: vi.fn().mockResolvedValue([]),
+    updateUser: vi.fn().mockResolvedValue("not-found"),
+    listMembers: vi.fn().mockResolvedValue([]),
+    addMembership: vi.fn().mockResolvedValue("not-found"),
+    updateMembershipRole: vi.fn().mockResolvedValue("not-found"),
+    removeMembership: vi.fn().mockResolvedValue("not-found"),
     ensureAdmin: vi.fn().mockResolvedValue(false),
     seedAdmin: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
   };
+  return Object.assign(stub, overrides);
 }
 
 function createDatabaseStub() {
@@ -35,6 +33,10 @@ function createDatabaseStub() {
     createCompany: vi.fn(),
     updateCompany: vi.fn().mockResolvedValue(undefined),
     deleteCompany: vi.fn().mockResolvedValue(false),
+    listOrganizations: vi.fn().mockResolvedValue([]),
+    createOrganization: vi.fn(),
+    listWorkspaces: vi.fn().mockResolvedValue([]),
+    createWorkspace: vi.fn(),
   };
 }
 
@@ -436,6 +438,235 @@ test("companies follow the same workspace membership contract", async () => {
         })
       ).statusCode,
     ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("admin management routes require a global admin session", async () => {
+  const database = createDatabaseStub();
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token === "admin-token"
+        ? { userId: "admin-id", email: "admin@example.com", isAdmin: true }
+        : token === "member-token"
+          ? { userId: "member-id", email: "m@example.com", isAdmin: false }
+          : undefined,
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect((await app.inject("/admin/users")).statusCode).toBe(401);
+    expect(auth.listUsers).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/admin/workspaces",
+          headers: { authorization: "Bearer member-token" },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(database.listWorkspaces).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+test("admin management covers users, organizations, workspaces and memberships", async () => {
+  const orgId = randomUUID();
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const membershipId = randomUUID();
+  const admin = { authorization: "Bearer admin-token" };
+  const database = createDatabaseStub();
+  database.createOrganization.mockResolvedValue({ id: orgId });
+  database.createWorkspace.mockResolvedValue({ id: workspaceId });
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token === "admin-token"
+        ? { userId: "admin-id", email: "admin@example.com", isAdmin: true }
+        : undefined,
+    listUsers: vi.fn(async () => [
+      {
+        id: userId,
+        email: "user@example.com",
+        name: "User",
+        isAdmin: false,
+        active: true,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+    ]),
+    listMembers: vi.fn(async () => [
+      {
+        id: membershipId,
+        userId,
+        role: "member" as const,
+        email: "user@example.com",
+        name: "User",
+      },
+    ]),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const users = await app.inject({
+      method: "GET",
+      url: "/admin/users",
+      headers: admin,
+    });
+    expect(users.statusCode).toBe(200);
+    expect(users.json()[0].email).toBe("user@example.com");
+
+    auth.updateUser.mockResolvedValue("updated");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/admin/users/${userId}`,
+          headers: admin,
+          payload: { active: false },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(auth.updateUser).toHaveBeenCalledWith(userId, {
+      name: undefined,
+      active: false,
+    });
+    auth.updateUser.mockResolvedValue("last-admin");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/admin/users/${userId}`,
+          headers: admin,
+          payload: { active: false },
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    const org = await app.inject({
+      method: "POST",
+      url: "/admin/organizations",
+      headers: admin,
+      payload: { name: "Org" },
+    });
+    expect(org.statusCode).toBe(201);
+    expect(org.json()).toEqual({ id: orgId });
+
+    const workspace = await app.inject({
+      method: "POST",
+      url: "/admin/workspaces",
+      headers: admin,
+      payload: { orgId, name: "Workspace" },
+    });
+    expect(workspace.statusCode).toBe(201);
+    expect(workspace.json()).toEqual({ id: workspaceId });
+    database.createWorkspace.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/admin/workspaces",
+          headers: admin,
+          payload: { orgId: randomUUID(), name: "Nope" },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const members = await app.inject({
+      method: "GET",
+      url: `/admin/workspaces/${workspaceId}/members`,
+      headers: admin,
+    });
+    expect(members.statusCode).toBe(200);
+    expect(members.json()[0].role).toBe("member");
+    expect(auth.listMembers).toHaveBeenCalledWith(workspaceId);
+
+    auth.addMembership.mockResolvedValue("created");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/admin/memberships",
+          headers: admin,
+          payload: { userId, workspaceId, role: "member" },
+        })
+      ).statusCode,
+    ).toBe(201);
+    auth.addMembership.mockResolvedValue("duplicate");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/admin/memberships",
+          headers: admin,
+          payload: { userId, workspaceId, role: "member" },
+        })
+      ).statusCode,
+    ).toBe(409);
+    auth.addMembership.mockResolvedValue("not-found");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/admin/memberships",
+          headers: admin,
+          payload: {
+            userId: randomUUID(),
+            workspaceId,
+            role: "member",
+          },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    auth.updateMembershipRole.mockResolvedValue("updated");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/admin/memberships/${membershipId}?workspaceId=${workspaceId}`,
+          headers: admin,
+          payload: { role: "admin" },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(auth.updateMembershipRole).toHaveBeenCalledWith(
+      workspaceId,
+      membershipId,
+      "admin",
+    );
+    auth.updateMembershipRole.mockResolvedValue("last-admin");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/admin/memberships/${membershipId}?workspaceId=${workspaceId}`,
+          headers: admin,
+          payload: { role: "member" },
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    auth.removeMembership.mockResolvedValue("removed");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/admin/memberships/${membershipId}?workspaceId=${workspaceId}`,
+          headers: admin,
+        })
+      ).statusCode,
+    ).toBe(204);
+    auth.removeMembership.mockResolvedValue("last-admin");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/admin/memberships/${membershipId}?workspaceId=${workspaceId}`,
+          headers: admin,
+        })
+      ).statusCode,
+    ).toBe(409);
   } finally {
     await app.close();
   }
