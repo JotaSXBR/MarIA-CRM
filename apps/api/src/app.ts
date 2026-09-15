@@ -243,6 +243,38 @@ export function buildApp(dependencies?: AppDependencies) {
       },
     );
 
+    app.get(
+      "/me/workspaces",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          response: {
+            200: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["workspaceId", "workspaceName", "role"],
+                properties: {
+                  workspaceId: { type: "string", format: "uuid" },
+                  workspaceName: { type: "string" },
+                  role: { type: "string", enum: ["admin", "member"] },
+                },
+              },
+            },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const token = extractBearerToken(request);
+        if (!token) return reply.code(401).send();
+        const session = await auth.verifySession(token);
+        if (!session) return reply.code(401).send();
+        return auth.listUserWorkspaces(session.userId);
+      },
+    );
+
     app.post(
       "/admin/users",
       {

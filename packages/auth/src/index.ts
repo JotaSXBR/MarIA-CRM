@@ -25,6 +25,13 @@ export type AuthPort = {
     userId: string,
     workspaceId: string,
   ): Promise<{ role: UserRole } | undefined>;
+  listUserWorkspaces(userId: string): Promise<
+    {
+      workspaceId: string;
+      workspaceName: string;
+      role: UserRole;
+    }[]
+  >;
   createUser(input: {
     email: string;
     name: string;
@@ -179,6 +186,19 @@ export function createLocalAuth(
       return { role: membership.role as UserRole };
     });
   };
+
+  const listUserWorkspaces = async (userId: string) =>
+    database.withUser(userId, async (tx) =>
+      tx
+        .select({
+          workspaceId: memberships.workspaceId,
+          workspaceName: workspaces.name,
+          role: memberships.role,
+        })
+        .from(memberships)
+        .innerJoin(workspaces, eq(memberships.workspaceId, workspaces.id))
+        .where(eq(memberships.userId, userId)),
+    );
 
   const createUser = async (input: {
     email: string;
@@ -404,6 +424,7 @@ export function createLocalAuth(
     login,
     verifySession,
     authorizeWorkspace,
+    listUserWorkspaces,
     createUser,
     listUsers,
     updateUser,

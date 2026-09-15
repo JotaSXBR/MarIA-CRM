@@ -8,6 +8,7 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     login: vi.fn().mockResolvedValue(undefined),
     verifySession: vi.fn().mockResolvedValue(undefined),
     authorizeWorkspace: vi.fn().mockResolvedValue(undefined),
+    listUserWorkspaces: vi.fn().mockResolvedValue([]),
     createUser: vi.fn().mockResolvedValue(undefined),
     listUsers: vi.fn().mockResolvedValue([]),
     updateUser: vi.fn().mockResolvedValue("not-found"),
@@ -467,6 +468,36 @@ test("admin management routes require a global admin session", async () => {
       ).statusCode,
     ).toBe(401);
     expect(database.listWorkspaces).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+test("me/workspaces lists the caller's workspace memberships", async () => {
+  const workspaceId = randomUUID();
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token === "token"
+        ? { userId: "user-id", email: "user@example.com", isAdmin: false }
+        : undefined,
+    listUserWorkspaces: vi.fn(async () => [
+      { workspaceId, workspaceName: "Workspace", role: "member" as const },
+    ]),
+  });
+  const app = buildApp({ database: createDatabaseStub(), auth });
+  try {
+    expect((await app.inject("/me/workspaces")).statusCode).toBe(401);
+    expect(auth.listUserWorkspaces).not.toHaveBeenCalled();
+    const response = await app.inject({
+      method: "GET",
+      url: "/me/workspaces",
+      headers: { authorization: "Bearer token" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([
+      { workspaceId, workspaceName: "Workspace", role: "member" },
+    ]);
+    expect(auth.listUserWorkspaces).toHaveBeenCalledWith("user-id");
   } finally {
     await app.close();
   }

@@ -8,9 +8,11 @@ share the same workspace, inbox, contacts, companies, pipelines, tasks and knowl
 Phase 0 has started with a pnpm/Turborepo workspace and a Fastify API. `GET /health`
 returns `{"status":"ok"}` as a process liveness check, not database readiness.
 Local email/password authentication with workspace membership authorization is
-implemented; contacts expose workspace-scoped list, create, read, update and
-soft-delete endpoints. Workers are not implemented yet. The web app currently
-shows an accessible initial development screen; it has no CRM data or actions.
+implemented; contacts and companies expose workspace-scoped list, create, read,
+update and soft-delete endpoints, and `/admin/*` covers user, organization,
+workspace and membership management for global admins. Workers are not
+implemented yet. The web app has a login flow, workspace selection, and
+contacts/companies CRUD screens backed by the API.
 
 ## Development
 
@@ -39,8 +41,9 @@ Browser tests will arrive with interactive CRM flows.
 
 Dependencies are pinned in manifests and the lockfile. Fastify (MIT) supplies HTTP
 routing, schemas and Pino logging; the Node HTTP module was considered, but Fastify
-is the repository baseline. The web app uses React, React DOM, Vite and its React plugin
-(all MIT) for the required SPA build and rendering. Tooling uses MIT licenses except TypeScript (Apache-2.0).
+is the repository baseline. The web app uses React, TanStack Router and
+TanStack Query, Tailwind CSS v4 and Vite (all MIT) for the SPA; the Vite dev
+server proxies API paths to `localhost:3000`, so no CORS setup is needed. Tooling uses MIT licenses except TypeScript (Apache-2.0).
 Dependency lifecycle scripts are not approved in this slice.
 CI must install with `pnpm install --frozen-lockfile`.
 
@@ -62,7 +65,10 @@ Global-admin routes under `/admin` (`GET`/`PATCH /admin/users`,
 /admin/memberships`) require a session whose user has `is_admin`. Membership
 writes run inside workspace-scoped transactions and refuse to remove or demote
 a workspace's last admin; user deactivation likewise refuses the last active
-global admin (409).
+global admin (409). `GET /me/workspaces` lists the caller's own memberships;
+the memberships RLS policy additionally allows rows matching the
+transaction-local `app.user_id` context, while writes still require the
+workspace scope.
 
 For a persistent local PostgreSQL 18.6 instance, set `POSTGRES_PASSWORD` in your shell
 to a local development password, then run:

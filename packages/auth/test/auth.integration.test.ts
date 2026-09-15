@@ -73,6 +73,11 @@ test("local auth supports login, session verification and workspace authorizatio
     await auth.authorizeWorkspace(memberSession!.userId, randomUUID()),
   ).toBeUndefined();
 
+  const memberships = await auth.listUserWorkspaces(memberSession!.userId);
+  expect(memberships).toEqual([
+    { workspaceId: workspace, workspaceName: "Workspace", role: "member" },
+  ]);
+
   await expect(
     auth.login("member@example.com", "wrong-password"),
   ).resolves.toBeUndefined();
