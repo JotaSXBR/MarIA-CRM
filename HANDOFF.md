@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-15
+Updated: 2026-09-16
 
 ## Verify first
 
@@ -12,11 +12,17 @@ gh pr status
 
 ## Current work
 
-PR [#16](https://github.com/JotaSXBR/MarIA-CRM/pull/16) is open from `feat/runtime-role-provisioning` and awaits manual review and merge. It preserves the two local Devin-adaptation commits that were previously ahead of `origin/main` and adds migration `0001_runtime_role.sql`, which creates `maria_runtime` without a password or privileged attributes, rejects an existing unsafe or protected-table-owning role, and applies only the currently required database/schema/table grants. Deployment must set the login credential through its secret manager.
+PR [#18](https://github.com/JotaSXBR/MarIA-CRM/pull/18) is open from `feat/local-auth-mvp` and awaits manual review and merge.
 
-The PostgreSQL integration test now consumes the checked-in runtime-role migration instead of provisioning grants itself. It verifies login and role restrictions, least-privilege grants, non-ownership, forced RLS, cross-workspace isolation, transaction cleanup and fail-closed migration behavior. `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers.
+This branch adds the local Auth MVP:
 
-`createDatabase(...).listContacts(workspaceId)` still runs through the guarded workspace transaction. `GET /contacts` remains injectable only; the production server injects neither database nor authorization dependencies, so unauthenticated access remains unavailable while `/health` remains liveness-only.
+- Migration `0002_local_identity.sql` creates `users`, `sessions`, `memberships` and `invitations`; `memberships` and `invitations` are workspace-scoped with `FORCE ROW LEVEL SECURITY`.
+- New package `@maria/auth` exposes `AuthPort`: local `login`, `verifySession`, `authorizeWorkspace`, `createUser`, `ensureAdmin` and `seedAdmin`, using `bcrypt` for password hashing and opaque session tokens stored in PostgreSQL.
+- `apps/api` now creates a PostgreSQL pool on startup, seeds the first admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`, and exposes `POST /auth/login`, `POST /admin/users` and authenticated `GET /contacts?workspaceId=...`.
+- `GET /contacts` requires a valid session token and an active workspace membership.
+- Integration tests cover login success/failure, session expiry, workspace authorization, cross-tenant isolation, missing/invalid token, missing membership and admin-only user creation. E2E test spins up the built server against a Testcontainers database and logs in as the seeded admin.
+
+`pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
 ## Devin Adaptation
 
@@ -49,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge PR #16 manually. After it merges, add real authentication and membership authorization before wiring the contacts route into the production server. Runtime credential/deployment wiring, remaining contact operations, web CRM flows and remaining product domains are still pending; preserve RLS and transaction cleanup.
+Review CI and merge PR #18 manually. After it merges, add the remaining contact CRUD operations, workspace/org management in the admin panel, web CRM flows and Resend invitation delivery. Runtime credential/deployment wiring, worker/agent runtime and remaining product domains are still pending; preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

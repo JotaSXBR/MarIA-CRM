@@ -4,7 +4,7 @@
   "tasks": {
     "dev": { "cache": false, "persistent": true, "env": ["HOST", "PORT"] },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
-    "typecheck": { "dependsOn": ["^typecheck"] },
+    "typecheck": { "dependsOn": ["^build"] },
     "test": {},
     "test:integration": { "cache": false },
     "test:e2e": { "dependsOn": ["build"], "cache": false }

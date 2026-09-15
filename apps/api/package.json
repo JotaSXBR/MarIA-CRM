@@ -18,9 +18,14 @@
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
-    "fastify": "5.12.3"
+    "@maria/auth": "workspace:*",
+    "@maria/database": "workspace:*",
+    "fastify": "5.12.3",
+    "pg": "8.16.3"
   },
   "devDependencies": {
-    "@types/node": "26.4.1"
+    "@testcontainers/postgresql": "11.7.0",
+    "@types/node": "26.4.1",
+    "@types/pg": "8.15.5"
   }
 }
