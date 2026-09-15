@@ -45,6 +45,16 @@ type Deal = {
   createdAt: string;
 };
 
+type Contact = {
+  id: string;
+  name: string;
+};
+
+type Company = {
+  id: string;
+  name: string;
+};
+
 const formatValue = (valueCents: number | null) =>
   valueCents == null
     ? null
@@ -55,12 +65,10 @@ const formatValue = (valueCents: number | null) =>
 
 function DealCard({
   deal,
-  isAdmin,
-  onDelete,
+  onOpen,
 }: {
   deal: Deal;
-  isAdmin: boolean;
-  onDelete: (id: string) => void;
+  onOpen: (deal: Deal) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: deal.id });
@@ -70,24 +78,170 @@ function DealCard({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      onClick={() => onOpen(deal)}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="flex cursor-grab items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm active:cursor-grabbing"
+      className="cursor-grab rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm active:cursor-grabbing"
     >
-      <div>
-        <p className="font-medium">{deal.title}</p>
-        {value ? <p className="mt-1 text-xs text-slate-500">{value}</p> : null}
-      </div>
-      {isAdmin ? (
-        <button
-          aria-label={`Remover negócio ${deal.title}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onDelete(deal.id)}
-          className="text-xs text-red-600 hover:underline"
-        >
-          Remover
-        </button>
-      ) : null}
+      <p className="font-medium">{deal.title}</p>
+      {value ? <p className="mt-1 text-xs text-slate-500">{value}</p> : null}
     </li>
+  );
+}
+
+function DealEditor({
+  deal,
+  isAdmin,
+  contacts,
+  companies,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  deal: Deal;
+  isAdmin: boolean;
+  contacts: Contact[];
+  companies: Company[];
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const { workspace } = useWorkspace();
+  const workspaceId = workspace?.workspaceId;
+  const [form, setForm] = useState({
+    title: deal.title,
+    value: deal.valueCents == null ? "" : String(deal.valueCents / 100),
+    contactId: deal.contactId ?? "",
+    companyId: deal.companyId ?? "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api<Deal>(`/deals/${deal.id}`, {
+        method: "PATCH",
+        workspaceId,
+        body: {
+          title: form.title,
+          valueCents:
+            form.value === "" ? null : Math.round(Number(form.value) * 100),
+          contactId: form.contactId || null,
+          companyId: form.companyId || null,
+        },
+      }),
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+    onError: () => setError("Não foi possível salvar o negócio."),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      api<void>(`/deals/${deal.id}`, { method: "DELETE", workspaceId }),
+    onSuccess: () => {
+      onDeleted();
+      onClose();
+    },
+    onError: () => setError("Não foi possível remover o negócio."),
+  });
+
+  return (
+    <div
+      role="dialog"
+      aria-label={`Editar ${deal.title}`}
+      className="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm space-y-3 rounded-xl bg-white p-4 shadow-lg"
+      >
+        <h2 className="text-base font-semibold">Editar negócio</h2>
+        <input
+          required
+          aria-label="Título"
+          placeholder="Título"
+          value={form.title}
+          onChange={(event) => setForm({ ...form, title: event.target.value })}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          aria-label="Valor"
+          placeholder="Valor (R$)"
+          value={form.value}
+          onChange={(event) => setForm({ ...form, value: event.target.value })}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <select
+          aria-label="Contato"
+          value={form.contactId}
+          onChange={(event) =>
+            setForm({ ...form, contactId: event.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Sem contato</option>
+          {contacts.map((contact) => (
+            <option key={contact.id} value={contact.id}>
+              {contact.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Empresa"
+          value={form.companyId}
+          onChange={(event) =>
+            setForm({ ...form, companyId: event.target.value })
+          }
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Sem empresa</option>
+          {companies.map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}
+            </option>
+          ))}
+        </select>
+        {error ? (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={save.isPending}
+            className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          >
+            Salvar
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            Cancelar
+          </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+              className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+            >
+              Remover
+            </button>
+          ) : null}
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -96,13 +250,13 @@ function StageColumn({
   deals,
   isAdmin,
   onDeleteStage,
-  onDeleteDeal,
+  onOpenDeal,
 }: {
   stage: Stage;
   deals: Deal[];
   isAdmin: boolean;
   onDeleteStage: (id: string) => void;
-  onDeleteDeal: (id: string) => void;
+  onOpenDeal: (deal: Deal) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `stage:${stage.id}` });
   const { workspace } = useWorkspace();
@@ -154,12 +308,7 @@ function StageColumn({
         >
           <ul className="space-y-2 py-1">
             {deals.map((deal) => (
-              <DealCard
-                key={deal.id}
-                deal={deal}
-                isAdmin={isAdmin}
-                onDelete={onDeleteDeal}
-              />
+              <DealCard key={deal.id} deal={deal} onOpen={onOpenDeal} />
             ))}
           </ul>
         </SortableContext>
@@ -190,6 +339,7 @@ export function PipelinesPage() {
   const isAdmin = workspace?.role === "admin";
   const queryClient = useQueryClient();
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [newPipeline, setNewPipeline] = useState("");
   const [newStage, setNewStage] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +366,18 @@ export function PipelinesPage() {
     queryFn: () =>
       api<Deal[]>(`/deals?pipelineId=${selected?.id}`, { workspaceId }),
     enabled: Boolean(workspaceId && selected),
+  });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", workspaceId],
+    queryFn: () => api<Contact[]>("/contacts", { workspaceId }),
+    enabled: Boolean(workspaceId && editingDeal),
+  });
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies", workspaceId],
+    queryFn: () => api<Company[]>("/companies", { workspaceId }),
+    enabled: Boolean(workspaceId && editingDeal),
   });
 
   const dealsByStage = useMemo(() => {
@@ -298,13 +460,6 @@ export function PipelinesPage() {
     onSuccess: invalidate,
     onError: () =>
       setError("Não foi possível remover a etapa (talvez haja negócios nela)."),
-  });
-
-  const deleteDeal = useMutation({
-    mutationFn: (id: string) =>
-      api<void>(`/deals/${id}`, { method: "DELETE", workspaceId }),
-    onSuccess: invalidate,
-    onError: () => setError("Não foi possível remover o negócio."),
   });
 
   const onDragEnd = (event: DragEndEvent) => {
@@ -396,7 +551,7 @@ export function PipelinesPage() {
                 deals={dealsByStage.get(stage.id) ?? []}
                 isAdmin={isAdmin}
                 onDeleteStage={(id) => deleteStage.mutate(id)}
-                onDeleteDeal={(id) => deleteDeal.mutate(id)}
+                onOpenDeal={setEditingDeal}
               />
             ))}
             {isAdmin ? (
@@ -429,6 +584,17 @@ export function PipelinesPage() {
           Nenhum pipeline ainda. Crie um para começar.
         </p>
       )}
+      {editingDeal ? (
+        <DealEditor
+          deal={editingDeal}
+          isAdmin={isAdmin}
+          contacts={contacts}
+          companies={companies}
+          onClose={() => setEditingDeal(null)}
+          onSaved={invalidate}
+          onDeleted={invalidate}
+        />
+      ) : null}
     </section>
   );
 }
