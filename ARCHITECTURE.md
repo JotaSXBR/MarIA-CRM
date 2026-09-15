@@ -29,7 +29,7 @@ maria-crm/
 │   ├── worker/           # durable outbox/jobs/AgentRun execution
 │   └── web/              # React + Vite SPA
 ├── packages/
-│   ├── auth/             # AuthPort + WorkOS adapter; local identity mapping
+│   ├── auth/             # local identity/sessions + membership authorization port
 │   ├── contracts/        # Zod/JSON Schema/OpenAPI/event contracts
 │   ├── database/         # Drizzle schema, SQL migrations, RLS, scoped transactions
 │   ├── domain/           # pure domain types/policies/state machines
@@ -42,7 +42,8 @@ maria-crm/
 │   ├── storage/          # S3-compatible object storage port/adapters
 │   ├── evals/            # behavioral eval fixtures/runners
 │   └── telemetry/        # logging, usage, later OpenTelemetry
-├── docs/
+├── adr/                # versioned architecture decision records
+├── docs/               # local-only working docs (gitignored)
 │   ├── engineering/
 │   ├── exec-plans/
 │   ├── product-specs/
@@ -65,7 +66,7 @@ domain -> contracts/types that are infrastructure-free only
 ```
 
 Rules:
-- `@maria/domain` imports no Fastify, Drizzle, AI SDK, WorkOS, WAHA or Meta SDK.
+- `@maria/domain` imports no Fastify, Drizzle, AI SDK, WAHA, Meta SDK or auth-provider SDKs.
 - provider SDK types never leak into domain entities or persisted domain contracts.
 - API handlers are adapters; they do not contain business policy.
 - database rows are mapped to domain/application structures; UI never imports DB schema.

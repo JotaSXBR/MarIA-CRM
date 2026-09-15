@@ -34,8 +34,9 @@ Agents should autonomously implement reversible, well-scoped changes. Before edi
 1. inspect `git status` and relevant repository state;
 2. read `HANDOFF.md` for the latest checkpoint, verify it against Git/PR state, then read the governing docs from §7;
 3. inspect existing contracts/tests before inventing new ones;
-4. for architectural, migration, cross-package or multi-session work, record the decision and
-   verification in the PR description until execution-plan documentation is restored.
+4. for architectural, migration, cross-package or multi-session work, record the decision as an
+   ADR in `adr/` (same PR) and the verification in the PR description; when code and an existing
+   ADR disagree, fix the code or supersede the ADR — never leave silent drift.
 
 During work:
 - prefer the smallest vertical slice that proves behavior;
@@ -134,9 +135,9 @@ Before completion, run required gates for the touched scope, inspect the final d
 | ORM / contracts | **Drizzle ORM 0.45.2 stable** + Drizzle Kit · **Zod 4.5.x** |
 | API / realtime | **Fastify 5.x** · REST/OpenAPI · SSE default; WebSocket only when full duplex is justified |
 | AI provider layer | **Vercel AI SDK 7** behind `@maria/ai-gateway`; OpenAI primary, fallbacks optional |
-| Frontend | **React 19.2.x + Vite 8.2.x** SPA · **TanStack Query v5** |
-| UI | **Tailwind CSS 4.3.x + shadcn/ui + Base UI** |
-| Auth MVP | **WorkOS AuthKit** behind `@maria/auth`; local tenancy/authorization remains canonical |
+| Frontend | **React 19.2.x + Vite 8.2.x** SPA · **TanStack Router + TanStack Query v5** · `@dnd-kit` for Kanban |
+| UI | **Tailwind CSS 4.3.x**; shadcn/ui + Base UI vendored when richer primitives are needed |
+| Auth MVP | **Local email/password + sessions** behind `@maria/auth` (ADR 0002); external providers optional later; local tenancy/authorization remains canonical |
 | Messaging | `MessagingProvider` with **WAHA** first + **Meta WhatsApp Cloud API** adapter from day one |
 | Media | S3-compatible `StoragePort`; local/self-hosted or external implementation |
 | MCP | **MCP 2026-07-28**, TypeScript SDK v2 |
@@ -172,6 +173,7 @@ mutable `latest` image tags. Exact versions belong in manifests and lockfiles.
 ## 7. Essential repository contracts
 
 - `ARCHITECTURE.md` — system boundaries and target repository topology.
+- `adr/` — versioned decision records; superseded records are marked, never rewritten.
 - `README.md` — public project identity and current status.
 - `LICENSE` — AGPL-3.0-only terms.
 
