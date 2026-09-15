@@ -125,6 +125,27 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
       );
       expect(gone.status).toBe(404);
 
+      const companyCreated = await fetch(
+        `${address}/companies?workspaceId=${workspaceA}`,
+        {
+          method: "POST",
+          headers: { ...authed, "content-type": "application/json" },
+          body: JSON.stringify({ name: "E2E Company" }),
+        },
+      );
+      expect(companyCreated.status).toBe(201);
+      const company = (await companyCreated.json()) as { id: string };
+      const companyDeleted = await fetch(
+        `${address}/companies/${company.id}?workspaceId=${workspaceA}`,
+        { method: "DELETE", headers: authed },
+      );
+      expect(companyDeleted.status).toBe(204);
+      const companyGone = await fetch(
+        `${address}/companies/${company.id}?workspaceId=${workspaceA}`,
+        { headers: authed },
+      );
+      expect(companyGone.status).toBe(404);
+
       child.kill("SIGTERM");
       const [exitCode, signal] = await exited;
       if (process.platform === "win32") {

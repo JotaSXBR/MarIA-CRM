@@ -307,3 +307,37 @@ test("contact CRUD stays workspace-scoped and soft-deletes under the runtime rol
     ).rows[0]?.deleted_at,
   ).not.toBeNull();
 });
+
+test("company CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {
+  const created = await database.createCompany(workspaceA, {
+    name: "Scoped Co",
+  });
+  expect(created).toMatchObject({ name: "Scoped Co" });
+  expect(await database.getCompany(workspaceA, created.id)).toMatchObject({
+    id: created.id,
+  });
+  expect(await database.getCompany(workspaceB, created.id)).toBeUndefined();
+  expect(
+    await database.updateCompany(workspaceB, created.id, { name: "Cross" }),
+  ).toBeUndefined();
+
+  const updated = await database.updateCompany(workspaceA, created.id, {
+    name: "Renamed Co",
+  });
+  expect(updated).toMatchObject({ name: "Renamed Co" });
+
+  expect(await database.deleteCompany(workspaceB, created.id)).toBe(false);
+  expect(await database.deleteCompany(workspaceA, created.id)).toBe(true);
+  expect(await database.deleteCompany(workspaceA, created.id)).toBe(false);
+  expect(await database.getCompany(workspaceA, created.id)).toBeUndefined();
+  expect(
+    (await database.listCompanies(workspaceA)).map((c) => c.id),
+  ).not.toContain(created.id);
+  expect(
+    (
+      await admin.query("select deleted_at from companies where id = $1", [
+        created.id,
+      ])
+    ).rows[0]?.deleted_at,
+  ).not.toBeNull();
+});

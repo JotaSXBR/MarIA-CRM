@@ -65,8 +65,14 @@ export const companies = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [index("companies_workspace_id_idx").on(table.workspaceId)],
+  (table) => [
+    index("companies_workspace_id_idx").on(table.workspaceId),
+    index("companies_workspace_active_idx")
+      .on(table.workspaceId)
+      .where(sql`deleted_at is null`),
+  ],
 );
 
 export const users = pgTable("users", {

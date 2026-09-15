@@ -12,13 +12,12 @@ gh pr status
 
 ## Current work
 
-PR [#18](https://github.com/JotaSXBR/MarIA-CRM/pull/18) merged. Branch `feat/contact-crud` adds workspace-scoped contact CRUD:
+PR [#21](https://github.com/JotaSXBR/MarIA-CRM/pull/21) merged. Branch `feat/companies-crud` adds workspace-scoped company CRUD mirroring the contacts contract:
 
-- Migration `0003_contact_soft_delete.sql` adds `contacts.deleted_at` plus a partial `workspace_id` index on active rows.
-- `@maria/database` gains `getContact`, `createContact`, `updateContact` and `deleteContact`, all through `withWorkspace`; reads/updates/delete filter `deleted_at is null`. Delete is a soft delete via `UPDATE` because `maria_runtime` deliberately has no `DELETE` grant (least privilege preserved; user-approved decision).
-- `apps/api` adds `POST /contacts`, `GET /contacts/:id`, `PATCH /contacts/:id` and `DELETE /contacts/:id` (all with `?workspaceId=`), sharing one session+membership authorization helper. `DELETE` additionally requires the workspace `admin` role (403 for members).
-- API integration tests cover member CRUD, unauthenticated rejection, 404 on missing rows, admin-only delete and cross-tenant denial; the database RLS test proves cross-workspace CRUD isolation and that soft-deleted rows stay hidden; the E2E test runs a real create/read/update/delete roundtrip against the built server.
-- `.gitattributes` pins `eol=lf` so Windows checkouts stop breaking `pnpm fmt:check` with CRLF.
+- Migration `0004_company_soft_delete.sql` adds `companies.deleted_at` plus a partial `workspace_id` index on active rows.
+- `@maria/database` gains `listCompanies`, `getCompany`, `createCompany`, `updateCompany` and `deleteCompany`, all through `withWorkspace` and filtering `deleted_at is null`. Soft delete via `UPDATE` keeps `maria_runtime` at least privilege (no `DELETE` grant).
+- `apps/api` adds `GET`/`POST /companies` and `GET`/`PATCH`/`DELETE /companies/:id` (all with `?workspaceId=`), reusing the shared session+membership authorization helper (renamed `authorizeWorkspaceRequest`). `DELETE` requires the workspace `admin` role.
+- Tests mirror the contacts coverage: API contract (401/403/404/roundtrip, cross-workspace denial), RLS CRUD isolation and an E2E create/delete/404 roundtrip against the built server.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -55,6 +54,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the contact-CRUD PR manually. Remaining slices: workspace/org management in the admin panel, web CRM flows and Resend invitation delivery. Runtime credential/deployment wiring, worker/agent runtime and remaining product domains are still pending; preserve RLS and transaction cleanup.
+Review CI and merge the companies-CRUD PR manually. Remaining slices: workspace/org management in the admin panel, web CRM flows (login + contacts/companies), then pipelines/stages/deals. Resend invitations are paused indefinitely; WAHA messaging and the agent runtime come after the non-AI features. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
