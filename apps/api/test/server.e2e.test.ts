@@ -28,7 +28,13 @@ test("built server responds over HTTP and shuts down on SIGTERM", async () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "ok" });
     child.kill("SIGTERM");
-    expect(await exited).toEqual([0, null]);
+    const [exitCode, signal] = await exited;
+    // On Windows, processes terminated by SIGTERM report the signal instead of exit code 0
+    if (process.platform === "win32") {
+      expect(signal).toBe("SIGTERM");
+    } else {
+      expect([exitCode, signal]).toEqual([0, null]);
+    }
   } finally {
     clearTimeout(timeout);
     lines.close();
