@@ -259,4 +259,51 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       ),
     ),
   ).rejects.toThrow("maria_runtime has unsafe role attributes");
+  await admin.query("alter role maria_runtime nobypassrls");
+});
+
+test("contact CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {
+  const created = await database.createContact(workspaceA, {
+    name: "Scoped",
+    email: "scoped@example.com",
+  });
+  expect(created).toMatchObject({
+    name: "Scoped",
+    email: "scoped@example.com",
+    phone: null,
+  });
+  expect(await database.getContact(workspaceA, created.id)).toMatchObject({
+    id: created.id,
+  });
+  expect(await database.getContact(workspaceB, created.id)).toBeUndefined();
+  expect(
+    await database.updateContact(workspaceB, created.id, { name: "Cross" }),
+  ).toBeUndefined();
+
+  const updated = await database.updateContact(workspaceA, created.id, {
+    name: "Renamed",
+    phone: "+55 11 99999-0000",
+  });
+  expect(updated).toMatchObject({
+    name: "Renamed",
+    email: "scoped@example.com",
+  });
+
+  expect(await database.deleteContact(workspaceB, created.id)).toBe(false);
+  expect(await database.deleteContact(workspaceA, created.id)).toBe(true);
+  expect(await database.deleteContact(workspaceA, created.id)).toBe(false);
+  expect(await database.getContact(workspaceA, created.id)).toBeUndefined();
+  expect(
+    await database.updateContact(workspaceA, created.id, { name: "Ghost" }),
+  ).toBeUndefined();
+  expect(
+    (await database.listContacts(workspaceA)).map((c) => c.id),
+  ).not.toContain(created.id);
+  expect(
+    (
+      await admin.query("select deleted_at from contacts where id = $1", [
+        created.id,
+      ])
+    ).rows[0]?.deleted_at,
+  ).not.toBeNull();
 });

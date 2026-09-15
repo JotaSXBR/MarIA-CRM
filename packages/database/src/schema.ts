@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -43,8 +44,14 @@ export const contacts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [index("contacts_workspace_id_idx").on(table.workspaceId)],
+  (table) => [
+    index("contacts_workspace_id_idx").on(table.workspaceId),
+    index("contacts_workspace_active_idx")
+      .on(table.workspaceId)
+      .where(sql`deleted_at is null`),
+  ],
 );
 
 export const companies = pgTable(

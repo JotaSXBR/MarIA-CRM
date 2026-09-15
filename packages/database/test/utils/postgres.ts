@@ -12,6 +12,7 @@ const migrations = [
   "0000_product_foundation.sql",
   "0001_runtime_role.sql",
   "0002_local_identity.sql",
+  "0003_contact_soft_delete.sql",
 ];
 
 export type TestDatabase = {

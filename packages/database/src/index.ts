@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { contacts } from "./schema.ts";
@@ -35,21 +35,70 @@ export function createDatabase(pool: Pool) {
     });
   };
 
+  const contactColumns = {
+    id: contacts.id,
+    name: contacts.name,
+    email: contacts.email,
+    phone: contacts.phone,
+    createdAt: contacts.createdAt,
+  };
+
+  const active = () => isNull(contacts.deletedAt);
+
   return {
     close: () => pool.end(),
     listContacts: (workspaceId: string) =>
       withWorkspace(workspaceId, (tx) =>
         tx
-          .select({
-            id: contacts.id,
-            name: contacts.name,
-            email: contacts.email,
-            phone: contacts.phone,
-            createdAt: contacts.createdAt,
-          })
+          .select(contactColumns)
           .from(contacts)
+          .where(active())
           .orderBy(contacts.createdAt, contacts.id),
       ),
+    getContact: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(contactColumns)
+          .from(contacts)
+          .where(and(eq(contacts.id, id), active()))
+          .limit(1);
+        return rows[0];
+      }),
+    createContact: (
+      workspaceId: string,
+      input: { name: string; email?: string | null; phone?: string | null },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .insert(contacts)
+          .values({ workspaceId, ...input })
+          .returning(contactColumns);
+        const row = rows[0];
+        if (!row) throw new Error("contact insert returned no row");
+        return row;
+      }),
+    updateContact: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string; email?: string | null; phone?: string | null },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(contacts)
+          .set(input)
+          .where(and(eq(contacts.id, id), active()))
+          .returning(contactColumns);
+        return rows[0];
+      }),
+    deleteContact: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(contacts)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(contacts.id, id), active()))
+          .returning({ id: contacts.id });
+        return rows.length > 0;
+      }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
   };
