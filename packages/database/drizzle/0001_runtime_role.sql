@@ -21,14 +21,15 @@ BEGIN
     OR runtime_role.rolcreaterole
     OR runtime_role.rolcreatedb
     OR runtime_role.rolreplication
-    OR runtime_role.rolbypassrls
-    OR EXISTS (
-      SELECT 1
-      FROM pg_class
-      WHERE relowner = (SELECT oid FROM pg_roles WHERE rolname = 'maria_runtime')
-        AND relname IN ('contacts', 'companies')
-    ) THEN
+    OR runtime_role.rolbypassrls THEN
     RAISE EXCEPTION 'maria_runtime has unsafe role attributes';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_class
+    WHERE relowner = (SELECT oid FROM pg_roles WHERE rolname = 'maria_runtime')
+      AND relname IN ('contacts', 'companies')
+  ) THEN
+    RAISE EXCEPTION 'maria_runtime must not own protected tenant tables';
   END IF;
 END
 $$;
