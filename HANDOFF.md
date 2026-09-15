@@ -12,7 +12,7 @@ gh pr status
 
 ## Current work
 
-Branch `feat/runtime-role-provisioning` preserves the two local Devin-adaptation commits that were previously ahead of `origin/main`. It adds migration `0001_runtime_role.sql`, which creates `maria_runtime` without a password or privileged attributes, rejects an existing unsafe or protected-table-owning role, and applies only the currently required database/schema/table grants. Deployment must set the login credential through its secret manager.
+PR [#16](https://github.com/JotaSXBR/MarIA-CRM/pull/16) is open from `feat/runtime-role-provisioning` and awaits manual review and merge. It preserves the two local Devin-adaptation commits that were previously ahead of `origin/main` and adds migration `0001_runtime_role.sql`, which creates `maria_runtime` without a password or privileged attributes, rejects an existing unsafe or protected-table-owning role, and applies only the currently required database/schema/table grants. Deployment must set the login credential through its secret manager.
 
 The PostgreSQL integration test now consumes the checked-in runtime-role migration instead of provisioning grants itself. It verifies login and role restrictions, least-privilege grants, non-ownership, forced RLS, cross-workspace isolation, transaction cleanup and fail-closed migration behavior. `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers.
 
@@ -49,6 +49,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review and commit the runtime-role slice, then open its PR. Add real authentication and membership authorization before wiring the contacts route into the production server. Runtime credential/deployment wiring, remaining contact operations, web CRM flows and remaining product domains are still pending; preserve RLS and transaction cleanup.
+Review CI and merge PR #16 manually. After it merges, add real authentication and membership authorization before wiring the contacts route into the production server. Runtime credential/deployment wiring, remaining contact operations, web CRM flows and remaining product domains are still pending; preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
