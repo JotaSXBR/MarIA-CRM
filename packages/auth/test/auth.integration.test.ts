@@ -81,6 +81,97 @@ test("local auth supports login, session verification and workspace authorizatio
   ).resolves.toBeUndefined();
 });
 
+test("admin management runs under the runtime role with least privilege", async () => {
+  const org = await database.createOrganization({ name: "Mgmt Org" });
+  const workspace = await database.createWorkspace({
+    orgId: org.id,
+    name: "Mgmt Workspace",
+  });
+  expect(workspace).toBeDefined();
+  expect(
+    await database.createWorkspace({ orgId: randomUUID(), name: "Nope" }),
+  ).toBeUndefined();
+
+  const user = await auth.createUser({
+    email: "managed@example.com",
+    name: "Managed",
+    password: "managed-password",
+  });
+  expect(user).toBeDefined();
+  expect(
+    await auth.addMembership({
+      userId: user!.userId,
+      workspaceId: workspace!.id,
+      role: "admin",
+    }),
+  ).toBe("created");
+  expect(
+    await auth.addMembership({
+      userId: user!.userId,
+      workspaceId: workspace!.id,
+      role: "member",
+    }),
+  ).toBe("duplicate");
+  expect(
+    await auth.addMembership({
+      userId: randomUUID(),
+      workspaceId: workspace!.id,
+      role: "member",
+    }),
+  ).toBe("not-found");
+  expect(
+    await auth.addMembership({
+      userId: user!.userId,
+      workspaceId: randomUUID(),
+      role: "member",
+    }),
+  ).toBe("not-found");
+
+  const members = await auth.listMembers(workspace!.id);
+  expect(members).toHaveLength(1);
+  expect(
+    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "member"),
+  ).toBe("last-admin");
+
+  const second = await auth.createUser({
+    email: "second@example.com",
+    name: "Second",
+    password: "second-password",
+  });
+  await auth.addMembership({
+    userId: second!.userId,
+    workspaceId: workspace!.id,
+    role: "admin",
+  });
+  expect(
+    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "member"),
+  ).toBe("updated");
+
+  const members2 = await auth.listMembers(workspace!.id);
+  const lastAdmin = members2.find((member) => member.role === "admin")!;
+  const member = members2.find((member) => member.role === "member")!;
+  expect(await auth.removeMembership(workspace!.id, lastAdmin.id)).toBe(
+    "last-admin",
+  );
+  expect(await auth.removeMembership(workspace!.id, member.id)).toBe("removed");
+  expect(await auth.removeMembership(workspace!.id, member.id)).toBe(
+    "not-found",
+  );
+
+  const users = await auth.listUsers();
+  const globalAdmin = users.find((row) => row.isAdmin);
+  expect(globalAdmin).toBeDefined();
+  expect(await auth.updateUser(user!.userId, { name: "Renamed" })).toBe(
+    "updated",
+  );
+  expect(await auth.updateUser(randomUUID(), { name: "Nope" })).toBe(
+    "not-found",
+  );
+  expect(await auth.updateUser(globalAdmin!.id, { active: false })).toBe(
+    "last-admin",
+  );
+});
+
 test("session expires after token lifetime", async () => {
   const organization = randomUUID();
   const workspace = randomUUID();

@@ -12,12 +12,13 @@ gh pr status
 
 ## Current work
 
-PR [#21](https://github.com/JotaSXBR/MarIA-CRM/pull/21) merged. Branch `feat/companies-crud` adds workspace-scoped company CRUD mirroring the contacts contract:
+PR [#22](https://github.com/JotaSXBR/MarIA-CRM/pull/22) merged. Branch `feat/admin-management` adds the global-admin management surface:
 
-- Migration `0004_company_soft_delete.sql` adds `companies.deleted_at` plus a partial `workspace_id` index on active rows.
-- `@maria/database` gains `listCompanies`, `getCompany`, `createCompany`, `updateCompany` and `deleteCompany`, all through `withWorkspace` and filtering `deleted_at is null`. Soft delete via `UPDATE` keeps `maria_runtime` at least privilege (no `DELETE` grant).
-- `apps/api` adds `GET`/`POST /companies` and `GET`/`PATCH`/`DELETE /companies/:id` (all with `?workspaceId=`), reusing the shared session+membership authorization helper (renamed `authorizeWorkspaceRequest`). `DELETE` requires the workspace `admin` role.
-- Tests mirror the contacts coverage: API contract (401/403/404/roundtrip, cross-workspace denial), RLS CRUD isolation and an E2E create/delete/404 roundtrip against the built server.
+- Migration `0005_admin_grants.sql` grants `maria_runtime` `SELECT/INSERT/UPDATE` on the global `organizations`/`workspaces` tables and adds a unique index on `memberships (user_id, workspace_id)` (previously unenforced).
+- `@maria/database` gains `listOrganizations`/`createOrganization`/`listWorkspaces`/`createWorkspace` (global tables, no workspace scope; `createWorkspace` returns undefined for a missing org).
+- `@maria/auth` gains `listUsers`, `updateUser` (name/active), `listMembers`, `addMembership` (created/duplicate/not-found), `updateMembershipRole` and `removeMembership`. Membership ops run via `withWorkspace`; anti-lockout guards refuse demoting/removing a workspace's last admin and deactivating the last active global admin.
+- `apps/api` adds `/admin/*` routes guarded by a shared `requireAdmin` helper (`session.isAdmin`): users list/patch, organizations list/create, workspaces list/create, workspace members list, membership create/patch/delete.
+- Tests: API contract coverage for all new routes; a Testcontainers auth test proves the new grants work under `maria_runtime` and the last-admin guards hold; the E2E now provisions org, workspaces, membership and a member user entirely through the admin API.
 
 `pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
 
@@ -54,6 +55,6 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Review CI and merge the companies-CRUD PR manually. Remaining slices: workspace/org management in the admin panel, web CRM flows (login + contacts/companies), then pipelines/stages/deals. Resend invitations are paused indefinitely; WAHA messaging and the agent runtime come after the non-AI features. Preserve RLS and transaction cleanup.
+Review CI and merge the admin-management PR manually. Remaining slices: web CRM flows (login + contacts/companies), then pipelines/stages/deals. Resend invitations are paused indefinitely; WAHA messaging and the agent runtime come after the non-AI features. Preserve RLS and transaction cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

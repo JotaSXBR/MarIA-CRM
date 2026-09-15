@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql, type SQLWrapper } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { companies, contacts } from "./schema.ts";
+import { companies, contacts, organizations, workspaces } from "./schema.ts";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -154,6 +154,49 @@ export function createDatabase(pool: Pool) {
           .returning({ id: companies.id });
         return rows.length > 0;
       }),
+    listOrganizations: () =>
+      db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          createdAt: organizations.createdAt,
+        })
+        .from(organizations)
+        .orderBy(organizations.createdAt, organizations.id),
+    createOrganization: async (input: { name: string }) => {
+      const rows = await db
+        .insert(organizations)
+        .values(input)
+        .returning({ id: organizations.id });
+      const row = rows[0];
+      if (!row) throw new Error("organization insert returned no row");
+      return row;
+    },
+    listWorkspaces: () =>
+      db
+        .select({
+          id: workspaces.id,
+          orgId: workspaces.orgId,
+          name: workspaces.name,
+          createdAt: workspaces.createdAt,
+        })
+        .from(workspaces)
+        .orderBy(workspaces.createdAt, workspaces.id),
+    createWorkspace: async (input: { orgId: string; name: string }) => {
+      const org = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, input.orgId))
+        .limit(1);
+      if (!org[0]) return undefined;
+      const rows = await db
+        .insert(workspaces)
+        .values(input)
+        .returning({ id: workspaces.id });
+      const row = rows[0];
+      if (!row) throw new Error("workspace insert returned no row");
+      return row;
+    },
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
   };
