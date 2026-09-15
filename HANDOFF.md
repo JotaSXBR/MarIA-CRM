@@ -1,13 +1,13 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-14
+Updated: 2026-09-15
 
 ## Verify first
 
 ```bash
-rtk git status --short --branch
-rtk git branch --show-current
-rtk gh pr status
+git status --short --branch
+git branch --show-current
+gh pr status
 ```
 
 ## Current work
@@ -17,6 +17,18 @@ PR [#13](https://github.com/JotaSXBR/MarIA-CRM/pull/13) was merged after CI and 
 The current slice adds the first consuming contract: `createDatabase(...).listContacts(workspaceId)` runs through the existing guarded workspace transaction, and `buildApp` can expose `GET /contacts` only when both that database dependency and an authorization resolver are injected. The production server injects neither, so unauthenticated `/contacts` remains unavailable while `/health` remains liveness-only.
 
 Repository Codex routing is versioned in `.codex/` and documented in `AGENTS.md`.
+
+## Devin Adaptation
+
+Added Devin-specific skills and configuration in `.devin/`:
+- `maria-dev-setup`: Environment setup and development commands
+- `maria-database-rls`: Database operations and RLS patterns
+- `maria-api-development`: Fastify API development patterns
+- `maria-testing`: Testing strategy (unit, integration, E2E)
+- `maria-devin-adaptation`: Context adaptation for Devin operations
+- `config.json`: Project configuration and invariants
+
+Devin operates as a general-purpose agent with specialized skills, following AGENTS.md as the primary contract. Codex-specific configurations remain in `.codex/` for Codex CLI users.
 
 ## Environment
 
