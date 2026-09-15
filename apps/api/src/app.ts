@@ -529,6 +529,7 @@ export function buildApp(dependencies?: AppDependencies) {
           body: {
             type: "object",
             additionalProperties: false,
+            minProperties: 1,
             properties: {
               name: { type: "string", minLength: 1 },
               active: { type: "boolean" },
@@ -1239,6 +1240,7 @@ export function buildApp(dependencies?: AppDependencies) {
           body: {
             type: "object",
             additionalProperties: false,
+            minProperties: 1,
             properties: { name: { type: "string", minLength: 1 } },
           },
           response: {
@@ -1354,6 +1356,7 @@ export function buildApp(dependencies?: AppDependencies) {
           body: {
             type: "object",
             additionalProperties: false,
+            minProperties: 1,
             properties: { name: { type: "string", minLength: 1 } },
           },
           response: {
@@ -1516,6 +1519,7 @@ export function buildApp(dependencies?: AppDependencies) {
           body: {
             type: "object",
             additionalProperties: false,
+            minProperties: 1,
             properties: {
               title: { type: "string", minLength: 1 },
               valueCents: { type: ["integer", "null"] },
