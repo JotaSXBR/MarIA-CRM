@@ -18,12 +18,18 @@ RUN node --input-type=module -e '\
 FROM node AS build
 WORKDIR /build
 RUN npm install --global pnpm@11.26.0 --ignore-scripts
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json turbo.json ./
 COPY apps/api/package.json apps/api/package.json
+COPY packages/auth/package.json packages/auth/package.json
+COPY packages/database/package.json packages/database/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY apps/api/tsconfig*.json apps/api/
 COPY apps/api/src apps/api/src
-RUN pnpm --filter @maria/api build \
+COPY packages/auth/src packages/auth/src
+COPY packages/auth/tsconfig*.json packages/auth/
+COPY packages/database/src packages/database/src
+COPY packages/database/tsconfig*.json packages/database/
+RUN pnpm turbo run build --filter=@maria/api... \
   && pnpm --filter @maria/api deploy --prod /out
 
 FROM node AS runtime

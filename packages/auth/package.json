@@ -1,5 +1,5 @@
 {
-  "name": "@maria/database",
+  "name": "@maria/auth",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -8,14 +8,6 @@
     "dist"
   ],
   "exports": {
-    "./schema": {
-      "types": "./src/schema.ts",
-      "default": "./dist/schema.js"
-    },
-    "./testing": {
-      "types": "./test/utils/postgres.ts",
-      "default": "./test/utils/postgres.ts"
-    },
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
@@ -24,15 +16,17 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run test/database.test.ts",
-    "test:integration": "vitest run test/rls.integration.test.ts"
+    "test:integration": "vitest run test/auth.integration.test.ts"
   },
   "dependencies": {
+    "@maria/database": "workspace:*",
+    "bcryptjs": "2.4.3",
     "drizzle-orm": "0.45.2",
     "pg": "8.16.3"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "11.7.0",
+    "@types/bcryptjs": "2.4.6",
     "@types/pg": "8.15.5",
     "vitest": "5.0.0"
   }
