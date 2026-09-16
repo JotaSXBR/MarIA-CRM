@@ -3,6 +3,8 @@ import {
   bigint,
   boolean,
   index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -223,4 +225,118 @@ export const invitations = pgTable(
       .notNull(),
   },
   (table) => [index("invitations_workspace_id_idx").on(table.workspaceId)],
+);
+
+export const channelInstances = pgTable(
+  "channel_instances",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: text().notNull(),
+    providerInstanceId: text("provider_instance_id"),
+    webhookSecret: text("webhook_secret").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("channel_instances_workspace_id_idx").on(table.workspaceId),
+    uniqueIndex("channel_instances_provider_key_idx").on(
+      table.workspaceId,
+      table.provider,
+      table.providerInstanceId,
+    ),
+  ],
+);
+
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    channelInstanceId: uuid("channel_instance_id")
+      .references(() => channelInstances.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id").references(() => contacts.id),
+    providerThreadId: text("provider_thread_id").notNull(),
+    epoch: integer().notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("conversations_workspace_id_idx").on(table.workspaceId),
+    uniqueIndex("conversations_thread_key_idx").on(
+      table.channelInstanceId,
+      table.providerThreadId,
+    ),
+  ],
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    providerMessageId: text("provider_message_id"),
+    direction: text().notNull(),
+    status: text().notNull().default("received"),
+    contentType: text("content_type").notNull().default("text"),
+    body: text(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("messages_conversation_id_idx").on(table.conversationId),
+    uniqueIndex("messages_provider_id_idx").on(
+      table.conversationId,
+      table.providerMessageId,
+    ),
+  ],
+);
+
+export const webhookEvents = pgTable(
+  "webhook_events",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    channelInstanceId: uuid("channel_instance_id")
+      .references(() => channelInstances.id, { onDelete: "cascade" })
+      .notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    providerEventKind: text("provider_event_kind").notNull(),
+    payload: jsonb().notNull(),
+    signatureVerified: boolean("signature_verified").notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("webhook_events_channel_id_idx").on(table.channelInstanceId),
+    uniqueIndex("webhook_events_unique_idx").on(
+      table.channelInstanceId,
+      table.providerEventId,
+      table.providerEventKind,
+    ),
+  ],
 );

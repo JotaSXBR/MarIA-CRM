@@ -3,12 +3,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Pool } from "pg";
 import {
+  channelInstances,
   companies,
   contacts,
+  conversations,
   deals,
+  messages,
   organizations,
   pipelines,
   stages,
+  webhookEvents,
   workspaces,
 } from "./schema.ts";
 
@@ -605,6 +609,130 @@ export function createDatabase(pool: Pool) {
           .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
           .returning({ id: deals.id });
         return rows.length > 0;
+      }),
+    createChannelInstance: (
+      workspaceId: string,
+      input: {
+        provider: string;
+        providerInstanceId?: string | null;
+        webhookSecret: string;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .insert(channelInstances)
+          .values({
+            workspaceId,
+            provider: input.provider,
+            providerInstanceId: input.providerInstanceId ?? null,
+            webhookSecret: input.webhookSecret,
+          })
+          .returning({
+            id: channelInstances.id,
+            workspaceId: channelInstances.workspaceId,
+            provider: channelInstances.provider,
+            providerInstanceId: channelInstances.providerInstanceId,
+            webhookSecret: channelInstances.webhookSecret,
+            isActive: channelInstances.isActive,
+          });
+        return rows[0];
+      }),
+    getChannelInstance: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: channelInstances.id,
+            workspaceId: channelInstances.workspaceId,
+            provider: channelInstances.provider,
+            providerInstanceId: channelInstances.providerInstanceId,
+            webhookSecret: channelInstances.webhookSecret,
+            isActive: channelInstances.isActive,
+          })
+          .from(channelInstances)
+          .where(
+            and(
+              eq(channelInstances.id, id),
+              eq(channelInstances.isActive, true),
+            ),
+          )
+          .limit(1);
+        return rows[0];
+      }),
+    receiveInboundMessage: (
+      workspaceId: string,
+      input: {
+        channelInstanceId: string;
+        providerThreadId: string;
+        providerMessageId: string;
+        providerEventId: string;
+        providerEventKind: string;
+        senderPhone?: string | null;
+        contentType: string;
+        body: string;
+        rawPayload: unknown;
+        signatureVerified: boolean;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const webhookRows = await tx
+          .insert(webhookEvents)
+          .values({
+            workspaceId,
+            channelInstanceId: input.channelInstanceId,
+            providerEventId: input.providerEventId,
+            providerEventKind: input.providerEventKind,
+            payload: input.rawPayload as Record<string, unknown>,
+            signatureVerified: input.signatureVerified,
+            processedAt: new Date(),
+          })
+          .onConflictDoNothing({
+            target: [
+              webhookEvents.channelInstanceId,
+              webhookEvents.providerEventId,
+              webhookEvents.providerEventKind,
+            ],
+          })
+          .returning({ id: webhookEvents.id });
+        if (webhookRows.length === 0) {
+          return { kind: "duplicate" as const };
+        }
+        const conversationRows = await tx
+          .insert(conversations)
+          .values({
+            workspaceId,
+            channelInstanceId: input.channelInstanceId,
+            providerThreadId: input.providerThreadId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              conversations.channelInstanceId,
+              conversations.providerThreadId,
+            ],
+            set: { updatedAt: new Date() },
+          })
+          .returning({ id: conversations.id });
+        const conversation = conversationRows[0];
+        if (!conversation) throw new Error("conversation upsert failed");
+        const messageRows = await tx
+          .insert(messages)
+          .values({
+            workspaceId,
+            conversationId: conversation.id,
+            providerMessageId: input.providerMessageId,
+            direction: "inbound",
+            contentType: input.contentType,
+            body: input.body,
+          })
+          .onConflictDoNothing({
+            target: [messages.conversationId, messages.providerMessageId],
+          })
+          .returning({ id: messages.id });
+        const messageId = messageRows[0]?.id;
+        return {
+          kind: "received" as const,
+          conversationId: conversation.id,
+          ...(messageId ? { messageId } : {}),
+        };
       }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
