@@ -2,6 +2,15 @@
 
 > System architecture source of truth. Baseline: 2026-09-09.
 
+## Implementation status
+
+The topology and Control/Execution Plane sections below define the target architecture.
+Currently implemented: `apps/api`, `apps/web`, `packages/auth` and `packages/database`,
+covering local sessions, administration and workspace-scoped contacts, companies and pipelines.
+Workers, messaging adapters, outbox/effect ledger, agent runtime and deployment publication
+are not implemented. ADR 0010 defines the messaging reliability requirements before implementation.
+Use `HANDOFF.md` for the current checkpoint and `DEVELOPMENT.md` for actual verification coverage.
+
 ## Product boundary
 
 MarIA CRM is a multi-tenant CRM + omnichannel messaging platform in which AI agents and human
@@ -87,7 +96,7 @@ Owns authoring:
 MCP is an administrative interface into this plane, not a shortcut around policy. Published
 versions include hashes of prompt, tool schemas/policies and relevant configuration.
 
-## Execution Plane
+## Execution Plane (target; not implemented)
 
 Owns customer runtime:
 1. receive normalized event;
@@ -118,6 +127,16 @@ transaction:
 
 External network calls occur outside the DB transaction. Their intent/result is represented by
 durable outbox/effect state.
+
+Before an external send, commit a uniquely claimed dispatch attempt and its deterministic effect
+key. A timeout or crash after dispatch can mean the provider accepted it: expired leases must not
+turn ambiguous attempts into ordinary retries. Reuse a verified provider idempotency key, reconcile
+the result, or block for operator resolution. Persist confirmed provider IDs and receipt completion
+atomically. ADR 0010 defines this state machine and the required failure-injection checks.
+
+Validate the conversation epoch atomically when committing an AI outbound intent and again when
+claiming it for dispatch; takeover cancels queued stale intents. A send already accepted by a provider
+cannot be revoked by a later database epoch update; represent that boundary explicitly in the UI/audit.
 
 ## Media
 

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import bcryptjs from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { Database } from "@maria/database";
 import {
@@ -121,6 +121,7 @@ export function createLocalAuth(
   config: LocalAuthConfig,
 ): AuthPort {
   const db = drizzle({ client: pool });
+  type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   const login = async (
     email: string,
@@ -255,7 +256,22 @@ export function createLocalAuth(
       .from(users)
       .orderBy(users.createdAt, users.id);
 
-  const countActiveAdmins = async (tx: Pick<typeof db, "select">) => {
+  const lockGlobalAdminState = async (tx: Transaction) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext('maria_auth_global_admin'))`,
+    );
+  };
+
+  const lockWorkspaceMemberships = async (
+    tx: Transaction,
+    workspaceId: string,
+  ) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext('maria_auth_memberships'), hashtext(${workspaceId}))`,
+    );
+  };
+
+  const countActiveAdmins = async (tx: Pick<Transaction, "select">) => {
     const rows = await tx
       .select({ id: users.id })
       .from(users)
@@ -268,6 +284,7 @@ export function createLocalAuth(
     input: { name?: string | undefined; active?: boolean | undefined },
   ): Promise<"updated" | "not-found" | "last-admin"> => {
     return db.transaction(async (tx) => {
+      if (input.active === false) await lockGlobalAdminState(tx);
       const rows = await tx
         .select({ isAdmin: users.isAdmin, active: users.active })
         .from(users)
@@ -334,7 +351,7 @@ export function createLocalAuth(
   };
 
   const isLastWorkspaceAdmin = async (
-    tx: Pick<typeof db, "select">,
+    tx: Pick<Transaction, "select">,
     workspaceId: string,
     membershipId: string,
   ): Promise<boolean> => {
@@ -356,6 +373,7 @@ export function createLocalAuth(
     role: UserRole,
   ): Promise<"updated" | "not-found" | "last-admin"> => {
     return database.withWorkspace(workspaceId, async (tx) => {
+      await lockWorkspaceMemberships(tx, workspaceId);
       const rows = await tx
         .select({ role: memberships.role })
         .from(memberships)
@@ -382,6 +400,7 @@ export function createLocalAuth(
     membershipId: string,
   ): Promise<"removed" | "not-found" | "last-admin"> => {
     return database.withWorkspace(workspaceId, async (tx) => {
+      await lockWorkspaceMemberships(tx, workspaceId);
       const rows = await tx
         .select({ role: memberships.role })
         .from(memberships)

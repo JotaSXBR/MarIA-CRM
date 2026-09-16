@@ -1,132 +1,24 @@
-# MarIA CRM Development Setup
+---
+name: maria-dev-setup
+description: Prepare or diagnose the MarIA CRM local development environment and repository commands.
+---
 
-Skill para configurar e manter o ambiente de desenvolvimento do MarIA CRM.
+# MarIA CRM development setup
 
-## Quando usar
+Read root AGENTS.md and DEVELOPMENT.md. The latter owns Windows/WSL setup, migration
+commands, variables and verification. Versions come from .nvmrc, manifests and lockfile.
 
-Use esta skill quando:
+- Verify branch and HANDOFF.md before edits.
+- For a fresh clone, install with the frozen lockfile, prepare an empty DB, run the shared
+  migration runner and provision the restricted runtime credential.
+- Keep migration credentials separate from the API's DATABASE_URL.
+- Root pnpm dev builds upstream packages and watches dependencies. Direct package dev
+  bypasses root orchestration: build its dependencies first.
+- If pnpm is absent from PATH, use corepack pnpm when available.
+- Use the smallest relevant check first, then required pre-PR gates. Record unavailable
+  Docker, permissions or tools as blockers; never report unexecuted checks as passed.
+- No pnpm clean command exists. Diagnose build/cache failures before removing artifacts.
+  Do not delete database volumes as routine troubleshooting.
 
-- Configurando o ambiente de desenvolvimento pela primeira vez
-- Precisando verificar se o ambiente está configurado corretamente
-- Executando comandos de desenvolvimento e verificação
-- Configurando banco de dados local com Docker
-
-## Comandos Principais
-
-### Setup Inicial
-
-```bash
-# Verificar Node.js version
-node --version  # Deve ser 24.21.x
-
-# Verificar pnpm version
-pnpm --version  # Deve ser 11.26.0
-
-# Instalar dependências
-pnpm install
-
-# Formatar código
-pnpm fmt
-
-# Executar verificação completa
-pnpm verify
-```
-
-### Desenvolvimento
-
-```bash
-# Iniciar dev servers (API:3000, Web:5173)
-pnpm dev
-
-# Executar verificação individual
-pnpm fmt:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:integration  # Requer Docker
-pnpm test:e2e
-pnpm build
-```
-
-### Banco de Dados Local
-
-```bash
-# Iniciar PostgreSQL local
-docker compose -f docker/compose.yaml up -d --wait
-
-# Acessar psql
-docker compose -f docker/compose.yaml exec postgres psql -U maria_admin -d maria
-
-# Parar PostgreSQL
-docker compose -f docker/compose.yaml down
-```
-
-## Requisitos
-
-- Node.js 24.21.0 LTS (usar nvm use se necessário)
-- pnpm 11.26.0 (via Corepack)
-- Docker Desktop (para testes de integração)
-- Docker Desktop WSL integration habilitado (no Windows)
-
-## Stack Versionada
-
-Todas as dependências são versionadas explicitamente:
-
-- TypeScript 7.0.x (strict mode)
-- Fastify 5.x
-- React 19.2.x
-- Vite 8.2.x
-- Drizzle ORM 0.45.2
-- PostgreSQL 18.6
-- Oxlint type-aware
-- Prettier 3.9.0
-
-## Arquitetura de Monorepo
-
-- **apps/api**: Fastify REST API
-- **apps/web**: React + Vite SPA
-- **packages/database**: Drizzle ORM + RLS
-- **[futuros]**: auth, contracts, domain, ai-gateway, agent-runtime, messaging, etc.
-
-## Regras Importantes
-
-1. Nunca trabalhar diretamente em `main`
-2. Sempre rodar `pnpm verify` antes de commitar
-3. Seguir os invariantes de segurança definidos em AGENTS.md
-4. Preservar RLS e transaction cleanup
-5. Usar `withWorkspace()` para operações scoped
-6. Testes de integração requerem Docker
-
-## Troubleshooting
-
-### Formatação
-
-```bash
-pnpm fmt  # Formata automaticamente
-```
-
-### Type errors
-
-```bash
-pnpm typecheck  # Verifica TypeScript strict
-```
-
-### Integration tests falhando
-
-- Verificar se Docker Desktop está rodando
-- Verificar WSL integration (Windows)
-- Verificar se não há portas conflitantes
-
-### Build falhando
-
-```bash
-pnpm clean  # Limpa caches do Turbo
-pnpm build  # Rebuild
-```
-
-## References
-
-- `AGENTS.md`: Contrato de engenharia e segurança
-- `ARCHITECTURE.md`: Arquitetura do sistema
-- `HANDOFF.md`: Checkpoint de desenvolvimento atual
-- `README.md`: Visão geral do projeto
+RTK hooks at .devin/hooks.v1.json and .devin/rtk-pretooluse.mjs are optional gitignored
+customization, not prerequisites for a fresh clone.

@@ -2,6 +2,9 @@
 
 **Status:** accepted (2026-09-16)
 
+**Superseded:** 2026-09-16 by [ADR 0010](0010-messaging-effect-recovery.md).
+**Implementation:** planned; this record does not certify provider behavior or shipped messaging.
+
 ## Context
 
 The next product slice is WhatsApp messaging. AGENTS.md already fixes the non-negotiables:

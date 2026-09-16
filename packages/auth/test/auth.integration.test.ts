@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import type { Pool } from "pg";
+import { Pool } from "pg";
 import { createDatabase } from "@maria/database";
 import { startTestDatabase } from "@maria/database/testing";
-import { createLocalAuth } from "../src/index.ts";
+import { createLocalAuth, type AuthPort } from "../src/index.ts";
 
 let admin: Pool;
 let runtime: Pool;
 let database: ReturnType<typeof createDatabase>;
 let auth: ReturnType<typeof createLocalAuth>;
+let testDatabase: Awaited<ReturnType<typeof startTestDatabase>>;
+const concurrentPools: Pool[] = [];
 
 beforeAll(async () => {
-  const testDatabase = await startTestDatabase();
+  testDatabase = await startTestDatabase();
   admin = testDatabase.admin;
   runtime = testDatabase.runtime;
   database = createDatabase(runtime);
@@ -22,9 +24,123 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-  await runtime?.end();
-  await admin?.end();
+  await Promise.all(concurrentPools.map((pool) => pool.end()));
+  await testDatabase.close();
 }, 30000);
+
+async function createIndependentRuntimeAuth(applicationName: string) {
+  const uri = new URL(testDatabase.container.getConnectionUri());
+  uri.username = "maria_runtime";
+  uri.password = "runtime";
+  uri.searchParams.set("application_name", applicationName);
+  const pool = new Pool({ connectionString: uri.toString(), max: 1 });
+  concurrentPools.push(pool);
+  await pool.query("select 1");
+  return createLocalAuth(pool, createDatabase(pool), {});
+}
+
+async function waitForBlockedConnections(applicationNames: string[]) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await admin.query<{ application_name: string }>(
+      "select application_name from pg_stat_activity where application_name = any($1::text[]) and wait_event_type = 'Lock'",
+      [applicationNames],
+    );
+    if (result.rows.length === applicationNames.length) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("concurrent auth operations did not both block on a lock");
+}
+
+async function runWithMutationGate<T>(
+  applicationNames: string[],
+  lockQuery: string,
+  lockValues: unknown[],
+  start: () => Promise<T[]>,
+) {
+  const client = await admin.connect();
+  let transactionOpen = false;
+  let operations: Promise<T[]> | undefined;
+  try {
+    await client.query("begin");
+    transactionOpen = true;
+    await client.query(lockQuery, lockValues);
+    operations = start();
+    await waitForBlockedConnections(applicationNames);
+    await client.query("commit");
+    transactionOpen = false;
+    return await operations;
+  } finally {
+    if (transactionOpen) await client.query("rollback");
+    client.release();
+    if (operations) await Promise.allSettled([operations]);
+  }
+}
+
+type WorkspaceMutation = (
+  auth: AuthPort,
+  workspaceId: string,
+  membershipId: string,
+) => Promise<"updated" | "removed" | "not-found" | "last-admin">;
+
+async function assertWorkspaceAdminRace(
+  scenario: string,
+  mutations: [WorkspaceMutation, WorkspaceMutation],
+) {
+  const org = await database.createOrganization({ name: `${scenario} Org` });
+  const workspace = await database.createWorkspace({
+    orgId: org.id,
+    name: `${scenario} Workspace`,
+  });
+  if (!workspace) throw new Error("workspace setup failed");
+  const firstUser = await auth.createUser({
+    email: `${scenario}-one-${randomUUID()}@example.com`,
+    name: `${scenario} One`,
+    password: "password",
+  });
+  const secondUser = await auth.createUser({
+    email: `${scenario}-two-${randomUUID()}@example.com`,
+    name: `${scenario} Two`,
+    password: "password",
+  });
+  if (!firstUser || !secondUser) throw new Error("user setup failed");
+  await auth.addMembership({
+    userId: firstUser.userId,
+    workspaceId: workspace.id,
+    role: "admin",
+  });
+  await auth.addMembership({
+    userId: secondUser.userId,
+    workspaceId: workspace.id,
+    role: "admin",
+  });
+  const members = await auth.listMembers(workspace.id);
+  const applicationNames = [
+    `auth-${scenario}-one-${randomUUID()}`,
+    `auth-${scenario}-two-${randomUUID()}`,
+  ];
+  const [firstAuth, secondAuth] = await Promise.all(
+    applicationNames.map(createIndependentRuntimeAuth),
+  );
+  const results = await runWithMutationGate(
+    applicationNames,
+    "select id from memberships where id = any($1::uuid[]) for update",
+    [[members[0]!.id, members[1]!.id]],
+    () =>
+      Promise.all([
+        mutations[0](firstAuth, workspace.id, members[0]!.id),
+        mutations[1](secondAuth, workspace.id, members[1]!.id),
+      ]),
+  );
+  expect(results).toContain("last-admin");
+  expect(
+    results.some((result) => result === "updated" || result === "removed"),
+  ).toBe(true);
+  const remainingMembers = await auth.listMembers(workspace.id);
+  expect(
+    remainingMembers.filter((member) => member.role === "admin"),
+  ).toHaveLength(1);
+}
 
 test("local auth supports login, session verification and workspace authorization", async () => {
   await auth.seedAdmin();
@@ -201,4 +317,69 @@ test("session expires after token lifetime", async () => {
     "update sessions set expires_at = now() - interval '1 second'",
   );
   expect(await auth.verifySession(login!.token)).toBeUndefined();
+});
+
+test("concurrent admin removals preserve the last administrators", async () => {
+  const globalOne = await auth.createUser({
+    email: "global-one@example.com",
+    name: "Global One",
+    password: "password",
+  });
+  const globalTwo = await auth.createUser({
+    email: "global-two@example.com",
+    name: "Global Two",
+    password: "password",
+  });
+  expect(globalOne).toBeDefined();
+  expect(globalTwo).toBeDefined();
+  await admin.query(
+    "update users set is_admin = true, active = true where id = any($1::uuid[])",
+    [[globalOne!.userId, globalTwo!.userId]],
+  );
+  await admin.query(
+    "update users set active = false where email = 'admin@example.com'",
+  );
+
+  const globalApplicationNames = [
+    `auth-global-one-${randomUUID()}`,
+    `auth-global-two-${randomUUID()}`,
+  ];
+  const [firstGlobalAuth, secondGlobalAuth] = await Promise.all(
+    globalApplicationNames.map(createIndependentRuntimeAuth),
+  );
+  const globalResults = await runWithMutationGate(
+    globalApplicationNames,
+    "select id from users where id = any($1::uuid[]) for update",
+    [[globalOne!.userId, globalTwo!.userId]],
+    () =>
+      Promise.all([
+        firstGlobalAuth.updateUser(globalOne!.userId, { active: false }),
+        secondGlobalAuth.updateUser(globalTwo!.userId, { active: false }),
+      ]),
+  );
+  expect(globalResults).toContain("updated");
+  expect(globalResults).toContain("last-admin");
+  const activeAdmins = await admin.query(
+    "select id from users where is_admin and active",
+  );
+  expect(activeAdmins.rows).toHaveLength(1);
+
+  await assertWorkspaceAdminRace("demote-demote", [
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+  ]);
+  await assertWorkspaceAdminRace("remove-remove", [
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.removeMembership(workspaceId, membershipId),
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.removeMembership(workspaceId, membershipId),
+  ]);
+  await assertWorkspaceAdminRace("demote-remove", [
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+    (raceAuth, workspaceId, membershipId) =>
+      raceAuth.removeMembership(workspaceId, membershipId),
+  ]);
 });

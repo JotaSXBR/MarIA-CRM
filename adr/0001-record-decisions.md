@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-09-16, retrospective)
 
+**Superseded:** 2026-09-16 by [ADR 0009](0009-development-contract-and-verification.md).
+
 ## Context
 
 Decisions were being recorded only in PR descriptions and chat history. PRs are hard to

@@ -12,74 +12,54 @@ gh pr status
 
 ## Current work
 
-Branch `docs/adr-messaging` (stacked on `chore/handoff-checkpoint`): ADR 0008 records the
-WhatsApp messaging decision — `MessagingProvider` port in `@maria/messaging` with
-`channel-waha`/`channel-meta` adapters, raw-body HMAC webhook verification (WAHA
-`X-Webhook-Hmac` SHA-512; Meta `X-Hub-Signature-256` SHA-256 + `hub.challenge` handshake),
-and the `channel_instances` / `conversations` (with `epoch`) / `messages` / `webhook_events`
-data model with provider-ID dedup keys.
+Branch `chore/process-review` (from `main`): internal process/engineering review. The review
+consolidates sources of truth and hardens the contract:
 
-All previous open PRs merged; `main` is clean and synced. Recent landed work (PRs #27–#30):
+- `AGENTS.md` is the single normative contract (tool routing, approvals, invariants moved in);
+  `DEVELOPMENT.md` (new) owns reproducible setup, the shared migration runner and the
+  verification matrix. Skills in `.devin/skills/` were condensed to pointers — they no longer
+  carry a second baseline or roadmap. `.devin/config.json` became a source map.
+- ADR lifecycle formalized (ADR 0009): `proposed/accepted/rejected/superseded`; supersession
+  headers appended to 0001, 0005, 0007, 0008 without rewriting accepted bodies.
+- ADR 0010 supersedes 0008: messaging outbound now requires committed dispatch intent +
+  attempt/fencing before provider calls; ambiguous outcomes become `unknown` (reconcile or
+  block for operator, never blind resend); `epoch` checked at intent-commit and dispatch-claim;
+  event identity ≠ message identity.
+- ADR 0011 supersedes 0005 and is **implemented**: last-admin guards use
+  `pg_advisory_xact_lock` (global `maria_auth_global_admin`, per-workspace
+  `maria_auth_memberships`) in `packages/auth/src/index.ts`, with real concurrency tests using
+  independent pools + `pg_stat_activity` lock detection.
+- ADR 0012 **implemented**: shared migration runner `packages/database/src/migrate.ts`
+  (`maria_schema_migrations` ledger, SHA-256 checksums, transactional apply, fail-closed on
+  drift/unmanaged DBs) + `migrate-cli.ts` (`pnpm db:migrate`, `MIGRATION_DATABASE_URL`,
+  `--provision-runtime`). Reused by tests, CI smoke and local setup — no more hardcoded
+  filename lists or `psql` globs.
+- CI smoke now runs the container as `maria_runtime` and exercises login → org/workspace →
+  membership → contact CRUD → cross-tenant denial via `scripts/smoke-container.mjs`.
+- `pnpm dev` is `turbo watch dev` with `^build` and explicit `passThroughEnv` (migration
+  credentials never reach the API).
 
-- Deal editor dialog on the Kanban board + Vite dev-proxy fix for `/pipelines`/`/stages`/`/deals`.
-- `GET /me` returns `{userId, email, name, isAdmin}`; `verifySession` now includes `name`.
-- `WorkspaceProvider` also fetches `/me` and exposes `session`/`sessionLoaded`; the sidebar shows "Administração" only for global admins.
-- `/admin` page (guarded client-side by `session.isAdmin`; the API still enforces `isAdmin` server-side): user list + create (with optional initial workspace/role), activate/deactivate, organizations list/create, workspaces list/create (org picker), members-per-workspace management (role change, add, remove).
-- Code-simplifier pass (PR #29): `updateDeal` validates only contact/company refs (`contactCompanyRefsValid` split out of `dealRefsValid`); all PATCH bodies declare `minProperties: 1`.
-- `adr/` now holds versioned decision records (0001–0007); AGENTS.md §3 requires an ADR for architectural decisions. `docs/` stays local-only (gitignored).
-- Test note: happy-dom does not submit forms on submit-button click; use `fireEvent.submit(form)` in web tests.
+Verified on this branch (Windows, Node 24.21.0, Docker 29.7.2): `tsc --noEmit` clean for
+`@maria/database` + `@maria/auth`; `prettier --check` clean on all new files.
 
-`pnpm verify` passes on Windows with Node 24.21.0, pnpm 11.26.0 and Docker/Testcontainers. Merge remains manual by the user.
-
-Deferred simplifications from the code-simplifier review (not applied):
-
-- `lastPosition` helper should take an extra filter and be reused by `createStage`/`createDeal` (they repeat the query inline).
-- Soft-delete/existence-check blocks in `deletePipeline`/`deleteStage`/`deleteDeal`/`deleteContact`/`deleteCompany` could share a `softDeleteById` helper.
-- The repeated `DELETE /:id` route boilerplate in `app.ts` (auth → workspace admin → delete → status map) could be a small wrapper.
-- `admin.tsx` mutations repeat identical `onSuccess`/`onError`; a local `useAdminMutation` would deduplicate.
-
-Local dev (manual test): `docker compose -f docker/compose.yaml up -d` with `POSTGRES_PASSWORD`, apply `packages/database/drizzle/*.sql` via psql, set `maria_runtime` password, run API with `DATABASE_URL`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`, `pnpm --filter @maria/web dev`.
-
-## Devin Adaptation
-
-Added Devin-specific skills and configuration in `.devin/`:
-
-- `maria-dev-setup`: Environment setup and development commands
-- `maria-database-rls`: Database operations and RLS patterns
-- `maria-api-development`: Fastify API development patterns
-- `maria-testing`: Testing strategy (unit, integration, E2E)
-- `maria-devin-adaptation`: Context adaptation for Devin operations
-- `config.json`: Project configuration and invariants
-- `hooks.v1.json` + `rtk-pretooluse.mjs`: project-scoped `PreToolUse` adapter that
-  rewrites supported Devin `exec` commands through RTK and fails open when RTK is unavailable
-
-Devin operates as a general-purpose agent with specialized skills, following AGENTS.md as the primary contract. Codex agents in `.codex/agents/` have been updated to reference these Devin skills for consistent patterns between both tools.
-
-## Codex Agent Adaptation
-
-Codex agents now follow Devin patterns:
-
-- **explorer**: References `maria-devin-adaptation` and `maria-testing` for context
-- **reviewer**: References `maria-testing` and `maria-database-rls` for security review
-- **worker**: References `maria-dev-setup`, `maria-database-rls`, `maria-api-development`, and `maria-testing` for implementation
-
-Both tools now share the same underlying patterns and conventions, maintaining AGENTS.md as the primary contract.
+Still outstanding: full `pnpm verify` (incl. new integration tests), `.codex/` agents
+realignment (they reference skills that still exist but were slimmed), and an automated
+browser suite — the manual browser checklist in `DEVELOPMENT.md` governs UI changes meanwhile.
 
 ## Environment
 
-Docker Desktop integration is enabled for this WSL distribution, and PostgreSQL integration tests pass locally through Testcontainers. Chromium automated browser runs lack `libnspr4`; the web result was manually approved by the user.
-
-Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, confirm `node` and `pnpm` resolve to Linux binaries rather than Windows shims before running gates.
+Docker is available locally; integration tests run through Testcontainers. Chromium
+automated browser runs lack `libnspr4` — manual browser checks per `DEVELOPMENT.md`.
+Use `nvm use` for Node 24.21.0 and Corepack for pnpm 11.26.0. Local dev setup follows
+`DEVELOPMENT.md` (fresh DB → `db:migrate --provision-runtime` → runtime `DATABASE_URL`).
 
 ## Next actions
 
-Next slice: implement ADR 0008 — `@maria/messaging` contracts + `channel_instances` /
-`conversations` / `messages` / `webhook_events` migration (RLS + dedup uniques), then the
-WAHA webhook endpoint (raw-body HMAC, persist + outbox, fast 200) and a conversation/message
-read API for the inbox UI. Agent runtime comes after the non-AI features. Resend invitations
-are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer
-primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename.
-Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction
-cleanup.
+1. Land this review PR, then implement messaging per ADR 0010: `@maria/messaging` contracts +
+   `channel_instances`/`conversations`/`messages`/`webhook_events` migration, WAHA inbound
+   webhook first. Outbound stays disabled until each adapter meets the ADR 0010 contract.
+2. Realign `.codex/agents/*.toml` if stale references surface.
+3. Deferred: vendored shadcn/ui primitives, contact detail pages, stage rename/reorder UI,
+   admin user rename, code-simplifier leftovers from PR #29, Playwright suite.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
