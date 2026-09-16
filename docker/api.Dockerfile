@@ -21,14 +21,20 @@ RUN npm install --global pnpm@11.26.0 --ignore-scripts
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json turbo.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/auth/package.json packages/auth/package.json
+COPY packages/channel-waha/package.json packages/channel-waha/package.json
 COPY packages/database/package.json packages/database/package.json
+COPY packages/messaging/package.json packages/messaging/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY apps/api/tsconfig*.json apps/api/
 COPY apps/api/src apps/api/src
 COPY packages/auth/src packages/auth/src
 COPY packages/auth/tsconfig*.json packages/auth/
+COPY packages/channel-waha/src packages/channel-waha/src
+COPY packages/channel-waha/tsconfig*.json packages/channel-waha/
 COPY packages/database/src packages/database/src
 COPY packages/database/tsconfig*.json packages/database/
+COPY packages/messaging/src packages/messaging/src
+COPY packages/messaging/tsconfig*.json packages/messaging/
 RUN pnpm turbo run build --filter=@maria/api... \
   && pnpm --filter @maria/api deploy --prod /out
 
