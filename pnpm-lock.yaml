@@ -45,6 +45,9 @@ importers:
       '@maria/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@maria/channel-waha':
+        specifier: workspace:*
+        version: link:../../packages/channel-waha
       '@maria/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -145,6 +148,19 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(@vitest/coverage-v8@5.0.0)(happy-dom@20.8.9)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0))
 
+  packages/channel-waha:
+    dependencies:
+      '@maria/messaging':
+        specifier: workspace:*
+        version: link:../messaging
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(@vitest/coverage-v8@5.0.0)(happy-dom@20.8.9)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0))
+
   packages/database:
     dependencies:
       drizzle-orm:
@@ -163,6 +179,15 @@ importers:
       '@types/pg':
         specifier: 8.15.5
         version: 8.15.5
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(@vitest/coverage-v8@5.0.0)(happy-dom@20.8.9)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/messaging:
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
       vitest:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(@vitest/coverage-v8@5.0.0)(happy-dom@20.8.9)(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0)(yaml@2.9.0))

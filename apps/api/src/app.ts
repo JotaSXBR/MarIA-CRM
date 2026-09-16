@@ -1,5 +1,7 @@
+import { PassThrough } from "node:stream";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
+import { createWahaProvider } from "@maria/channel-waha";
 import type { AuthPort } from "@maria/auth";
 
 type Contact = {
@@ -168,6 +170,38 @@ type AppDependencies = {
       orgId: string;
       name: string;
     }) => Promise<{ id: string } | undefined>;
+    getChannelInstance: (
+      workspaceId: string,
+      id: string,
+    ) => Promise<
+      | {
+          id: string;
+          workspaceId: string;
+          provider: string;
+          providerInstanceId: string | null;
+          webhookSecret: string;
+          isActive: boolean;
+        }
+      | undefined
+    >;
+    receiveInboundMessage: (
+      workspaceId: string,
+      input: {
+        channelInstanceId: string;
+        providerThreadId: string;
+        providerMessageId: string;
+        providerEventId: string;
+        providerEventKind: string;
+        senderPhone?: string | null;
+        contentType: string;
+        body: string;
+        rawPayload: unknown;
+        signatureVerified: boolean;
+      },
+    ) => Promise<
+      | { kind: "received"; conversationId: string; messageId?: string }
+      | { kind: "duplicate" }
+    >;
   };
   auth: AuthPort;
 };
@@ -220,6 +254,24 @@ const workspaceQuerySchema = {
 
 export function buildApp(dependencies?: AppDependencies) {
   const app = Fastify({ logger: true });
+  const waha = createWahaProvider();
+
+  app.addHook(
+    "preParsing",
+    async (request, _reply, payload: NodeJS.ReadableStream) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of payload) {
+        chunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string, "utf8"),
+        );
+      }
+      const raw = Buffer.concat(chunks);
+      (request as unknown as { rawBody?: Buffer }).rawBody = raw;
+      const pass = new PassThrough();
+      pass.end(raw);
+      return pass;
+    },
+  );
 
   // Register rate limiting plugin
   app.register(rateLimit, {
@@ -1621,6 +1673,93 @@ export function buildApp(dependencies?: AppDependencies) {
         const deleted = await database.deleteDeal(authorized.workspaceId, id);
         if (!deleted) return reply.code(404).send();
         return reply.code(204).send();
+      },
+    );
+
+    app.post(
+      "/webhooks/waha/:workspaceId/:channelInstanceId",
+      {
+        config: {
+          rateLimit: {
+            max: 120,
+            timeWindow: "1 minute",
+          },
+        },
+        schema: {
+          params: {
+            type: "object",
+            additionalProperties: false,
+            required: ["workspaceId", "channelInstanceId"],
+            properties: {
+              workspaceId: { type: "string", format: "uuid" },
+              channelInstanceId: { type: "string", format: "uuid" },
+            },
+          },
+          response: {
+            200: {
+              type: "object",
+              additionalProperties: false,
+              required: ["received"],
+              properties: { received: { type: "boolean" } },
+            },
+            400: { type: "null" },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const { workspaceId, channelInstanceId } = request.params as {
+          workspaceId: string;
+          channelInstanceId: string;
+        };
+        const instance = await database.getChannelInstance(
+          workspaceId,
+          channelInstanceId,
+        );
+        if (!instance) {
+          return reply.code(401).send();
+        }
+        const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+        if (!rawBody) {
+          return reply.code(401).send();
+        }
+        const signature = String(
+          request.headers["x-webhook-hmac"] ?? "",
+        ).trim();
+        if (
+          !waha.verifyWebhook({
+            rawBody,
+            signatureHeader: signature,
+            secret: instance.webhookSecret,
+          })
+        ) {
+          return reply.code(401).send();
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(rawBody.toString("utf8"));
+        } catch {
+          return reply.code(400).send();
+        }
+        const event = waha.normalizeEvent(parsed);
+        if (event.kind === "unknown" || event.kind !== "message") {
+          return reply.code(200).send({ received: true });
+        }
+        const result = await database.receiveInboundMessage(workspaceId, {
+          channelInstanceId,
+          providerThreadId: event.providerThreadId,
+          providerMessageId: event.providerMessageId,
+          providerEventId: event.providerEventId,
+          providerEventKind: event.providerEventKind,
+          senderPhone: event.sender.phone ?? null,
+          contentType: event.content.type,
+          body: event.content.text,
+          rawPayload: parsed,
+          signatureVerified: true,
+        });
+        return reply.code(200).send({
+          received: result.kind === "received",
+        });
       },
     );
   }

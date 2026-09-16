@@ -52,6 +52,8 @@ function createDatabaseStub() {
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
     createWorkspace: vi.fn(),
+    getChannelInstance: vi.fn().mockResolvedValue(undefined),
+    receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
   };
 }
 

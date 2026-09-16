@@ -19,6 +19,7 @@
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
     "@maria/auth": "workspace:*",
+    "@maria/channel-waha": "workspace:*",
     "@maria/database": "workspace:*",
     "fastify": "5.12.3",
     "pg": "8.16.3"

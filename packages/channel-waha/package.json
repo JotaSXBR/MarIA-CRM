@@ -1,0 +1,28 @@
+{
+  "name": "@maria/channel-waha",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@maria/messaging": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "vitest": "5.0.0"
+  }
+}
