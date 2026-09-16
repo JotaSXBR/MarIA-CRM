@@ -713,11 +713,41 @@ export function createDatabase(pool: Pool) {
         if (webhookRows.length === 0) {
           return { kind: "duplicate" as const };
         }
+        let contactId: string | null = null;
+        if (input.senderPhone) {
+          const contactRows = await tx
+            .select({ id: contacts.id })
+            .from(contacts)
+            .where(
+              and(
+                eq(contacts.workspaceId, workspaceId),
+                eq(contacts.phone, input.senderPhone),
+                notDeleted(contacts.deletedAt),
+              ),
+            )
+            .orderBy(contacts.createdAt)
+            .limit(1);
+          if (contactRows[0]) {
+            contactId = contactRows[0].id;
+          } else {
+            const newContact = await tx
+              .insert(contacts)
+              .values({
+                workspaceId,
+                name: input.senderPhone,
+                phone: input.senderPhone,
+              })
+              .returning({ id: contacts.id });
+            const created = newContact[0];
+            if (created) contactId = created.id;
+          }
+        }
         const conversationRows = await tx
           .insert(conversations)
           .values({
             workspaceId,
             channelInstanceId: input.channelInstanceId,
+            contactId,
             providerThreadId: input.providerThreadId,
           })
           .onConflictDoUpdate({
