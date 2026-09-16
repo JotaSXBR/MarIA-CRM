@@ -12,20 +12,20 @@ gh pr status
 
 ## Current work
 
-Branch `feat/messaging-inbox` (from `main`): workspace API for channel instances
-and inbox read, stacked after the merged inbound messaging slice.
+Branch `feat/messaging-contact-link` (from `main`): automatically link inbound
+conversations to existing contacts by phone or create a contact on the first
+inbound message.
 
-- `packages/database` adds `listChannelInstances`, `listConversations`,
-  `getConversation` and `listMessages` under workspace-scoped RLS.
-- `apps/api` adds authenticated workspace routes:
-  - `GET /channel-instances` and `POST /channel-instances`
-  - `GET /conversations`
-  - `GET /conversations/:id/messages`
-- `apps/api/test/auth.integration.test.ts` and
-  `packages/database/test/messaging.integration.test.ts` cover auth denial,
-  workspace forwarding and cross-tenant read isolation.
-- PR #35 is open: https://github.com/JotaSXBR/MarIA-CRM/pull/35
-- `main` already contains the inbound slice (PR #34 merged).
+- `packages/database/src/index.ts`: `receiveInboundMessage` now resolves a
+  `senderPhone` to a workspace contact and writes `conversation.contactId`.
+  If no active contact exists, it creates one with the phone as name.
+- New migration `0009_contact_phone_unique.sql` adds a partial unique index on
+  `(workspace_id, phone) where deleted_at is null` to prevent racy duplicates
+  across concurrent webhooks; `schema.ts` reflects the index.
+- `packages/database/test/messaging.integration.test.ts` covers first-message
+  contact creation, reuse, cross-tenant separation and the null case.
+- PR #36 is open: https://github.com/JotaSXBR/MarIA-CRM/pull/36
+- `main` contains the inbound slice and the inbox read API (PRs #34 and #35).
 
 ## Environment
 
@@ -37,15 +37,15 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 - `pnpm fmt:check` ✓
 - `pnpm exec oxlint --type-aware apps packages` ✓ (0 errors, 9 pre-existing warnings)
 - `pnpm test` ✓
-- `pnpm test:integration` ✓ (database 13, auth 4, api 20)
+- `pnpm test:integration` ✓ (database 14, auth 4, api 20)
 - `pnpm test:e2e` ✓
 - `pnpm build` ✓
 
 ## Next actions
 
-1. Review/merge PR #35.
-2. Link incoming conversations to contacts by phone (or create contacts on
-   first inbound message) and add an agent-facing inbox UI.
+1. Review/merge PR #36.
+2. Add an agent-facing inbox UI (`/conversations` list and thread view) that
+   displays the linked contact name.
 3. Outbound messaging remains blocked until ADR 0010 dispatch/idempotency
    contract is validated.
 
