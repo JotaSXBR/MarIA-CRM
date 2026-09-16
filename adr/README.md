@@ -11,12 +11,13 @@ Rules:
   or mark the ADR `superseded` and link the replacement.
 - Keep them short. Evidence lives in the PR; the ADR lives here.
 
-| #    | Title                                                                         | Status   |
-| ---- | ----------------------------------------------------------------------------- | -------- |
-| 0001 | [Record decisions as ADRs](0001-record-decisions.md)                          | accepted |
-| 0002 | [Local authentication over WorkOS](0002-local-authentication.md)              | accepted |
-| 0003 | [Web stack: TanStack Router/Query + Vite proxy](0003-web-stack.md)            | accepted |
-| 0004 | [Pipeline ordering, soft delete and drag-and-drop](0004-pipeline-ordering.md) | accepted |
-| 0005 | [Global admin model](0005-global-admin-model.md)                              | accepted |
-| 0006 | [pnpm override for transitive uuid](0006-uuid-override.md)                    | accepted |
-| 0007 | [Agent tooling policy](0007-agent-tooling.md)                                 | accepted |
+| #    | Title                                                                               | Status   |
+| ---- | ----------------------------------------------------------------------------------- | -------- |
+| 0001 | [Record decisions as ADRs](0001-record-decisions.md)                                | accepted |
+| 0002 | [Local authentication over WorkOS](0002-local-authentication.md)                    | accepted |
+| 0003 | [Web stack: TanStack Router/Query + Vite proxy](0003-web-stack.md)                  | accepted |
+| 0004 | [Pipeline ordering, soft delete and drag-and-drop](0004-pipeline-ordering.md)       | accepted |
+| 0005 | [Global admin model](0005-global-admin-model.md)                                    | accepted |
+| 0006 | [pnpm override for transitive uuid](0006-uuid-override.md)                          | accepted |
+| 0007 | [Agent tooling policy](0007-agent-tooling.md)                                       | accepted |
+| 0008 | [Messaging: provider port, webhooks and conversations](0008-messaging-waha-meta.md) | accepted |
