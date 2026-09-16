@@ -637,6 +637,23 @@ export function createDatabase(pool: Pool) {
           });
         return rows[0];
       }),
+    listChannelInstances: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({
+            id: channelInstances.id,
+            workspaceId: channelInstances.workspaceId,
+            provider: channelInstances.provider,
+            providerInstanceId: channelInstances.providerInstanceId,
+            webhookSecret: channelInstances.webhookSecret,
+            isActive: channelInstances.isActive,
+            createdAt: channelInstances.createdAt,
+            updatedAt: channelInstances.updatedAt,
+          })
+          .from(channelInstances)
+          .where(eq(channelInstances.isActive, true))
+          .orderBy(channelInstances.createdAt, channelInstances.id),
+      ),
     getChannelInstance: (workspaceId: string, id: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const rows = await tx
@@ -733,6 +750,69 @@ export function createDatabase(pool: Pool) {
           conversationId: conversation.id,
           ...(messageId ? { messageId } : {}),
         };
+      }),
+    listConversations: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({
+            id: conversations.id,
+            workspaceId: conversations.workspaceId,
+            channelInstanceId: conversations.channelInstanceId,
+            contactId: conversations.contactId,
+            providerThreadId: conversations.providerThreadId,
+            epoch: conversations.epoch,
+            createdAt: conversations.createdAt,
+            updatedAt: conversations.updatedAt,
+          })
+          .from(conversations)
+          .orderBy(conversations.updatedAt, conversations.id),
+      ),
+    getConversation: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: conversations.id,
+            workspaceId: conversations.workspaceId,
+            channelInstanceId: conversations.channelInstanceId,
+            contactId: conversations.contactId,
+            providerThreadId: conversations.providerThreadId,
+            epoch: conversations.epoch,
+            createdAt: conversations.createdAt,
+            updatedAt: conversations.updatedAt,
+          })
+          .from(conversations)
+          .where(eq(conversations.id, id))
+          .limit(1);
+        return rows[0];
+      }),
+    listMessages: (workspaceId: string, conversationId: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const conversation = await tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.id, conversationId),
+              eq(conversations.workspaceId, workspaceId),
+            ),
+          )
+          .limit(1);
+        if (!conversation[0]) return [];
+        return tx
+          .select({
+            id: messages.id,
+            workspaceId: messages.workspaceId,
+            conversationId: messages.conversationId,
+            providerMessageId: messages.providerMessageId,
+            direction: messages.direction,
+            status: messages.status,
+            contentType: messages.contentType,
+            body: messages.body,
+            createdAt: messages.createdAt,
+          })
+          .from(messages)
+          .where(eq(messages.conversationId, conversationId))
+          .orderBy(messages.createdAt, messages.id);
       }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
