@@ -52,8 +52,13 @@ function createDatabaseStub() {
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
     createWorkspace: vi.fn(),
+    createChannelInstance: vi.fn().mockResolvedValue(undefined),
+    listChannelInstances: vi.fn().mockResolvedValue([]),
     getChannelInstance: vi.fn().mockResolvedValue(undefined),
     receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
+    listConversations: vi.fn().mockResolvedValue([]),
+    getConversation: vi.fn().mockResolvedValue(undefined),
+    listMessages: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -986,6 +991,142 @@ test("GET /me returns the session identity and 401s without a token", async () =
       name: "Admin",
       isAdmin: true,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test("channel instances and inbox require authenticated workspace membership", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const database = createDatabaseStub();
+  const auth = createAuthStub();
+  const app = buildApp({ database, auth });
+  try {
+    for (const url of [
+      `/channel-instances?workspaceId=${workspaceId}`,
+      `/conversations?workspaceId=${workspaceId}`,
+      `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+    ]) {
+      expect((await app.inject(url)).statusCode).toBe(401);
+    }
+    expect(database.listChannelInstances).not.toHaveBeenCalled();
+    expect(database.listConversations).not.toHaveBeenCalled();
+    expect(database.listMessages).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+test("inbox routes forward the authorized workspace to the database", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const messageId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const channel = {
+    id: randomUUID(),
+    workspaceId,
+    provider: "waha",
+    providerInstanceId: "session-1",
+    webhookSecret: "secret",
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const conversation = {
+    id: conversationId,
+    workspaceId,
+    channelInstanceId: channel.id,
+    contactId: null,
+    providerThreadId: "55119999@c.us",
+    epoch: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const message = {
+    id: messageId,
+    workspaceId,
+    conversationId,
+    providerMessageId: "msg-1",
+    direction: "inbound",
+    status: "received",
+    contentType: "text",
+    body: "hello",
+    createdAt: now,
+  };
+  const database = createDatabaseStub();
+  database.createChannelInstance.mockResolvedValue(channel);
+  database.listChannelInstances.mockResolvedValue([channel]);
+  database.listConversations.mockResolvedValue([conversation]);
+  database.getConversation.mockResolvedValue(conversation);
+  database.listMessages.mockResolvedValue([message]);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const created = await app.inject({
+      method: "POST",
+      url: `/channel-instances?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: {
+        provider: "waha",
+        providerInstanceId: "session-1",
+        webhookSecret: "secret",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(database.createChannelInstance).toHaveBeenCalledWith(workspaceId, {
+      provider: "waha",
+      providerInstanceId: "session-1",
+      webhookSecret: "secret",
+    });
+
+    const instances = await app.inject({
+      method: "GET",
+      url: `/channel-instances?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(instances.statusCode).toBe(200);
+    expect(database.listChannelInstances).toHaveBeenCalledWith(workspaceId);
+
+    const conversations = await app.inject({
+      method: "GET",
+      url: `/conversations?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(conversations.statusCode).toBe(200);
+    expect(database.listConversations).toHaveBeenCalledWith(workspaceId);
+
+    const messages = await app.inject({
+      method: "GET",
+      url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(messages.statusCode).toBe(200);
+    expect(messages.json()[0].body).toBe("hello");
+    expect(database.getConversation).toHaveBeenCalledWith(
+      workspaceId,
+      conversationId,
+    );
+    expect(database.listMessages).toHaveBeenCalledWith(
+      workspaceId,
+      conversationId,
+    );
+
+    database.getConversation.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "GET",
+      url: `/conversations/${randomUUID()}/messages?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missing.statusCode).toBe(404);
   } finally {
     await app.close();
   }

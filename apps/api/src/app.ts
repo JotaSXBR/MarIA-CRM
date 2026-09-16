@@ -170,6 +170,36 @@ type AppDependencies = {
       orgId: string;
       name: string;
     }) => Promise<{ id: string } | undefined>;
+    createChannelInstance: (
+      workspaceId: string,
+      input: {
+        provider: string;
+        providerInstanceId?: string | null;
+        webhookSecret: string;
+      },
+    ) => Promise<
+      | {
+          id: string;
+          workspaceId: string;
+          provider: string;
+          providerInstanceId: string | null;
+          webhookSecret: string;
+          isActive: boolean;
+        }
+      | undefined
+    >;
+    listChannelInstances: (workspaceId: string) => Promise<
+      {
+        id: string;
+        workspaceId: string;
+        provider: string;
+        providerInstanceId: string | null;
+        webhookSecret: string;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+      }[]
+    >;
     getChannelInstance: (
       workspaceId: string,
       id: string,
@@ -201,6 +231,50 @@ type AppDependencies = {
     ) => Promise<
       | { kind: "received"; conversationId: string; messageId?: string }
       | { kind: "duplicate" }
+    >;
+    listConversations: (workspaceId: string) => Promise<
+      {
+        id: string;
+        workspaceId: string;
+        channelInstanceId: string;
+        contactId: string | null;
+        providerThreadId: string;
+        epoch: number;
+        createdAt: Date;
+        updatedAt: Date;
+      }[]
+    >;
+    getConversation: (
+      workspaceId: string,
+      id: string,
+    ) => Promise<
+      | {
+          id: string;
+          workspaceId: string;
+          channelInstanceId: string;
+          contactId: string | null;
+          providerThreadId: string;
+          epoch: number;
+          createdAt: Date;
+          updatedAt: Date;
+        }
+      | undefined
+    >;
+    listMessages: (
+      workspaceId: string,
+      conversationId: string,
+    ) => Promise<
+      {
+        id: string;
+        workspaceId: string;
+        conversationId: string;
+        providerMessageId: string | null;
+        direction: string;
+        status: string;
+        contentType: string;
+        body: string | null;
+        createdAt: Date;
+      }[]
     >;
   };
   auth: AuthPort;
@@ -1673,6 +1747,188 @@ export function buildApp(dependencies?: AppDependencies) {
         const deleted = await database.deleteDeal(authorized.workspaceId, id);
         if (!deleted) return reply.code(404).send();
         return reply.code(204).send();
+      },
+    );
+
+    const channelInstanceSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "workspaceId",
+        "provider",
+        "providerInstanceId",
+        "webhookSecret",
+        "isActive",
+        "createdAt",
+        "updatedAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        workspaceId: { type: "string", format: "uuid" },
+        provider: { type: "string" },
+        providerInstanceId: { type: ["string", "null"] },
+        webhookSecret: { type: "string" },
+        isActive: { type: "boolean" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const conversationSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "workspaceId",
+        "channelInstanceId",
+        "contactId",
+        "providerThreadId",
+        "epoch",
+        "createdAt",
+        "updatedAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        workspaceId: { type: "string", format: "uuid" },
+        channelInstanceId: { type: "string", format: "uuid" },
+        contactId: { type: ["string", "null"] },
+        providerThreadId: { type: "string" },
+        epoch: { type: "integer" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const messageSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "workspaceId",
+        "conversationId",
+        "providerMessageId",
+        "direction",
+        "status",
+        "contentType",
+        "body",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        workspaceId: { type: "string", format: "uuid" },
+        conversationId: { type: "string", format: "uuid" },
+        providerMessageId: { type: ["string", "null"] },
+        direction: { type: "string" },
+        status: { type: "string" },
+        contentType: { type: "string" },
+        body: { type: ["string", "null"] },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    app.get(
+      "/channel-instances",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: channelInstanceSchema },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        return database.listChannelInstances(authorized.workspaceId);
+      },
+    );
+
+    app.post(
+      "/channel-instances",
+      {
+        config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["provider", "webhookSecret"],
+            properties: {
+              provider: { type: "string", minLength: 1 },
+              providerInstanceId: { type: ["string", "null"] },
+              webhookSecret: { type: "string", minLength: 1 },
+            },
+          },
+          response: {
+            201: channelInstanceSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const input = request.body as {
+          provider: string;
+          providerInstanceId?: string | null;
+          webhookSecret: string;
+        };
+        const instance = await database.createChannelInstance(
+          authorized.workspaceId,
+          input,
+        );
+        if (!instance) return reply.code(404).send();
+        return reply.code(201).send(instance);
+      },
+    );
+
+    app.get(
+      "/conversations",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: conversationSchema },
+            401: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        return database.listConversations(authorized.workspaceId);
+      },
+    );
+
+    app.get(
+      "/conversations/:id/messages",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: messageSchema },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const conversation = await database.getConversation(
+          authorized.workspaceId,
+          id,
+        );
+        if (!conversation) return reply.code(404).send();
+        return database.listMessages(authorized.workspaceId, id);
       },
     );
 

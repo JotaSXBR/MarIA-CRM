@@ -12,38 +12,40 @@ gh pr status
 
 ## Current work
 
-Branch `feat/messaging-inbound` (from `main`): first inbound messaging slice per
-ADR 0010.
+Branch `feat/messaging-inbox` (from `main`): workspace API for channel instances
+and inbox read, stacked after the merged inbound messaging slice.
 
-- New package `@maria/messaging` with the `MessagingProvider` port and normalized
-  `InboundEvent` types.
-- New package `@maria/channel-waha` implementing `verifyWebhook` (HMAC-SHA-512)
-  and `normalizeEvent` for `message`, `message.ack` and `session.status`; outbound
-  `send` is explicitly blocked (`WAHA outbound not certified`).
-- Migration `0008_messaging_core.sql` adds `channel_instances`, `conversations`,
-  `messages` and `webhook_events` with RLS, `FORCE ROW LEVEL SECURITY`, dedup
-  uniques and `epoch`.
-- `packages/database` exposes `createChannelInstance`, `getChannelInstance` and
-  `receiveInboundMessage`; the latter upserts the conversation, inserts the
-  message and records the webhook event transactionally, with idempotent dedup.
-- `apps/api` adds `POST /webhooks/waha/:workspaceId/:channelInstanceId` that
-  verifies HMAC on the raw body, normalizes and persists in one transaction, then
-  returns `200` fast.
-- Tests: `@maria/channel-waha` unit tests, `packages/database` RLS/messaging
-  integration tests proving cross-tenant isolation and webhook dedup.
+- `packages/database` adds `listChannelInstances`, `listConversations`,
+  `getConversation` and `listMessages` under workspace-scoped RLS.
+- `apps/api` adds authenticated workspace routes:
+  - `GET /channel-instances` and `POST /channel-instances`
+  - `GET /conversations`
+  - `GET /conversations/:id/messages`
+- `apps/api/test/auth.integration.test.ts` and
+  `packages/database/test/messaging.integration.test.ts` cover auth denial,
+  workspace forwarding and cross-tenant read isolation.
+- PR #35 is open: https://github.com/JotaSXBR/MarIA-CRM/pull/35
+- `main` already contains the inbound slice (PR #34 merged).
 
 ## Environment
 
-Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2. `pnpm verify` not yet run in
-full; `typecheck`, `fmt:check`, `oxlint --type-aware apps packages` (9 pre-existing
-warnings in `apps/web`), `test`, `test:integration`, `test:e2e` and `build` all
-passed locally after the slice.
+Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
+
+## Verification for this slice
+
+- `pnpm typecheck` ✓
+- `pnpm fmt:check` ✓
+- `pnpm exec oxlint --type-aware apps packages` ✓ (0 errors, 9 pre-existing warnings)
+- `pnpm test` ✓
+- `pnpm test:integration` ✓ (database 13, auth 4, api 20)
+- `pnpm test:e2e` ✓
+- `pnpm build` ✓
 
 ## Next actions
 
-1. Commit/push this branch and open PR for review.
-2. Next slice: add an API for creating `channel_instances`, then expose
-   conversation/message inbox read APIs for the workspace UI.
+1. Review/merge PR #35.
+2. Link incoming conversations to contacts by phone (or create contacts on
+   first inbound message) and add an agent-facing inbox UI.
 3. Outbound messaging remains blocked until ADR 0010 dispatch/idempotency
    contract is validated.
 

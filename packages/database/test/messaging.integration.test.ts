@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { createDatabase } from "../src/index.ts";
 import { startTestDatabase } from "@maria/database/testing";
+import { channelInstances } from "../src/schema.ts";
 
 const workspaceA = randomUUID();
 const workspaceB = randomUUID();
@@ -131,4 +132,52 @@ test("receiveInboundMessage creates a scoped channel, conversation and message",
     signatureVerified: true,
   });
   expect(duplicate.kind).toBe("duplicate");
+});
+
+test("listConversations and listMessages are scoped to a workspace", async () => {
+  const aInstances = await database.listChannelInstances(workspaceA);
+  expect(aInstances.length).toBe(1);
+  expect(aInstances[0]?.provider).toBe("waha");
+
+  const aConversations = await database.listConversations(workspaceA);
+  expect(aConversations.length).toBe(1);
+
+  const aMessages = await database.listMessages(
+    workspaceA,
+    aConversations[0]!.id,
+  );
+  expect(aMessages.length).toBe(1);
+  expect(aMessages[0]?.body).toBe("hello from A");
+
+  const bConversations = await database.listConversations(workspaceB);
+  expect(bConversations.length).toBe(1);
+  expect(
+    await database.listMessages(workspaceB, bConversations[0]!.id),
+  ).toHaveLength(1);
+
+  expect(
+    await database.listMessages(workspaceB, aConversations[0]!.id),
+  ).toHaveLength(0);
+  expect(
+    await database.getConversation(workspaceB, aConversations[0]!.id),
+  ).toBeUndefined();
+});
+
+test("listChannelInstances excludes inactive or cross-tenant instances", async () => {
+  const activeA = await database.listChannelInstances(workspaceA);
+  expect(activeA.length).toBe(1);
+  expect(activeA[0]?.provider).toBe("waha");
+
+  const activeB = await database.listChannelInstances(workspaceB);
+  expect(activeB.length).toBe(1);
+
+  await database.withWorkspace(workspaceA, async (tx) => {
+    await tx
+      .update(channelInstances)
+      .set({ isActive: false })
+      .where(eq(channelInstances.provider, "waha"));
+  });
+
+  expect(await database.listChannelInstances(workspaceA)).toHaveLength(0);
+  expect(await database.listChannelInstances(workspaceB)).toHaveLength(1);
 });
