@@ -12,7 +12,14 @@ gh pr status
 
 ## Current work
 
-All open PRs merged; `main` is clean and synced. Recent landed work (PRs #27–#30):
+Branch `docs/adr-messaging` (stacked on `chore/handoff-checkpoint`): ADR 0008 records the
+WhatsApp messaging decision — `MessagingProvider` port in `@maria/messaging` with
+`channel-waha`/`channel-meta` adapters, raw-body HMAC webhook verification (WAHA
+`X-Webhook-Hmac` SHA-512; Meta `X-Hub-Signature-256` SHA-256 + `hub.challenge` handshake),
+and the `channel_instances` / `conversations` (with `epoch`) / `messages` / `webhook_events`
+data model with provider-ID dedup keys.
+
+All previous open PRs merged; `main` is clean and synced. Recent landed work (PRs #27–#30):
 
 - Deal editor dialog on the Kanban board + Vite dev-proxy fix for `/pipelines`/`/stages`/`/deals`.
 - `GET /me` returns `{userId, email, name, isAdmin}`; `verifySession` now includes `name`.
@@ -66,6 +73,13 @@ Use `nvm use` to select Node 24.21.0 and Corepack for pnpm 11.26.0. In WSL, conf
 
 ## Next actions
 
-Next slice: WAHA messaging (start with the decision memo: provider adapter shape, webhook authenticity, conversation/message model). Agent runtime comes after the non-AI features. Resend invitations are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename. Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction cleanup.
+Next slice: implement ADR 0008 — `@maria/messaging` contracts + `channel_instances` /
+`conversations` / `messages` / `webhook_events` migration (RLS + dedup uniques), then the
+WAHA webhook endpoint (raw-body HMAC, persist + outbox, fast 200) and a conversation/message
+read API for the inbox UI. Agent runtime comes after the non-AI features. Resend invitations
+are paused indefinitely. Deferred web work: vendored shadcn/ui components when richer
+primitives are needed, contact detail pages, stage rename/reorder UI, admin user rename.
+Deferred code-simplifier items are listed in §Current work. Preserve RLS and transaction
+cleanup.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
