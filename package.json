@@ -8,7 +8,8 @@
     "node": "24.21.x"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo watch dev",
+    "db:migrate": "pnpm --filter @maria/database db:migrate",
     "fmt": "prettier --ignore-path .gitignore --ignore-path .prettierignore --write .",
     "fmt:check": "prettier --ignore-path .gitignore --ignore-path .prettierignore --check .",
     "lint": "oxlint --type-aware apps packages",

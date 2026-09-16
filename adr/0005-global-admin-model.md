@@ -2,6 +2,9 @@
 
 **Status:** accepted (implemented in PR #23, UI in #28)
 
+**Superseded:** 2026-09-16 by [ADR 0011](0011-admin-invariant-concurrency.md), including
+the concurrency guarantee and correction of the historical index claim below.
+
 ## Context
 
 Two role axes exist: `users.is_admin` (platform-level) and `memberships.role`

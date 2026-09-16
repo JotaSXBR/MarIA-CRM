@@ -17,10 +17,13 @@ screens, and an admin panel backed by the API.
 
 ## Development
 
-Use Node.js **24.21.0 LTS** (`.nvmrc`) and pnpm **11.26.0**.
+Use the Node.js version in `.nvmrc` and pnpm from `package.json#packageManager`.
+Follow [DEVELOPMENT.md](DEVELOPMENT.md) for the complete Windows/WSL setup: database,
+migrations, restricted runtime credentials and initial administrator. The commands below
+assume that preparation is complete.
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm dev
 ```
 
@@ -38,9 +41,11 @@ Each gate is also available separately: `fmt:check`, `lint`, `typecheck`, `test`
 `test:integration`, `test:e2e`, and `build`. `pnpm fmt` applies formatting.
 The initial end-to-end test covers the API process. Database integration tests use
 Testcontainers and require a running Docker engine; they fail if Docker is unavailable.
-Browser tests will arrive with interactive CRM flows.
+Automated browser E2E is not implemented; interactive flows currently have component tests.
+The required browser checks and remaining automation gap are documented in DEVELOPMENT.md.
 
-Dependencies are pinned in manifests and the lockfile. Fastify (MIT) supplies HTTP
+Resolved dependencies are pinned in the lockfile; manifests contain exact versions or declared
+compatible ranges. Fastify (MIT) supplies HTTP
 routing, schemas and Pino logging; the Node HTTP module was considered, but Fastify
 is the repository baseline. The web app uses React, TanStack Router and
 TanStack Query, Tailwind CSS v4 and Vite (all MIT) for the SPA; the Vite dev
@@ -90,21 +95,30 @@ docker compose -f docker/compose.yaml down
 The database listens only on `127.0.0.1:5432`. Its named volume survives `down`;
 the password initializes a new volume and does not rotate an existing database password.
 The `maria_admin` account is for local administration, never application runtime.
-The checked-in runtime-role migration provisions `maria_runtime` as a login without a password, privileged role attributes or table ownership, then grants only connection, schema usage and the contact/company operations currently consumed. Deployment must set its credential through the environment's secret manager; no database password is stored in migrations. The migration fails closed if an existing role is unsafe.
+The runtime-role migration provisions `maria_runtime` without a password, privileged role
+attributes or table ownership. Subsequent migrations grant the operations used by auth and CRM.
+Use the shared migration runner and provisioning procedure in DEVELOPMENT.md; existing unmanaged
+databases require an explicit adoption plan. Deployment credentials belong in the secret manager.
 
 The integration suite starts its own disposable database, separate from this local
-volume. It applies the checked-in migrations and proves runtime-role restrictions, cross-workspace isolation and transaction cleanup through contacts and companies. Remaining product schemas and pgvector are deferred until their first consuming feature.
+volume. It applies the checked-in migrations through the shared runner and tests runtime-role
+restrictions, cross-workspace isolation, transaction cleanup and admin concurrency. Remaining
+product schemas and pgvector are deferred until their first consuming feature.
 Drizzle ORM (Apache-2.0), node-postgres (MIT), and Testcontainers (MIT, test-only) use
 the established stack; an in-memory substitute cannot verify PostgreSQL RLS behavior.
 New dependencies are pinned and installed without approving lifecycle scripts.
 
 ## Docker
 
-Build and run the API from the repository root:
+After preparing the local DB and exporting DATABASE_URL/ADMIN_EMAIL/ADMIN_PASSWORD as described
+in DEVELOPMENT.md, build and run the API from the repository root. A DB bound to host loopback
+requires appropriate container networking; the example uses Docker Desktop's host gateway:
 
 ```bash
 docker build -f docker/api.Dockerfile -t maria-api:local .
 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -e DATABASE_URL=postgres://maria_runtime:local-runtime-change-me@host.docker.internal:5432/maria \
+  -e ADMIN_EMAIL -e ADMIN_PASSWORD \
   -p 127.0.0.1:3000:3000 maria-api:local
 ```
 
@@ -120,7 +134,8 @@ Node 24.21.0 image is published.
 ## Continuous integration
 
 Pull requests and pushes to `main` run the verification gates, production dependency
-audit, Docker build, and an HTTP smoke test of the non-root, read-only container.
+audit, Docker build, and a smoke test of the non-root, read-only container using the restricted
+database role, login, scoped CRUD and a denied cross-tenant request.
 CodeQL analyzes JavaScript/TypeScript separately. Actions are pinned to commit SHAs;
 Dependabot checks npm, Docker and Actions updates weekly.
 
@@ -129,7 +144,7 @@ still need to require `CI / verify` and `CodeQL / analyze` in branch protection 
 enable secret scanning/push protection. GHCR publication and staging/production
 deployment are not configured yet; production must promote the tested image digest.
 
-Next Phase 0 slices: web CRM flows and deployment wiring.
+Messaging and deployment wiring remain future slices; see HANDOFF.md for current priority.
 Tenant-owned endpoints require authentication, RLS and cross-tenant tests before exposure.
 
 ## Start here
@@ -137,6 +152,7 @@ Tenant-owned endpoints require authentication, RLS and cross-tenant tests before
 1. [`AGENTS.md`](AGENTS.md) — essential engineering and security contract.
 2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — product boundaries and target repository topology.
 3. [`HANDOFF.md`](HANDOFF.md) — latest development checkpoint; verify it against Git and PR status.
+4. [`DEVELOPMENT.md`](DEVELOPMENT.md) — reproducible setup, migrations and verification coverage.
 
 ## License
 
