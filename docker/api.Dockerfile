@@ -1,5 +1,5 @@
 # ponytail: replace the bootstrap upgrade with an official 24.21.0 image when published.
-FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS node
+FROM node:26.8.2-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS node
 ENV NODE_VERSION=24.21.0
 RUN node --input-type=module -e '\
   import { createHash } from "node:crypto"; \
