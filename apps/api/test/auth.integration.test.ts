@@ -1171,6 +1171,11 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     to: "55119999@c.us",
     session: "sales",
   });
+  // The dispatcher drains pending intents in rounds — return the intent once,
+  // then an empty queue so the burst terminates.
+  database.listPendingIntents
+    .mockResolvedValueOnce([{ id: intentId }])
+    .mockResolvedValue([]);
   database.settleDispatch.mockResolvedValue({ kind: "settled" });
   database.listMessages.mockResolvedValue([sentMessage]);
   const auth = createAuthStub({
@@ -1231,24 +1236,28 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
       conversationId,
       body: "hi there",
     });
-    expect(database.claimDispatchIntent).toHaveBeenCalledWith(
-      workspaceId,
-      intentId,
-      { leaseMs: 60_000 },
-    );
-    expect(send).toHaveBeenCalledWith({
-      session: "sales",
-      to: "55119999@c.us",
-      content: { type: "text", text: "hi there" },
-    });
-    expect(database.settleDispatch).toHaveBeenCalledWith(
-      workspaceId,
-      expect.objectContaining({
+    // The send now runs in the background dispatcher (ADR 0013) — wait for
+    // the asynchronous claim → send → settle cycle to complete.
+    await vi.waitFor(() => {
+      expect(database.claimDispatchIntent).toHaveBeenCalledWith(
+        workspaceId,
         intentId,
-        outcome: "succeeded",
-        providerMessageId: "waha-msg-1",
-      }),
-    );
+        { leaseMs: 60_000 },
+      );
+      expect(send).toHaveBeenCalledWith({
+        session: "sales",
+        to: "55119999@c.us",
+        content: { type: "text", text: "hi there" },
+      });
+      expect(database.settleDispatch).toHaveBeenCalledWith(
+        workspaceId,
+        expect.objectContaining({
+          intentId,
+          outcome: "succeeded",
+          providerMessageId: "waha-msg-1",
+        }),
+      );
+    });
   } finally {
     await app.close();
   }
@@ -1318,6 +1327,9 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
       to: "5511@c.us",
       session: "s",
     });
+    database.listPendingIntents
+      .mockResolvedValueOnce([{ id: intentId }])
+      .mockResolvedValue([]);
     database.listMessages.mockResolvedValue([
       {
         id: messageId,
@@ -1338,16 +1350,18 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
       payload: { body: "hello" },
     });
     expect(response.statusCode).toBe(201);
-    expect(database.settleDispatch).toHaveBeenCalledWith(
-      workspaceId,
-      expect.objectContaining({
-        intentId,
-        attemptId,
-        fencingToken,
-        outcome: "unknown",
-        error: "timeout",
-      }),
-    );
+    await vi.waitFor(() => {
+      expect(database.settleDispatch).toHaveBeenCalledWith(
+        workspaceId,
+        expect.objectContaining({
+          intentId,
+          attemptId,
+          fencingToken,
+          outcome: "unknown",
+          error: "timeout",
+        }),
+      );
+    });
   } finally {
     await app.close();
   }

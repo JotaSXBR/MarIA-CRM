@@ -104,7 +104,25 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 4. Meta WhatsApp Cloud API adapter as the second provider.
 5. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
 
-## WhatsApp interaction choreography (ADR 0013, in PR)
+## Dispatcher choreography (ADR 0013 activated, in PR)
+
+`POST /conversations/:id/messages` no longer sends synchronously: it commits
+message+intent and kicks `dispatcher.dispatchPending` in the background — the
+response is the `pending` message and status advances asynchronously.
+`dispatchPending` drains the workspace queue as one presence burst:
+`online` once per session → per intent `seen → typing clamp(len*70ms,
+1.5s, 8s)±10% → paused → send → settle` → `offline` at the end. Waits are
+in `dispatch.ts` (`CHOREOGRAPHY`), ported from the n8n reference; `sleep`/`rng`
+are injectable. Presence/seen are capability-gated and best-effort — failures
+never block the send. Concurrent drains for a workspace join the running one
+(drain re-lists until empty). Crash-during-wait inherits ADR 0010 semantics:
+lease expiry → `unknown` (the ledger cannot distinguish pre-send from
+post-send crashes — conservative side). Cross-workspace background polling is
+still impossible under RLS; dispatch is triggered by workspace activity
+(write kick + lazy GET maintenance), which is correct while intents only
+originate from API requests.
+
+## WhatsApp interaction choreography (ADR 0013, merged #51)
 
 Provider contract gains optional best-effort primitives + capability flags:
 `setPresence` (online/offline global; typing/recording/paused chat-scoped),
