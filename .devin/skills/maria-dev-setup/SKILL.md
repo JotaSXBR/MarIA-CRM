@@ -14,6 +14,8 @@ commands, variables and verification. Versions come from .nvmrc, manifests and l
 - Keep migration credentials separate from the API's DATABASE_URL.
 - Root pnpm dev builds upstream packages and watches dependencies. Direct package dev
   bypasses root orchestration: build its dependencies first.
+- The dev compose also runs WAHA + Redis; copy docker/.env.example to docker/.env first.
+  Session webhooks are configured per WAHA session — see DEVELOPMENT.md "Local WAHA + Redis".
 - If pnpm is absent from PATH, use corepack pnpm when available.
 - Use the smallest relevant check first, then required pre-PR gates. Record unavailable
   Docker, permissions or tools as blockers; never report unexecuted checks as passed.
