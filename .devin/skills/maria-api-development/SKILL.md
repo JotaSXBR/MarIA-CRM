@@ -21,7 +21,9 @@ authorization helpers in apps/api/src/app.ts rather than a separate example inte
 - /health is liveness only. The final image smoke also exercises authenticated tenant
   operations with the restricted DB role.
 - Signal handling is implemented in src/server.ts; Fastify does not replace that code.
-- Future webhooks follow ADR 0010: raw-byte verification, durable acknowledgment and
-  provider-specific dedup. Do not add placeholder handlers acknowledging before persistence.
+- The WAHA webhook route (`POST /webhooks/waha/:workspaceId/:channelInstanceId`) implements
+  ADR 0010: raw-body HMAC verification before parsing, per-session filtering and
+  provider-event dedup. New provider webhooks follow the same pattern — never acknowledge
+  before persisting.
 
 Use maria-testing for check selection and maria-database-rls for persistence changes.

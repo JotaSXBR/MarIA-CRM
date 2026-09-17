@@ -5,10 +5,14 @@
 ## Implementation status
 
 The topology and Control/Execution Plane sections below define the target architecture.
-Currently implemented: `apps/api`, `apps/web`, `packages/auth` and `packages/database`,
-covering local sessions, administration and workspace-scoped contacts, companies and pipelines.
-Workers, messaging adapters, outbox/effect ledger, agent runtime and deployment publication
-are not implemented. ADR 0010 defines the messaging reliability requirements before implementation.
+Currently implemented: `apps/api`, `apps/web`, `packages/auth`, `packages/database`,
+`packages/messaging` and `packages/channel-waha` — covering local sessions, administration,
+workspace-scoped contacts, companies, pipelines, and the WAHA messaging slice: inbound
+webhooks with raw-body HMAC verification and provider-event dedup, workspace inbox APIs,
+contact linking by phone, and outbound dispatch with the ADR 0010 effect ledger
+(intent + attempt/fencing/lease, `unknown` outcomes blocked from blind retry).
+Not yet implemented: the dedicated worker/outbox process, the agent runtime, the Meta
+adapter and deployment publication.
 Use `HANDOFF.md` for the current checkpoint and `DEVELOPMENT.md` for actual verification coverage.
 
 ## Product boundary

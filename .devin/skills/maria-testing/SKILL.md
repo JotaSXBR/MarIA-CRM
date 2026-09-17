@@ -26,5 +26,7 @@ apps/api/test/server.e2e.test.ts and apps/web/test/app.test.tsx.
 - Await expected rejections before rollback assertions; close pools/containers in cleanup.
 - Record command, revision/dirty scope, date, environment, result and missing checks.
 
-Messaging failure-injection requirements are in ADR 0010 for its future implementation.
-Never claim coverage of a planned runtime, outbox or effect ledger.
+The ADR 0010 dispatch ledger is implemented: packages/database/test/messaging.integration.test.ts
+covers exclusive claims on independent connections, fencing/lease expiry and cross-tenant
+isolation. Extend those tests for messaging changes. Still absent: a dedicated worker process
+and the agent runtime — never claim coverage for either.

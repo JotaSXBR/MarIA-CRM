@@ -76,7 +76,9 @@ on the message until reconciled by an authenticated `message.ack` webhook or ope
 
 `docker/compose.yaml` also runs **WAHA** (port `127.0.0.1:3001`, dashboard and Swagger enabled)
 backed by a **Redis** service (`REDIS_URL` for WAHA apps/background jobs; internal only, no
-published port). Session data persists in the `waha-sessions` volume; media in `waha-media`.
+published port). This Redis is a WAHA-internal dependency — it is not MarIA job infrastructure:
+our work queue stays in PostgreSQL (dispatch ledger, ADR 0010). Session data persists in the
+`waha-sessions` volume; media in `waha-media`.
 
 ```bash
 cp docker/.env.example docker/.env   # fill in the change-me values
