@@ -68,6 +68,11 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 ## Next actions
 
 1. Review/merge this PR, then point a WAHA instance at the webhook route.
+   Deploy target baseline: **Coolify 4.3.21** on the VPS — WAHA already runs
+   there as a separate Coolify application; the API will ship as an immutable
+   GHCR image (CI-built, same digest promoted staging→prod). The Coolify
+   compose/resource wiring is a later deploy slice, deliberately separate
+   from the dev compose in this PR.
 2. Delivery-status state machine from `message.ack` events (out-of-order safe).
 3. Meta WhatsApp Cloud API adapter as the second provider.
 4. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
