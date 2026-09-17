@@ -9,6 +9,7 @@ import { getToken } from "./lib/api.ts";
 import { LoginPage } from "./routes/login.tsx";
 import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
+import { ContactDetailPage } from "./routes/contact-detail.tsx";
 import { CompaniesPage } from "./routes/companies.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
 import { InboxPage } from "./routes/inbox.tsx";
@@ -52,6 +53,12 @@ const contactsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/contacts",
   component: ContactsPage,
+});
+
+const contactDetailRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/contacts/$contactId",
+  component: ContactDetailPage,
 });
 
 const companiesRoute = createRoute({
@@ -104,6 +111,7 @@ export const routeTree = rootRoute.addChildren([
     indexRoute,
     pipelinesRoute,
     contactsRoute,
+    contactDetailRoute,
     companiesRoute,
     inboxRoute,
     adminRoute,

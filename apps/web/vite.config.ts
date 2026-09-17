@@ -25,6 +25,8 @@ export default defineConfig({
       "/deals": api,
       "/conversations": api,
       "/messages": api,
+      "/notes": api,
+      "/tasks": api,
       "/channel-instances": api,
       "/webhooks": api,
     },

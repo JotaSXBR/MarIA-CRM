@@ -68,6 +68,44 @@ type Deal = {
   createdAt: Date;
 };
 
+type ContactDeal = Deal & { stageName: string; pipelineName: string };
+
+type Note = {
+  id: string;
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  authorId: string | null;
+  authorName: string | null;
+  body: string;
+  createdAt: Date;
+};
+
+type Task = {
+  id: string;
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  title: string;
+  dueAt: Date | null;
+  doneAt: Date | null;
+  createdAt: Date;
+};
+
+type EntityFilter = {
+  contactId?: string | undefined;
+  companyId?: string | undefined;
+  dealId?: string | undefined;
+};
+
+type EntityRefs = {
+  contactId?: string | null;
+  companyId?: string | null;
+  dealId?: string | null;
+};
+
 type Message = {
   id: string;
   workspaceId: string;
@@ -178,6 +216,34 @@ type AppDependencies = {
       },
     ) => Promise<Deal | undefined>;
     deleteDeal: (workspaceId: string, id: string) => Promise<boolean>;
+    listDealsForContact: (
+      workspaceId: string,
+      contactId: string,
+    ) => Promise<ContactDeal[]>;
+    listNotes: (workspaceId: string, filter: EntityFilter) => Promise<Note[]>;
+    createNote: (
+      workspaceId: string,
+      input: EntityRefs & {
+        body: string;
+        authorId?: string | null;
+      },
+    ) => Promise<Omit<Note, "authorName"> | undefined>;
+    deleteNote: (workspaceId: string, id: string) => Promise<boolean>;
+    listTasks: (workspaceId: string, filter: EntityFilter) => Promise<Task[]>;
+    createTask: (
+      workspaceId: string,
+      input: EntityRefs & {
+        title: string;
+        assigneeId?: string | null;
+        dueAt?: Date | null;
+      },
+    ) => Promise<Omit<Task, "assigneeName"> | undefined>;
+    updateTask: (
+      workspaceId: string,
+      id: string,
+      input: { title?: string; dueAt?: Date | null; done?: boolean },
+    ) => Promise<Omit<Task, "assigneeName"> | undefined>;
+    deleteTask: (workspaceId: string, id: string) => Promise<boolean>;
     listOrganizations: () => Promise<
       { id: string; name: string; createdAt: Date }[]
     >;
@@ -1309,6 +1375,349 @@ export function buildApp(dependencies?: AppDependencies) {
       },
     );
 
+    const dealSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "pipelineId",
+        "stageId",
+        "title",
+        "valueCents",
+        "contactId",
+        "companyId",
+        "position",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        pipelineId: { type: "string", format: "uuid" },
+        stageId: { type: "string", format: "uuid" },
+        title: { type: "string" },
+        valueCents: { type: ["integer", "null"] },
+        contactId: { type: ["string", "null"], format: "uuid" },
+        companyId: { type: ["string", "null"], format: "uuid" },
+        position: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const contactDealSchema = {
+      ...dealSchema,
+      required: [...dealSchema.required, "stageName", "pipelineName"],
+      properties: {
+        ...dealSchema.properties,
+        stageName: { type: "string" },
+        pipelineName: { type: "string" },
+      },
+    } as const;
+
+    const entityLinkProperties = {
+      contactId: { type: ["string", "null"], format: "uuid" },
+      companyId: { type: ["string", "null"], format: "uuid" },
+      dealId: { type: ["string", "null"], format: "uuid" },
+    } as const;
+
+    const noteSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "contactId",
+        "companyId",
+        "dealId",
+        "authorId",
+        "authorName",
+        "body",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        ...entityLinkProperties,
+        authorId: { type: ["string", "null"], format: "uuid" },
+        authorName: { type: ["string", "null"] },
+        body: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    const taskSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "id",
+        "contactId",
+        "companyId",
+        "dealId",
+        "assigneeId",
+        "assigneeName",
+        "title",
+        "dueAt",
+        "doneAt",
+        "createdAt",
+      ],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        ...entityLinkProperties,
+        assigneeId: { type: ["string", "null"], format: "uuid" },
+        assigneeName: { type: ["string", "null"] },
+        title: { type: "string" },
+        dueAt: { type: ["string", "null"], format: "date-time" },
+        doneAt: { type: ["string", "null"], format: "date-time" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    } as const;
+
+    app.get(
+      "/contacts/:id/deals",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: contactDealSchema },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const contact = await database.getContact(authorized.workspaceId, id);
+        if (!contact) return reply.code(404).send();
+        return database.listDealsForContact(authorized.workspaceId, id);
+      },
+    );
+
+    app.get(
+      "/contacts/:id/notes",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: noteSchema },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const contact = await database.getContact(authorized.workspaceId, id);
+        if (!contact) return reply.code(404).send();
+        return database.listNotes(authorized.workspaceId, { contactId: id });
+      },
+    );
+
+    app.post(
+      "/contacts/:id/notes",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["body"],
+            properties: { body: { type: "string", minLength: 1 } },
+          },
+          response: {
+            201: noteSchema,
+            400: { type: "null" },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { body } = request.body as { body: string };
+        const note = await database.createNote(authorized.workspaceId, {
+          body,
+          contactId: id,
+          authorId: authorized.session.userId,
+        });
+        if (!note) return reply.code(404).send();
+        return reply.code(201).send({ ...note, authorName: null });
+      },
+    );
+
+    app.get(
+      "/contacts/:id/tasks",
+      {
+        config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            200: { type: "array", items: taskSchema },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const contact = await database.getContact(authorized.workspaceId, id);
+        if (!contact) return reply.code(404).send();
+        return database.listTasks(authorized.workspaceId, { contactId: id });
+      },
+    );
+
+    app.post(
+      "/contacts/:id/tasks",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["title"],
+            properties: {
+              title: { type: "string", minLength: 1 },
+              dueAt: { type: ["string", "null"], format: "date-time" },
+            },
+          },
+          response: {
+            201: taskSchema,
+            400: { type: "null" },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const input = request.body as { title: string; dueAt?: string | null };
+        const task = await database.createTask(authorized.workspaceId, {
+          title: input.title,
+          contactId: id,
+          assigneeId: authorized.session.userId,
+          dueAt: input.dueAt ? new Date(input.dueAt) : null,
+        });
+        if (!task) return reply.code(404).send();
+        return reply.code(201).send({ ...task, assigneeName: null });
+      },
+    );
+
+    app.patch(
+      "/tasks/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            minProperties: 1,
+            properties: {
+              title: { type: "string", minLength: 1 },
+              dueAt: { type: ["string", "null"], format: "date-time" },
+              done: { type: "boolean" },
+            },
+          },
+          response: {
+            200: taskSchema,
+            400: { type: "null" },
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const input = request.body as {
+          title?: string;
+          dueAt?: string | null;
+          done?: boolean;
+        };
+        const task = await database.updateTask(authorized.workspaceId, id, {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.dueAt !== undefined
+            ? { dueAt: input.dueAt ? new Date(input.dueAt) : null }
+            : {}),
+          ...(input.done !== undefined ? { done: input.done } : {}),
+        });
+        if (!task) return reply.code(404).send();
+        return { ...task, assigneeName: null };
+      },
+    );
+
+    app.delete(
+      "/tasks/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const deleted = await database.deleteTask(authorized.workspaceId, id);
+        if (!deleted) return reply.code(404).send();
+        return reply.code(204).send();
+      },
+    );
+
+    app.delete(
+      "/notes/:id",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            204: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
+        const { id } = request.params as { id: string };
+        const deleted = await database.deleteNote(authorized.workspaceId, id);
+        if (!deleted) return reply.code(404).send();
+        return reply.code(204).send();
+      },
+    );
+
     app.get(
       "/companies",
       {
@@ -1500,33 +1909,6 @@ export function buildApp(dependencies?: AppDependencies) {
         id: { type: "string", format: "uuid" },
         pipelineId: { type: "string", format: "uuid" },
         name: { type: "string" },
-        position: { type: "string" },
-        createdAt: { type: "string", format: "date-time" },
-      },
-    } as const;
-
-    const dealSchema = {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "id",
-        "pipelineId",
-        "stageId",
-        "title",
-        "valueCents",
-        "contactId",
-        "companyId",
-        "position",
-        "createdAt",
-      ],
-      properties: {
-        id: { type: "string", format: "uuid" },
-        pipelineId: { type: "string", format: "uuid" },
-        stageId: { type: "string", format: "uuid" },
-        title: { type: "string" },
-        valueCents: { type: ["integer", "null"] },
-        contactId: { type: ["string", "null"], format: "uuid" },
-        companyId: { type: ["string", "null"], format: "uuid" },
         position: { type: "string" },
         createdAt: { type: "string", format: "date-time" },
       },
@@ -2113,6 +2495,7 @@ export function buildApp(dependencies?: AppDependencies) {
           response: {
             201: channelInstanceSchema,
             401: { type: "null" },
+            403: { type: "null" },
             404: { type: "null" },
           },
         },
@@ -2120,6 +2503,9 @@ export function buildApp(dependencies?: AppDependencies) {
       async (request, reply) => {
         const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
+        if (authorized.membership.role !== "admin") {
+          return reply.code(403).send();
+        }
         const input = request.body as {
           provider: string;
           providerInstanceId?: string | null;

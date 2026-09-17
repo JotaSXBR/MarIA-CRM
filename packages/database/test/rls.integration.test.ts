@@ -72,6 +72,10 @@ async function queryRolePrivileges(client: Pool) {
     can_use_stages: boolean;
     can_use_deals: boolean;
     can_delete_deals: boolean;
+    can_use_notes: boolean;
+    can_delete_notes: boolean;
+    can_use_tasks: boolean;
+    can_delete_tasks: boolean;
   }>(`
     select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
       rolbypassrls,
@@ -86,7 +90,11 @@ async function queryRolePrivileges(client: Pool) {
       has_table_privilege(current_user, 'pipelines', 'SELECT, INSERT, UPDATE') as can_use_pipelines,
       has_table_privilege(current_user, 'stages', 'SELECT, INSERT, UPDATE') as can_use_stages,
       has_table_privilege(current_user, 'deals', 'SELECT, INSERT, UPDATE') as can_use_deals,
-      has_table_privilege(current_user, 'deals', 'DELETE') as can_delete_deals
+      has_table_privilege(current_user, 'deals', 'DELETE') as can_delete_deals,
+      has_table_privilege(current_user, 'notes', 'SELECT, INSERT, UPDATE') as can_use_notes,
+      has_table_privilege(current_user, 'notes', 'DELETE') as can_delete_notes,
+      has_table_privilege(current_user, 'tasks', 'SELECT, INSERT, UPDATE') as can_use_tasks,
+      has_table_privilege(current_user, 'tasks', 'DELETE') as can_delete_tasks
     from pg_roles
     where rolname = current_user
   `);
@@ -114,6 +122,10 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       can_use_stages: true,
       can_use_deals: true,
       can_delete_deals: false,
+      can_use_notes: true,
+      can_delete_notes: false,
+      can_use_tasks: true,
+      can_delete_tasks: false,
     },
   ]);
   expect(
@@ -122,7 +134,7 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
         select c.relname, r.rolsuper, r.rolbypassrls, c.relforcerowsecurity,
           c.relowner = r.oid as owns_table
         from pg_roles r cross join pg_class c
-        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals')
+        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals', 'notes', 'tasks')
         order by c.relname
       `)
     ).rows,
@@ -133,8 +145,10 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       "deals",
       "invitations",
       "memberships",
+      "notes",
       "pipelines",
       "stages",
+      "tasks",
     ].map((relname) => ({
       relname,
       rolsuper: false,
@@ -150,9 +164,17 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
   expect((await runtime.query("select * from pipelines")).rows).toEqual([]);
   expect((await runtime.query("select * from stages")).rows).toEqual([]);
   expect((await runtime.query("select * from deals")).rows).toEqual([]);
+  expect((await runtime.query("select * from notes")).rows).toEqual([]);
+  expect((await runtime.query("select * from tasks")).rows).toEqual([]);
   await expect(
     runtime.query(
       "insert into contacts (workspace_id, name) values ($1, 'unscoped')",
+      [workspaceA],
+    ),
+  ).rejects.toMatchObject({ code: "42501" });
+  await expect(
+    runtime.query(
+      "insert into notes (workspace_id, body) values ($1, 'unscoped')",
       [workspaceA],
     ),
   ).rejects.toMatchObject({ code: "42501" });
@@ -450,4 +472,162 @@ test("pipeline/stage/deal CRUD stays workspace-scoped with scoped ref validation
   expect(
     (await database.listPipelines(workspaceA)).map((p) => p.id),
   ).not.toContain(pipeline.id);
+});
+
+test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async () => {
+  const contactA = (await database.listContacts(workspaceA))[0]!;
+  const contactB = (await database.listContacts(workspaceB))[0]!;
+  const companyA = (await database.listCompanies(workspaceA))[0]!;
+  const companyB = (await database.listCompanies(workspaceB))[0]!;
+
+  const pipeline = await database.createPipeline(workspaceA, {
+    name: "Pipeline notas",
+  });
+  const stage = await database.createStage(workspaceA, pipeline!.id, {
+    name: "Etapa",
+  });
+  const deal = await database.createDeal(workspaceA, {
+    pipelineId: pipeline!.id,
+    stageId: stage!.id,
+    title: "Negócio com nota",
+    contactId: contactA.id,
+  });
+
+  const userA = randomUUID();
+  await admin.query(
+    "insert into users (id, email, name, password_hash) values ($1, 'notes@example.com', 'Autor', 'x')",
+    [userA],
+  );
+  await database.withWorkspace(workspaceA, (tx) =>
+    tx.execute(
+      sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceA}, 'member')`,
+    ),
+  );
+
+  const note = await database.createNote(workspaceA, {
+    body: "Primeira nota",
+    contactId: contactA.id,
+    companyId: companyA.id,
+    dealId: deal!.id,
+    authorId: userA,
+  });
+  expect(note).toMatchObject({
+    body: "Primeira nota",
+    contactId: contactA.id,
+  });
+
+  const notes = await database.listNotes(workspaceA, {
+    contactId: contactA.id,
+  });
+  expect(notes).toHaveLength(1);
+  expect(notes[0]).toMatchObject({ id: note!.id, authorName: "Autor" });
+  expect(
+    await database.listNotes(workspaceB, { contactId: contactA.id }),
+  ).toEqual([]);
+  expect(
+    await database.listNotes(workspaceA, { contactId: contactB.id }),
+  ).toEqual([]);
+  expect(await database.listNotes(workspaceA, {})).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: note!.id })]),
+  );
+
+  // Cross-workspace or unknown refs are rejected even though FKs would accept them
+  expect(
+    await database.createNote(workspaceA, {
+      body: "x",
+      contactId: contactB.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createNote(workspaceA, {
+      body: "x",
+      companyId: companyB.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createNote(workspaceA, { body: "x", dealId: randomUUID() }),
+  ).toBeUndefined();
+
+  const task = await database.createTask(workspaceA, {
+    title: "Ligar para o contato",
+    contactId: contactA.id,
+    assigneeId: userA,
+    dueAt: new Date("2026-10-01T12:00:00Z"),
+  });
+  expect(task).toMatchObject({ title: "Ligar para o contato", doneAt: null });
+
+  const tasks = await database.listTasks(workspaceA, {
+    contactId: contactA.id,
+  });
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({ id: task!.id, assigneeName: "Autor" });
+  expect(
+    await database.listTasks(workspaceB, { contactId: contactA.id }),
+  ).toEqual([]);
+
+  expect(
+    await database.createTask(workspaceA, {
+      title: "x",
+      contactId: contactB.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createTask(workspaceA, {
+      title: "x",
+      assigneeId: randomUUID(),
+    }),
+  ).toBeUndefined();
+
+  const done = await database.updateTask(workspaceA, task!.id, { done: true });
+  expect(done!.doneAt).not.toBeNull();
+  const undone = await database.updateTask(workspaceA, task!.id, {
+    done: false,
+    title: "Retomar",
+  });
+  expect(undone).toMatchObject({ title: "Retomar", doneAt: null });
+  expect(
+    await database.updateTask(workspaceB, task!.id, { title: "Cross" }),
+  ).toBeUndefined();
+  expect(
+    await database.updateTask(workspaceA, randomUUID(), { title: "Ghost" }),
+  ).toBeUndefined();
+
+  // Contact deals join stage/pipeline names and stay scoped
+  const contactDeals = await database.listDealsForContact(
+    workspaceA,
+    contactA.id,
+  );
+  expect(contactDeals).toEqual([
+    expect.objectContaining({
+      id: deal!.id,
+      stageName: "Etapa",
+      pipelineName: "Pipeline notas",
+    }),
+  ]);
+  expect(await database.listDealsForContact(workspaceB, contactB.id)).toEqual(
+    [],
+  );
+
+  expect(await database.deleteNote(workspaceB, note!.id)).toBe(false);
+  expect(await database.deleteNote(workspaceA, note!.id)).toBe(true);
+  expect(await database.deleteNote(workspaceA, note!.id)).toBe(false);
+  expect(
+    await database.listNotes(workspaceA, { contactId: contactA.id }),
+  ).toEqual([]);
+  expect(
+    (
+      await admin.query("select deleted_at from notes where id = $1", [
+        note!.id,
+      ])
+    ).rows[0]?.deleted_at,
+  ).not.toBeNull();
+
+  expect(await database.deleteTask(workspaceB, task!.id)).toBe(false);
+  expect(await database.deleteTask(workspaceA, task!.id)).toBe(true);
+  expect(
+    await database.listTasks(workspaceA, { contactId: contactA.id }),
+  ).toEqual([]);
+
+  // Tenant context never leaks back to the pooled connection
+  expect(await getWorkspaceContext(runtime)).toBe("");
 });

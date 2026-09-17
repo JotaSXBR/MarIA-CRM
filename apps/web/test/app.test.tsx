@@ -426,3 +426,138 @@ test("admin page renders sections for global admins and denies members", async (
   expect(screen.getByRole("heading", { name: "Organizações" })).toBeDefined();
   expect(screen.getByRole("heading", { name: "Workspaces" })).toBeDefined();
 });
+
+test("contact detail shows deals, notes and tasks and posts a new note", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const contactId = "123e4567-e89b-12d3-a456-426614174040";
+  const posted: unknown[] = [];
+  setToken("session-token");
+  const contact = {
+    id: contactId,
+    name: "Maria Silva",
+    email: "maria@example.com",
+    phone: null,
+    createdAt: new Date().toISOString(),
+  };
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "member" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174041",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/notes`)) {
+        if (init?.method === "POST") {
+          posted.push(JSON.parse(init.body as string));
+          return new Response(
+            JSON.stringify({
+              id: "123e4567-e89b-12d3-a456-426614174043",
+              contactId,
+              companyId: null,
+              dealId: null,
+              authorId: null,
+              authorName: "User",
+              body: "Nova nota",
+              createdAt: new Date().toISOString(),
+            }),
+            { status: 201 },
+          );
+        }
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174042",
+              contactId,
+              companyId: null,
+              dealId: null,
+              authorId: null,
+              authorName: "User",
+              body: "Cliente pediu retorno",
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/tasks`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174044",
+              contactId,
+              companyId: null,
+              dealId: null,
+              assigneeId: null,
+              assigneeName: "User",
+              title: "Ligar para Maria",
+              dueAt: null,
+              doneAt: null,
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/deals`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174045",
+              pipelineId: "123e4567-e89b-12d3-a456-426614174010",
+              stageId: "123e4567-e89b-12d3-a456-426614174011",
+              title: "Proposta ACME",
+              valueCents: 150000,
+              contactId,
+              companyId: null,
+              position: "a0",
+              stageName: "Novo",
+              pipelineName: "Vendas",
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}`)) {
+        return new Response(JSON.stringify(contact), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(`/contacts/${contactId}`);
+
+  expect(
+    await screen.findByRole("heading", { name: "Maria Silva" }),
+  ).toBeDefined();
+  expect(await screen.findByText("Proposta ACME")).toBeDefined();
+  expect(screen.getByText("Novo")).toBeDefined();
+  expect(await screen.findByText("Ligar para Maria")).toBeDefined();
+  expect(await screen.findByText("Cliente pediu retorno")).toBeDefined();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Nova nota"), "Nova nota");
+  await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
+  await waitFor(() => expect(posted).toEqual([{ body: "Nova nota" }]));
+});
