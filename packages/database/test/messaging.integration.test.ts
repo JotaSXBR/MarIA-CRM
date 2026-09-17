@@ -464,3 +464,123 @@ test("outbound dispatch ledger enforces claim fencing, expiry and tenancy", asyn
     ).kind,
   ).toBe("failed");
 });
+
+test("recordDeliveryStatus reconciles outbound acks monotonically", async () => {
+  const channelA = await database.createChannelInstance(workspaceA, {
+    provider: "waha",
+    providerInstanceId: "ack-a",
+    webhookSecret: "secret-a",
+  });
+  const received = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "55117777@c.us",
+    providerMessageId: "in-ack-1",
+    providerEventId: "in-ack-1",
+    providerEventKind: "message",
+    contentType: "text",
+    body: "hi",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  if (received.kind !== "received") throw new Error("not received");
+  const conversationId = received.conversationId;
+
+  const sentOutbound = async (body: string, providerMessageId: string) => {
+    const created = await database.createOutboundIntent(workspaceA, {
+      conversationId,
+      body,
+    });
+    if (created.kind !== "created") throw new Error("not created");
+    const claimed = await database.claimDispatchIntent(
+      workspaceA,
+      created.intentId,
+      { leaseMs: 60_000 },
+    );
+    if (claimed.kind !== "claimed") throw new Error("not claimed");
+    const settled = await database.settleDispatch(workspaceA, {
+      intentId: created.intentId,
+      attemptId: claimed.attemptId,
+      fencingToken: claimed.fencingToken,
+      outcome: "succeeded",
+      providerMessageId,
+    });
+    if (settled.kind !== "settled") throw new Error("not settled");
+    return created.messageId;
+  };
+  const statusOf = (messageId: string) =>
+    database
+      .listMessages(workspaceA, conversationId)
+      .then((rows) => rows.find((row) => row.id === messageId)?.status);
+  const ack = (
+    providerMessageId: string,
+    status: string,
+    eventId: string,
+    workspace = workspaceA,
+    channelInstanceId = channelA!.id,
+  ) =>
+    database.recordDeliveryStatus(workspace, {
+      channelInstanceId,
+      providerMessageId,
+      providerEventId: eventId,
+      providerEventKind: `ack.${status}`,
+      status,
+      rawPayload: { event: "message.ack" },
+      signatureVerified: true,
+    });
+
+  // Forward progress: sent → delivered → read.
+  const messageId = await sentOutbound("first", "waha-ack-1");
+  expect((await ack("waha-ack-1", "DEVICE", "evt-1")).kind).toBe("applied");
+  expect(await statusOf(messageId)).toBe("delivered");
+  expect((await ack("waha-ack-1", "READ", "evt-2")).kind).toBe("applied");
+  expect(await statusOf(messageId)).toBe("read");
+
+  // Out-of-order and replayed acks never regress `read`.
+  expect((await ack("waha-ack-1", "DEVICE", "evt-3")).kind).toBe("recorded");
+  expect((await ack("waha-ack-1", "ERROR", "evt-4")).kind).toBe("recorded");
+  expect((await ack("waha-ack-1", "READ", "evt-2")).kind).toBe("duplicate");
+  expect(await statusOf(messageId)).toBe("read");
+
+  // ERROR marks a still-in-flight message as failed.
+  const failedId = await sentOutbound("second", "waha-ack-2");
+  expect((await ack("waha-ack-2", "ERROR", "evt-5")).kind).toBe("applied");
+  expect(await statusOf(failedId)).toBe("failed");
+
+  // An authoritative ack reconciles an `unknown` dispatch (ADR 0010).
+  const created = await database.createOutboundIntent(workspaceA, {
+    conversationId,
+    body: "uncertain",
+  });
+  if (created.kind !== "created") throw new Error("not created");
+  const expiredClaim = await database.claimDispatchIntent(
+    workspaceA,
+    created.intentId,
+    { leaseMs: -1 },
+  );
+  if (expiredClaim.kind !== "claimed") throw new Error("not claimed");
+  await database.reapExpiredDispatches(workspaceA);
+  expect(await statusOf(created.messageId)).toBe("unknown");
+  await admin.query(
+    "update messages set provider_message_id = $1 where id = $2",
+    ["waha-ack-3", created.messageId],
+  );
+  expect((await ack("waha-ack-3", "READ", "evt-6")).kind).toBe("applied");
+  expect(await statusOf(created.messageId)).toBe("read");
+
+  // PENDING acks and unknown messages are recorded without state change.
+  const pendingId = await sentOutbound("third", "waha-ack-4");
+  expect((await ack("waha-ack-4", "PENDING", "evt-7")).kind).toBe("recorded");
+  expect(await statusOf(pendingId)).toBe("sent");
+  expect((await ack("waha-nope", "READ", "evt-8")).kind).toBe("missing");
+
+  // Cross-tenant calls see nothing (RLS).
+  const channelB = await database.createChannelInstance(workspaceB, {
+    provider: "waha",
+    providerInstanceId: "ack-b",
+    webhookSecret: "secret-b",
+  });
+  expect(
+    (await ack("waha-ack-4", "READ", "evt-9", workspaceB, channelB!.id)).kind,
+  ).toBe("missing");
+  expect(await statusOf(pendingId)).toBe("sent");
+});
