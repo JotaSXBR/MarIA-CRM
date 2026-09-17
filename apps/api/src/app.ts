@@ -2146,13 +2146,29 @@ export function buildApp(dependencies?: AppDependencies) {
         }
         const event = waha.normalizeEvent(parsed);
         if (event.kind === "message") {
+          // LID senders are privacy-masked: when the payload carried no real
+          // number, ask the provider's LID directory (`GET /api/{s}/lids/{l}`).
+          // Best-effort — failure leaves the conversation without a contact
+          // phone instead of persisting the LID digits as a fake number.
+          let senderPhone = event.sender.phone ?? null;
+          if (
+            !senderPhone &&
+            event.sender.lid &&
+            waha.resolveLid &&
+            instance.providerInstanceId
+          ) {
+            const resolved = await waha
+              .resolveLid(instance.providerInstanceId, event.sender.lid)
+              .catch(() => null);
+            senderPhone = resolved?.split("@")[0] ?? null;
+          }
           const result = await database.receiveInboundMessage(workspaceId, {
             channelInstanceId,
             providerThreadId: event.providerThreadId,
             providerMessageId: event.providerMessageId,
             providerEventId: event.providerEventId,
             providerEventKind: event.providerEventKind,
-            senderPhone: event.sender.phone ?? null,
+            senderPhone,
             contentType: event.content.type,
             body: event.content.text,
             rawPayload: parsed,

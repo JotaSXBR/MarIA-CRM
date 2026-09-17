@@ -40,9 +40,10 @@ services:
       retries: 10
 
   waha:
-    # Pin format: devlikeapro/waha:<browser>-<version>. Keep a versioned tag;
-    # for production promote a digest-pinned image instead.
-    image: ${WAHA_IMAGE:-devlikeapro/waha:latest-2026.8.2}
+    # Pin format: devlikeapro/waha:<engine>-<version>. `latest-*` tags ship the
+    # WEBJS build (Chromium); the GOWS build is what `WHATSAPP_DEFAULT_ENGINE`
+    # expects. Keep a versioned tag; promote a digest-pinned image in production.
+    image: ${WAHA_IMAGE:-devlikeapro/waha:gows-2026.8.2}
     restart: unless-stopped
     environment:
       WHATSAPP_DEFAULT_ENGINE: ${WAHA_ENGINE:-GOWS}
