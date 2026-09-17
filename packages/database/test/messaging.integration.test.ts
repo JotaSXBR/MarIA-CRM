@@ -291,6 +291,50 @@ test("receiveInboundMessage links or creates a contact by sender phone", async (
     noPhone.conversationId,
   );
   expect(noPhoneConversation?.contactId).toBeNull();
+
+  // A later event that resolves the sender backfills conversation.contactId
+  // without disturbing the existing link.
+  const resolved = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "no-phone@c.us",
+    providerMessageId: "msg-resolved",
+    providerEventId: "msg-resolved",
+    providerEventKind: "message",
+    senderPhone: "55119999",
+    contentType: "text",
+    body: "now identified",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  expect(resolved.kind).toBe("received");
+  const resolvedConversation = await database.getConversation(
+    workspaceA,
+    noPhone.conversationId,
+  );
+  expect(resolvedConversation?.contactId).toBe(contactsA2[0]?.id);
+
+  // Inbox ordering: the most recently active conversation comes first.
+  const orderedConversations = await database.listConversations(workspaceA);
+  expect(orderedConversations[0]?.id).toBe(noPhone.conversationId);
+});
+
+test("default (null) provider instances stay unique per workspace", async () => {
+  const first = await database.createChannelInstance(workspaceA, {
+    provider: "nullkey",
+    webhookSecret: "s1",
+  });
+  expect(first).toBeDefined();
+  await expect(
+    database.createChannelInstance(workspaceA, {
+      provider: "nullkey",
+      webhookSecret: "s2",
+    }),
+  ).rejects.toMatchObject({ cause: { code: "23505" } });
+  const otherWorkspace = await database.createChannelInstance(workspaceB, {
+    provider: "nullkey",
+    webhookSecret: "s3",
+  });
+  expect(otherWorkspace).toBeDefined();
 });
 
 test("outbound dispatch ledger enforces claim fencing, expiry and tenancy", async () => {

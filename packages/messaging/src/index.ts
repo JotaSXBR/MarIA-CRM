@@ -117,7 +117,7 @@ export type ProviderCapabilities = {
   sendIdempotency: "keyed" | "none";
   /** How an `unknown` outcome can be reconciled. */
   reconciliation: "provider_lookup" | "webhook" | "none";
-  /** Chat-scoped typing/recording presence signals (ADR 0012). */
+  /** Chat-scoped typing/recording presence signals (ADR 0013). */
   presenceSignals: boolean;
   /** Read receipts (mark messages seen) support. */
   readReceipts: boolean;
@@ -126,7 +126,7 @@ export type ProviderCapabilities = {
 };
 
 /**
- * ADR 0012 presence choreography primitives. These are best-effort UX
+ * ADR 0013 presence choreography primitives. These are best-effort UX
  * signals, not durable state: a lost presence/seen call never blocks the
  * send itself, and the dispatcher orchestrates their timing.
  */

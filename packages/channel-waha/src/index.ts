@@ -30,7 +30,7 @@ const wahaCapabilities: ProviderCapabilities = {
   sendIdempotency: "none",
   // Delivery state reconciles through authenticated `message.ack` webhooks.
   reconciliation: "webhook",
-  // Presence choreography (ADR 0012): POST /api/{session}/presence.
+  // Presence choreography (ADR 0013): POST /api/{session}/presence.
   presenceSignals: true,
   // POST /api/sendSeen.
   readReceipts: true,
@@ -186,7 +186,7 @@ export function createWahaProvider(
     };
   }
 
-  // Presence and read receipts are best-effort UX signals (ADR 0012): a lost
+  // Presence and read receipts are best-effort UX signals (ADR 0013): a lost
   // call never fails or blocks the send itself, so errors are swallowed.
   async function setPresence(input: PresenceInput): Promise<void> {
     await request(

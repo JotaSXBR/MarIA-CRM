@@ -152,7 +152,6 @@ test("local auth supports login, session verification and workspace authorizatio
     email: "admin@example.com",
     isAdmin: true,
   });
-  expect(await auth.ensureAdmin(adminSession!.userId)).toBe(true);
 
   const workspace = randomUUID();
   await admin.query("insert into organizations (id, name) values ($1, 'Org')", [

@@ -1,49 +1,9 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiBlob } from "../lib/api.ts";
-import { useWorkspace } from "../lib/workspace.tsx";
-
-type Conversation = {
-  id: string;
-  workspaceId: string;
-  channelInstanceId: string;
-  contactId: string | null;
-  contactName: string | null;
-  providerThreadId: string;
-  epoch: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type Message = {
-  id: string;
-  workspaceId: string;
-  conversationId: string;
-  providerMessageId: string | null;
-  direction: string;
-  status: string;
-  contentType: string;
-  body: string | null;
-  hasMedia: boolean;
-  mediaMime: string | null;
-  mediaFilename: string | null;
-  createdAt: string;
-};
-
-type Contact = {
-  id: string;
-  name: string;
-  phone: string | null;
-};
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-  });
-}
+import { api, apiBlob } from "@/lib/api";
+import { formatTime } from "@/lib/format";
+import type { Contact, Conversation, Message } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "enviando",
@@ -267,6 +227,7 @@ export function InboxPage() {
 
   const actionPending = retryMessage.isPending || resolveUnknown.isPending;
   const sendable = Boolean(draft.trim() || attachment);
+  const phoneContacts = contacts.filter((contact) => contact.phone);
 
   if (!workspaceId) return <p>Selecione um workspace.</p>;
 
@@ -517,27 +478,25 @@ export function InboxPage() {
                     Fechar
                   </button>
                 </div>
-                {contacts.filter((contact) => contact.phone).length === 0 ? (
+                {phoneContacts.length === 0 ? (
                   <p className="px-4 pb-3 text-xs text-slate-500">
                     Nenhum contato com telefone.
                   </p>
                 ) : (
-                  contacts
-                    .filter((contact) => contact.phone)
-                    .map((contact) => (
-                      <button
-                        key={contact.id}
-                        type="button"
-                        disabled={sendContact.isPending}
-                        onClick={() => sendContact.mutate(contact)}
-                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {contact.name}{" "}
-                        <span className="text-xs text-slate-500">
-                          {contact.phone}
-                        </span>
-                      </button>
-                    ))
+                  phoneContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      disabled={sendContact.isPending}
+                      onClick={() => sendContact.mutate(contact)}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {contact.name}{" "}
+                      <span className="text-xs text-slate-500">
+                        {contact.phone}
+                      </span>
+                    </button>
+                  ))
                 )}
               </div>
             ) : null}

@@ -17,7 +17,7 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     addMembership: vi.fn().mockResolvedValue("not-found"),
     updateMembershipRole: vi.fn().mockResolvedValue("not-found"),
     removeMembership: vi.fn().mockResolvedValue("not-found"),
-    ensureAdmin: vi.fn().mockResolvedValue(false),
+
     seedAdmin: vi.fn().mockResolvedValue(undefined),
   };
   return Object.assign(stub, overrides);

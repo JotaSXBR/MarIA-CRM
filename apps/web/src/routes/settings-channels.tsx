@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { formatTime } from "@/lib/format";
+import type { ChannelInstance } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,24 +15,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-type ChannelInstance = {
-  id: string;
-  provider: string;
-  providerInstanceId: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function generateSecret() {
   const bytes = new Uint8Array(24);
@@ -127,7 +111,7 @@ export function SettingsChannelsPage() {
                     {instance.isActive ? "Ativo" : "Inativo"}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {formatDate(instance.createdAt)}
+                    {formatTime(instance.createdAt)}
                   </span>
                 </li>
               ))}

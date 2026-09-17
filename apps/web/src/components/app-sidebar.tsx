@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { setToken } from "@/lib/api";
+import { initials } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -41,15 +42,6 @@ const NAV_ITEMS = [
   { to: "/companies", label: "Empresas", icon: Building2 },
   { to: "/pipelines", label: "Pipelines", icon: Kanban },
 ] as const;
-
-function initials(name: string | undefined): string {
-  return (name ?? "?")
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
 
 function WorkspaceSwitcher() {
   const { memberships, workspace, selectWorkspace } = useWorkspace();

@@ -87,7 +87,6 @@ export type AuthPort = {
     workspaceId: string,
     membershipId: string,
   ): Promise<"removed" | "not-found" | "last-admin">;
-  ensureAdmin(userId: string): Promise<boolean>;
   seedAdmin(): Promise<void>;
 };
 
@@ -462,15 +461,6 @@ export function createLocalAuth(
     });
   };
 
-  const ensureAdmin = async (userId: string): Promise<boolean> => {
-    const rows = await db
-      .select({ isAdmin: users.isAdmin, active: users.active })
-      .from(users)
-      .where(eq(users.id, userId));
-    const user = rows[0];
-    return user?.isAdmin === true && user?.active === true;
-  };
-
   const seedAdmin = async (): Promise<void> => {
     if (!config.adminEmail || !config.adminPassword) return;
     const normalized = normalizeEmail(config.adminEmail);
@@ -501,7 +491,6 @@ export function createLocalAuth(
     addMembership,
     updateMembershipRole,
     removeMembership,
-    ensureAdmin,
     seedAdmin,
   };
 }

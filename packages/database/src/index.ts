@@ -136,11 +136,12 @@ export function createDatabase(pool: Pool) {
   const lastPosition = async (
     tx: DrizzleTx,
     table: typeof pipelines | typeof stages | typeof deals,
+    parent?: SQLWrapper,
   ) => {
     const rows = await tx
       .select({ position: table.position })
       .from(table)
-      .where(notDeleted(table.deletedAt))
+      .where(and(parent, notDeleted(table.deletedAt)))
       .orderBy(desc(table.position))
       .limit(1);
     return rows[0]?.position ?? null;
@@ -240,6 +241,44 @@ export function createDatabase(pool: Pool) {
     createdAt: tasks.createdAt,
   };
 
+  const channelInstanceColumns = {
+    id: channelInstances.id,
+    workspaceId: channelInstances.workspaceId,
+    provider: channelInstances.provider,
+    providerInstanceId: channelInstances.providerInstanceId,
+    webhookSecret: channelInstances.webhookSecret,
+    isActive: channelInstances.isActive,
+    createdAt: channelInstances.createdAt,
+    updatedAt: channelInstances.updatedAt,
+  };
+
+  const conversationColumns = {
+    id: conversations.id,
+    workspaceId: conversations.workspaceId,
+    channelInstanceId: conversations.channelInstanceId,
+    contactId: conversations.contactId,
+    contactName: contacts.name,
+    providerThreadId: conversations.providerThreadId,
+    epoch: conversations.epoch,
+    createdAt: conversations.createdAt,
+    updatedAt: conversations.updatedAt,
+  };
+
+  const messageColumns = {
+    id: messages.id,
+    workspaceId: messages.workspaceId,
+    conversationId: messages.conversationId,
+    providerMessageId: messages.providerMessageId,
+    direction: messages.direction,
+    status: messages.status,
+    contentType: messages.contentType,
+    body: messages.body,
+    mediaKey: messages.mediaKey,
+    mediaMime: messages.mediaMime,
+    mediaFilename: messages.mediaFilename,
+    createdAt: messages.createdAt,
+  };
+
   type EntityFilter = {
     contactId?: string | undefined;
     companyId?: string | undefined;
@@ -258,6 +297,41 @@ export function createDatabase(pool: Pool) {
     filter.companyId ? eq(table.companyId, filter.companyId) : undefined,
     filter.dealId ? eq(table.dealId, filter.dealId) : undefined,
   ];
+
+  // Provider-event dedup (ADR 0010): the insert is the receipt — a conflict
+  // means this (channel, event id, kind) was already processed.
+  const recordWebhookEvent = async (
+    tx: DrizzleTx,
+    input: {
+      workspaceId: string;
+      channelInstanceId: string;
+      providerEventId: string;
+      providerEventKind: string;
+      rawPayload: unknown;
+      signatureVerified: boolean;
+    },
+  ) => {
+    const rows = await tx
+      .insert(webhookEvents)
+      .values({
+        workspaceId: input.workspaceId,
+        channelInstanceId: input.channelInstanceId,
+        providerEventId: input.providerEventId,
+        providerEventKind: input.providerEventKind,
+        payload: input.rawPayload as Record<string, unknown>,
+        signatureVerified: input.signatureVerified,
+        processedAt: new Date(),
+      })
+      .onConflictDoNothing({
+        target: [
+          webhookEvents.channelInstanceId,
+          webhookEvents.providerEventId,
+          webhookEvents.providerEventKind,
+        ],
+      })
+      .returning({ id: webhookEvents.id });
+    return rows.length > 0;
+  };
 
   return {
     close: () => pool.end(),
@@ -487,24 +561,17 @@ export function createDatabase(pool: Pool) {
           )
           .limit(1);
         if (!pipeline[0]) return undefined;
-        const last = await tx
-          .select({ position: stages.position })
-          .from(stages)
-          .where(
-            and(
-              eq(stages.pipelineId, pipelineId),
-              notDeleted(stages.deletedAt),
-            ),
-          )
-          .orderBy(desc(stages.position))
-          .limit(1);
+        const position = generateKeyBetween(
+          await lastPosition(tx, stages, eq(stages.pipelineId, pipelineId)),
+          null,
+        );
         const rows = await tx
           .insert(stages)
           .values({
             workspaceId,
             pipelineId,
             name: input.name,
-            position: generateKeyBetween(last[0]?.position ?? null, null),
+            position,
           })
           .returning(stageColumns);
         const row = rows[0];
@@ -573,14 +640,10 @@ export function createDatabase(pool: Pool) {
       withWorkspace(workspaceId, async (tx) => {
         const refsValid = await dealRefsValid(tx, input);
         if (!refsValid) return undefined;
-        const last = await tx
-          .select({ position: deals.position })
-          .from(deals)
-          .where(
-            and(eq(deals.stageId, input.stageId), notDeleted(deals.deletedAt)),
-          )
-          .orderBy(desc(deals.position))
-          .limit(1);
+        const position = generateKeyBetween(
+          await lastPosition(tx, deals, eq(deals.stageId, input.stageId)),
+          null,
+        );
         const rows = await tx
           .insert(deals)
           .values({
@@ -591,7 +654,7 @@ export function createDatabase(pool: Pool) {
             valueCents: input.valueCents ?? null,
             contactId: input.contactId ?? null,
             companyId: input.companyId ?? null,
-            position: generateKeyBetween(last[0]?.position ?? null, null),
+            position,
           })
           .returning(dealColumns);
         const row = rows[0];
@@ -620,20 +683,14 @@ export function createDatabase(pool: Pool) {
           companyId: input.companyId,
         });
         if (!refsValid) return undefined;
-        const set: {
-          title?: string;
-          valueCents?: number | null;
-          contactId?: string | null;
-          companyId?: string | null;
-        } = {};
-        if (input.title !== undefined) set.title = input.title;
-        if (input.valueCents !== undefined) set.valueCents = input.valueCents;
-        if (input.contactId !== undefined) set.contactId = input.contactId;
-        if (input.companyId !== undefined) set.companyId = input.companyId;
-        if (Object.keys(set).length === 0) return undefined;
+        // Drizzle skips `undefined` values in .set(); bail before emitting an
+        // empty UPDATE when the patch carries no field.
+        if (Object.values(input).every((value) => value === undefined)) {
+          return undefined;
+        }
         const rows = await tx
           .update(deals)
-          .set(set)
+          .set(input)
           .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
           .returning(dealColumns);
         return rows[0];
@@ -777,7 +834,8 @@ export function createDatabase(pool: Pool) {
               ...entityFilterClauses(tasks, filter),
             ),
           )
-          .orderBy(tasks.doneAt, tasks.dueAt, tasks.createdAt, tasks.id),
+          // Open tasks first (doneAt IS NULL), then most recently completed.
+          .orderBy(desc(tasks.doneAt), tasks.dueAt, tasks.createdAt, tasks.id),
       ),
     createTask: (
       workspaceId: string,
@@ -830,18 +888,13 @@ export function createDatabase(pool: Pool) {
       },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
-        const set: {
-          title?: string;
-          dueAt?: Date | null;
-          doneAt?: Date | null;
-        } = {};
-        if (input.title !== undefined) set.title = input.title;
-        if (input.dueAt !== undefined) set.dueAt = input.dueAt;
-        if (input.done !== undefined)
-          set.doneAt = input.done ? new Date() : null;
+        const { done, ...fields } = input;
         const rows = await tx
           .update(tasks)
-          .set(set)
+          .set({
+            ...fields,
+            ...(done !== undefined ? { doneAt: done ? new Date() : null } : {}),
+          })
           .where(and(eq(tasks.id, id), notDeleted(tasks.deletedAt)))
           .returning(taskColumns);
         return rows[0];
@@ -872,31 +925,13 @@ export function createDatabase(pool: Pool) {
             providerInstanceId: input.providerInstanceId ?? null,
             webhookSecret: input.webhookSecret,
           })
-          .returning({
-            id: channelInstances.id,
-            workspaceId: channelInstances.workspaceId,
-            provider: channelInstances.provider,
-            providerInstanceId: channelInstances.providerInstanceId,
-            webhookSecret: channelInstances.webhookSecret,
-            isActive: channelInstances.isActive,
-            createdAt: channelInstances.createdAt,
-            updatedAt: channelInstances.updatedAt,
-          });
+          .returning(channelInstanceColumns);
         return rows[0];
       }),
     listChannelInstances: (workspaceId: string) =>
       withWorkspace(workspaceId, (tx) =>
         tx
-          .select({
-            id: channelInstances.id,
-            workspaceId: channelInstances.workspaceId,
-            provider: channelInstances.provider,
-            providerInstanceId: channelInstances.providerInstanceId,
-            webhookSecret: channelInstances.webhookSecret,
-            isActive: channelInstances.isActive,
-            createdAt: channelInstances.createdAt,
-            updatedAt: channelInstances.updatedAt,
-          })
+          .select(channelInstanceColumns)
           .from(channelInstances)
           .where(eq(channelInstances.isActive, true))
           .orderBy(channelInstances.createdAt, channelInstances.id),
@@ -904,14 +939,7 @@ export function createDatabase(pool: Pool) {
     getChannelInstance: (workspaceId: string, id: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const rows = await tx
-          .select({
-            id: channelInstances.id,
-            workspaceId: channelInstances.workspaceId,
-            provider: channelInstances.provider,
-            providerInstanceId: channelInstances.providerInstanceId,
-            webhookSecret: channelInstances.webhookSecret,
-            isActive: channelInstances.isActive,
-          })
+          .select(channelInstanceColumns)
           .from(channelInstances)
           .where(
             and(
@@ -939,28 +967,11 @@ export function createDatabase(pool: Pool) {
       },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
-        const webhookRows = await tx
-          .insert(webhookEvents)
-          .values({
-            workspaceId,
-            channelInstanceId: input.channelInstanceId,
-            providerEventId: input.providerEventId,
-            providerEventKind: input.providerEventKind,
-            payload: input.rawPayload as Record<string, unknown>,
-            signatureVerified: input.signatureVerified,
-            processedAt: new Date(),
-          })
-          .onConflictDoNothing({
-            target: [
-              webhookEvents.channelInstanceId,
-              webhookEvents.providerEventId,
-              webhookEvents.providerEventKind,
-            ],
-          })
-          .returning({ id: webhookEvents.id });
-        if (webhookRows.length === 0) {
-          return { kind: "duplicate" as const };
-        }
+        const recorded = await recordWebhookEvent(tx, {
+          workspaceId,
+          ...input,
+        });
+        if (!recorded) return { kind: "duplicate" as const };
         let contactId: string | null = null;
         if (input.senderPhone) {
           const contactRows = await tx
@@ -1003,7 +1014,12 @@ export function createDatabase(pool: Pool) {
               conversations.channelInstanceId,
               conversations.providerThreadId,
             ],
-            set: { updatedAt: new Date() },
+            // Backfill the contact when a later event resolves the sender
+            // (e.g. first LID message carries no phone); never re-link.
+            set: {
+              updatedAt: new Date(),
+              contactId: sql`coalesce(${conversations.contactId}, excluded.contact_id)`,
+            },
           })
           .returning({ id: conversations.id });
         const conversation = conversationRows[0];
@@ -1035,35 +1051,16 @@ export function createDatabase(pool: Pool) {
     listConversations: (workspaceId: string) =>
       withWorkspace(workspaceId, (tx) =>
         tx
-          .select({
-            id: conversations.id,
-            workspaceId: conversations.workspaceId,
-            channelInstanceId: conversations.channelInstanceId,
-            contactId: conversations.contactId,
-            contactName: contacts.name,
-            providerThreadId: conversations.providerThreadId,
-            epoch: conversations.epoch,
-            createdAt: conversations.createdAt,
-            updatedAt: conversations.updatedAt,
-          })
+          .select(conversationColumns)
           .from(conversations)
           .leftJoin(contacts, eq(conversations.contactId, contacts.id))
-          .orderBy(conversations.updatedAt, conversations.id),
+          // Inbox ordering: most recently active conversation first.
+          .orderBy(desc(conversations.updatedAt), conversations.id),
       ),
     getConversation: (workspaceId: string, id: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const rows = await tx
-          .select({
-            id: conversations.id,
-            workspaceId: conversations.workspaceId,
-            channelInstanceId: conversations.channelInstanceId,
-            contactId: conversations.contactId,
-            contactName: contacts.name,
-            providerThreadId: conversations.providerThreadId,
-            epoch: conversations.epoch,
-            createdAt: conversations.createdAt,
-            updatedAt: conversations.updatedAt,
-          })
+          .select(conversationColumns)
           .from(conversations)
           .leftJoin(contacts, eq(conversations.contactId, contacts.id))
           .where(eq(conversations.id, id))
@@ -1084,20 +1081,7 @@ export function createDatabase(pool: Pool) {
           .limit(1);
         if (!conversation[0]) return [];
         return tx
-          .select({
-            id: messages.id,
-            workspaceId: messages.workspaceId,
-            conversationId: messages.conversationId,
-            providerMessageId: messages.providerMessageId,
-            direction: messages.direction,
-            status: messages.status,
-            contentType: messages.contentType,
-            body: messages.body,
-            mediaKey: messages.mediaKey,
-            mediaMime: messages.mediaMime,
-            mediaFilename: messages.mediaFilename,
-            createdAt: messages.createdAt,
-          })
+          .select(messageColumns)
           .from(messages)
           .where(eq(messages.conversationId, conversationId))
           .orderBy(messages.createdAt, messages.id);
@@ -1105,20 +1089,7 @@ export function createDatabase(pool: Pool) {
     getMessage: (workspaceId: string, messageId: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const rows = await tx
-          .select({
-            id: messages.id,
-            workspaceId: messages.workspaceId,
-            conversationId: messages.conversationId,
-            providerMessageId: messages.providerMessageId,
-            direction: messages.direction,
-            status: messages.status,
-            contentType: messages.contentType,
-            body: messages.body,
-            mediaKey: messages.mediaKey,
-            mediaMime: messages.mediaMime,
-            mediaFilename: messages.mediaFilename,
-            createdAt: messages.createdAt,
-          })
+          .select(messageColumns)
           .from(messages)
           .where(
             and(
@@ -1462,28 +1433,11 @@ export function createDatabase(pool: Pool) {
       },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
-        const webhookRows = await tx
-          .insert(webhookEvents)
-          .values({
-            workspaceId,
-            channelInstanceId: input.channelInstanceId,
-            providerEventId: input.providerEventId,
-            providerEventKind: input.providerEventKind,
-            payload: input.rawPayload as Record<string, unknown>,
-            signatureVerified: input.signatureVerified,
-            processedAt: new Date(),
-          })
-          .onConflictDoNothing({
-            target: [
-              webhookEvents.channelInstanceId,
-              webhookEvents.providerEventId,
-              webhookEvents.providerEventKind,
-            ],
-          })
-          .returning({ id: webhookEvents.id });
-        if (webhookRows.length === 0) {
-          return { kind: "duplicate" as const };
-        }
+        const recorded = await recordWebhookEvent(tx, {
+          workspaceId,
+          ...input,
+        });
+        if (!recorded) return { kind: "duplicate" as const };
         const target = ACK_STATUS_TARGETS[input.status];
         if (!target) return { kind: "recorded" as const };
         const rows = await tx

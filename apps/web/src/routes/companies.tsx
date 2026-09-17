@@ -1,13 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api.ts";
-import { useWorkspace } from "../lib/workspace.tsx";
-
-type Company = {
-  id: string;
-  name: string;
-  createdAt: string;
-};
+import { api } from "@/lib/api";
+import type { Company } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace";
 
 export function CompaniesPage() {
   const { workspace } = useWorkspace();

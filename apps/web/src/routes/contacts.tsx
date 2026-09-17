@@ -1,16 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api.ts";
-import { useWorkspace } from "../lib/workspace.tsx";
-
-type Contact = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  createdAt: string;
-};
+import { api } from "@/lib/api";
+import type { Contact } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace";
 
 const empty = { name: "", email: "", phone: "" };
 
