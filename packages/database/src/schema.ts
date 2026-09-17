@@ -55,6 +55,9 @@ export const contacts = pgTable(
     index("contacts_workspace_active_idx")
       .on(table.workspaceId)
       .where(sql`deleted_at is null`),
+    uniqueIndex("contacts_workspace_phone_active_idx")
+      .on(table.workspaceId, table.phone)
+      .where(sql`deleted_at is null`),
   ],
 );
 

@@ -181,3 +181,98 @@ test("listChannelInstances excludes inactive or cross-tenant instances", async (
   expect(await database.listChannelInstances(workspaceA)).toHaveLength(0);
   expect(await database.listChannelInstances(workspaceB)).toHaveLength(1);
 });
+
+test("receiveInboundMessage links or creates a contact by sender phone", async () => {
+  const channelA = await database.createChannelInstance(workspaceA, {
+    provider: "waha",
+    providerInstanceId: "phone-a",
+    webhookSecret: "secret-a",
+  });
+  const channelB = await database.createChannelInstance(workspaceB, {
+    provider: "waha",
+    providerInstanceId: "phone-b",
+    webhookSecret: "secret-b",
+  });
+
+  const receivedA = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "55119999@c.us",
+    providerMessageId: "msg-phone-a",
+    providerEventId: "msg-phone-a",
+    providerEventKind: "message",
+    senderPhone: "55119999",
+    contentType: "text",
+    body: "hello",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  expect(receivedA.kind).toBe("received");
+  if (receivedA.kind !== "received") throw new Error("not received");
+
+  const conversationA = await database.getConversation(
+    workspaceA,
+    receivedA.conversationId,
+  );
+  expect(conversationA?.contactId).not.toBeNull();
+
+  const contactsA = await database.listContacts(workspaceA);
+  expect(contactsA.length).toBe(1);
+  expect(contactsA[0]?.phone).toBe("55119999");
+  expect(contactsA[0]?.name).toBe("55119999");
+
+  const secondA = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "55119999@c.us",
+    providerMessageId: "msg-phone-a-2",
+    providerEventId: "msg-phone-a-2",
+    providerEventKind: "message",
+    senderPhone: "55119999",
+    contentType: "text",
+    body: "hello again",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  expect(secondA.kind).toBe("received");
+  const contactsA2 = await database.listContacts(workspaceA);
+  expect(contactsA2.length).toBe(1);
+
+  const receivedB = await database.receiveInboundMessage(workspaceB, {
+    channelInstanceId: channelB!.id,
+    providerThreadId: "55119999@c.us",
+    providerMessageId: "msg-phone-b",
+    providerEventId: "msg-phone-b",
+    providerEventKind: "message",
+    senderPhone: "55119999",
+    contentType: "text",
+    body: "hello from B",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  expect(receivedB.kind).toBe("received");
+  if (receivedB.kind !== "received") throw new Error("not received");
+
+  const conversationB = await database.getConversation(
+    workspaceB,
+    receivedB.conversationId,
+  );
+  expect(conversationB?.contactId).not.toBe(conversationA?.contactId);
+
+  const noPhone = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "no-phone@c.us",
+    providerMessageId: "msg-no-phone",
+    providerEventId: "msg-no-phone",
+    providerEventKind: "message",
+    contentType: "text",
+    body: "anonymous",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  expect(noPhone.kind).toBe("received");
+  if (noPhone.kind !== "received") throw new Error("not received");
+  const noPhoneConversation = await database.getConversation(
+    workspaceA,
+    noPhone.conversationId,
+  );
+  expect(noPhoneConversation?.contactId).toBeNull();
+});
