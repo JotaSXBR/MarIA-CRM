@@ -47,7 +47,9 @@ During work:
 - never work directly on `main`.
 - Read the relevant repository skill at `.devin/skills/<name>/SKILL.md`: `maria-dev-setup`
   for environment work, `maria-database-rls` for persistence, `maria-api-development` for API
-  work, and `maria-testing` for validation. Read `maria-devin-adaptation` only for agent setup.
+  work, `maria-shadcn` for vendored UI components, `maria-frontend-design` for visual and
+  copy direction in `apps/web`, and `maria-testing` for validation. Read
+  `maria-devin-adaptation` only for agent setup.
   These are shared, repository-local instructions; they do not require an installed slash command.
   They defer to this contract and do not carry a separate roadmap or dependency version baseline.
 - Use local Git for working-tree operations and `gh` for routine PR/check queries; use the

@@ -13,9 +13,10 @@ gh pr status
 ## Current objective
 
 - Branch: `chore/docs-drift-fixes` off `main` (`b4f2b11`).
-- Scope: correct documentation drift found in the ADR audit and the `/messages` Vite
-  proxy omission — a recurrence of the ADR 0003 proxy footgun that breaks inbox media,
-  retry and resolve calls under `pnpm dev`.
+- Scope: correct documentation drift found in the ADR audit, fix the `/messages` Vite
+  proxy omission (ADR 0003 footgun recurrence), and vendor the two UI agent skills
+  (`maria-shadcn` from shadcn-ui/ui MIT, `maria-frontend-design` from
+  anthropics/skills Apache-2.0) that govern the upcoming frontend slices.
 - Direction set with the operator: next product slices are CRM surface, not agents —
   app shell + vendored shadcn primitives, settings/user area (`/me` is read-only today),
   channel-management UI, then tasks/notes and detail pages.
