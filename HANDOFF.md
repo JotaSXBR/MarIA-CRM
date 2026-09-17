@@ -104,7 +104,13 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 4. Meta WhatsApp Cloud API adapter as the second provider.
 5. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
 
-## Failed-send recovery (in PR)
+## Failed-send recovery (PR #53, checks green)
+
+- CI fix in the same PR: the container smoke test waited on `pg_isready`
+  over the unix socket, which reports ready during the postgres image's
+  initdb phase — the migrate then raced the post-init restart and died with
+  "Connection terminated unexpectedly". The probe now forces TCP
+  (`-h 127.0.0.1`) and requires a real `SELECT 1`.
 
 - `POST /messages/:id/retry` — only `failed`/`cancelled` outbound messages;
   creates a NEW message+intent (fresh effect identity, ADR 0010) and kicks the
