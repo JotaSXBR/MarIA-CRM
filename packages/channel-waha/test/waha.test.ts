@@ -5,6 +5,18 @@ import { createWahaProvider } from "../src/index.ts";
 
 const secret = "session-secret";
 
+function hrefOf(url: unknown): string {
+  return typeof url === "string"
+    ? url
+    : url instanceof URL
+      ? url.href
+      : (url as Request).url;
+}
+
+function bodyOf(init: RequestInit | undefined): unknown {
+  return JSON.parse(typeof init?.body === "string" ? init.body : "{}");
+}
+
 function sampleMessageBody() {
   return JSON.stringify({
     id: "evt_01J0000000000000000000000A",
@@ -84,6 +96,41 @@ test("normalizeEvent drops status@broadcast pseudo-chats", () => {
   };
   status.payload.from = "status@broadcast";
   expect(provider.normalizeEvent(status).kind).toBe("unknown");
+});
+
+test("normalizeEvent keeps LID threads without inventing a phone", () => {
+  const provider = createWahaProvider();
+  const lid = JSON.parse(sampleMessageBody()) as {
+    payload: { from: string; id: string };
+  };
+  lid.payload.from = "122930570739927@lid";
+  lid.payload.id = "false_122930570739927@lid_3EB0ACCA805CA4AB04983D";
+  const result = provider.normalizeEvent(lid);
+  expect(result).toMatchObject({
+    kind: "message",
+    providerThreadId: "122930570739927@lid",
+    sender: { lid: "122930570739927@lid" },
+  });
+  if (result.kind === "message") {
+    // The LID digits are a privacy identifier, never a contact phone.
+    expect(result.sender.phone).toBeUndefined();
+  }
+});
+
+test("normalizeEvent reads the real number from lid alternate fields", () => {
+  const provider = createWahaProvider();
+  const lid = JSON.parse(sampleMessageBody()) as {
+    payload: Record<string, unknown>;
+  };
+  lid.payload.from = "122930570739927@lid";
+  lid.payload.id = "false_122930570739927@lid_3EB0ACCA805CA4AB04983D";
+  lid.payload._data = {
+    Info: { Sender: "122930570739927@lid", SenderAlt: "5516999887766@c.us" },
+  };
+  expect(provider.normalizeEvent(lid)).toMatchObject({
+    kind: "message",
+    sender: { phone: "5516999887766", lid: "122930570739927@lid" },
+  });
 });
 
 test("normalizeEvent maps message.ack ackName to status", () => {
@@ -268,4 +315,101 @@ test("send without a provider message id is unknown, not sent", async () => {
     content: { type: "text", text: "t" },
   });
   expect(result.kind).toBe("unknown");
+});
+
+test("setPresence posts chat and global presence (ADR 0012)", async () => {
+  const calls: { url: string; body: unknown }[] = [];
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: hrefOf(url), body: bodyOf(init) });
+      return new Response("{}", { status: 200 });
+    },
+  });
+  await provider.setPresence!({ session: "sales", presence: "online" });
+  await provider.setPresence!({
+    session: "sales",
+    chatId: "5511999999999@c.us",
+    presence: "typing",
+  });
+  expect(calls[0]!.url).toBe("http://waha:3000/api/sales/presence");
+  expect(calls[0]!.body).toEqual({ presence: "online" });
+  expect(calls[1]!.body).toEqual({
+    chatId: "5511999999999@c.us",
+    presence: "typing",
+  });
+});
+
+test("setPresence and sendSeen never throw on provider failure", async () => {
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async () => {
+      throw new Error("socket hangup");
+    },
+  });
+  await expect(
+    provider.setPresence!({ session: "s", presence: "offline" }),
+  ).resolves.toBeUndefined();
+  await expect(
+    provider.sendSeen!({ session: "s", chatId: "x@c.us" }),
+  ).resolves.toBeUndefined();
+  // Unconfigured provider is also a silent no-op.
+  const bare = createWahaProvider();
+  await expect(
+    bare.sendSeen!({ session: "s", chatId: "x@c.us" }),
+  ).resolves.toBeUndefined();
+});
+
+test("sendSeen posts session, chatId and optional message ids", async () => {
+  const bodies: unknown[] = [];
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async (url, init) => {
+      expect(hrefOf(url)).toBe("http://waha:3000/api/sendSeen");
+      bodies.push(bodyOf(init));
+      return new Response("{}", { status: 200 });
+    },
+  });
+  await provider.sendSeen!({
+    session: "s",
+    chatId: "1@g.us",
+    messageIds: ["false_1@g.us_abc"],
+    participant: "2@c.us",
+  });
+  expect(bodies[0]).toEqual({
+    session: "s",
+    chatId: "1@g.us",
+    messageIds: ["false_1@g.us_abc"],
+    participant: "2@c.us",
+  });
+});
+
+test("resolveLid maps a lid to the phone chat id, null when unknown", async () => {
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async (url) => {
+      expect(hrefOf(url)).toBe(
+        "http://waha:3000/api/sales/lids/122930570739927%40lid",
+      );
+      return new Response(
+        JSON.stringify({
+          lid: "122930570739927@lid",
+          pn: "5516999887766@c.us",
+        }),
+        { status: 200 },
+      );
+    },
+  });
+  await expect(
+    provider.resolveLid!("sales", "122930570739927@lid"),
+  ).resolves.toBe("5516999887766@c.us");
+
+  const missing = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async () => new Response("{}", { status: 404 }),
+  });
+  await expect(missing.resolveLid!("s", "1@lid")).resolves.toBeNull();
+  await expect(
+    createWahaProvider().resolveLid!("s", "1@lid"),
+  ).resolves.toBeNull();
 });

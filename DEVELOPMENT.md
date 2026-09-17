@@ -95,6 +95,7 @@ curl -X POST http://127.0.0.1:3001/api/sessions \
   -d '{
     "name": "<providerInstanceId>",
     "config": {
+      "ignore": { "status": true, "broadcast": true },
       "webhooks": [{
         "url": "http://host.docker.internal:3000/webhooks/waha/<workspaceId>/<channelInstanceId>",
         "events": ["message", "message.ack", "session.status"],
@@ -105,10 +106,21 @@ curl -X POST http://127.0.0.1:3001/api/sessions \
   }'
 ```
 
+`ignore.status`/`ignore.broadcast` keep WhatsApp Status/Stories and broadcast noise out of
+webhook delivery (the adapter also drops `status@broadcast` defensively). A session restart
+is required for `ignore` changes to take effect.
+
 `host.docker.internal:3000` reaches the host `pnpm dev` API from inside the container
 (the compose file adds the `host-gateway` mapping for Linux). Scan the QR code on the
 dashboard (`http://127.0.0.1:3001/dashboard`) or via `GET /api/{session}/auth/qr`. Set
 `WAHA_BASE_URL=http://127.0.0.1:3001` and `WAHA_API_KEY` in the API environment for outbound.
+
+The default engine is **GOWS** (`devlikeapro/waha:gows-*` image tag — the `latest-*` tags
+ship the heavier WEBJS/Chromium build and cannot run GOWS sessions). Interaction
+choreography primitives (`sendSeen`, `presence` online/offline/typing/recording/paused,
+`resolveLid`) are implemented on the provider per ADR 0013; the dispatcher activates the
+full timing sequence. `WAHA_PRESENCE_AUTO_ONLINE=false` keeps WAHA from auto-marking the
+session online between choreographed sends.
 
 ## Migrations and runtime credentials
 

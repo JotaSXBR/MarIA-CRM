@@ -7,6 +7,12 @@ export type InboundMessage = {
   sender: {
     phone?: string;
     name?: string;
+    /**
+     * Hidden LID chat id (e.g. `1229...@lid`) when WhatsApp privacy-masks the
+     * sender number. Resolve via `MessagingProvider.resolveLid` — never store
+     * the LID digits as the contact phone.
+     */
+    lid?: string;
   };
   content: {
     type: "text";
@@ -74,6 +80,37 @@ export type ProviderCapabilities = {
   sendIdempotency: "keyed" | "none";
   /** How an `unknown` outcome can be reconciled. */
   reconciliation: "provider_lookup" | "webhook" | "none";
+  /** Chat-scoped typing/recording presence signals (ADR 0012). */
+  presenceSignals: boolean;
+  /** Read receipts (mark messages seen) support. */
+  readReceipts: boolean;
+  /** Hidden-identifier (`@lid`) → public phone resolution support. */
+  lidResolution: boolean;
+};
+
+/**
+ * ADR 0012 presence choreography primitives. These are best-effort UX
+ * signals, not durable state: a lost presence/seen call never blocks the
+ * send itself, and the dispatcher orchestrates their timing.
+ */
+export type PresenceState =
+  "online" | "offline" | "typing" | "recording" | "paused";
+
+export type PresenceInput = {
+  /** Provider session/instance identifier. */
+  session: string;
+  /** Required for chat-scoped states (typing/recording/paused). */
+  chatId?: string;
+  presence: PresenceState;
+};
+
+export type SeenInput = {
+  session: string;
+  chatId: string;
+  /** Specific provider message ids to mark read; omit for all unread. */
+  messageIds?: string[];
+  /** Group participant required for group-message read receipts. */
+  participant?: string;
 };
 
 export interface MessagingProvider {
@@ -82,4 +119,13 @@ export interface MessagingProvider {
   verifyWebhook(input: WebhookVerification): boolean;
   normalizeEvent(raw: unknown): InboundEvent;
   send(input: SendInput): Promise<SendResult>;
+  /** Best-effort presence signal; unsupported providers may omit it. */
+  setPresence?(input: PresenceInput): Promise<void>;
+  /** Best-effort read receipt; unsupported providers may omit it. */
+  sendSeen?(input: SeenInput): Promise<void>;
+  /**
+   * Resolve a hidden identifier (`@lid`) to the public phone chat id
+   * (`@c.us`), or null when unknown — used for contact phone linking.
+   */
+  resolveLid?(session: string, lid: string): Promise<string | null>;
 }

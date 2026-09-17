@@ -1195,6 +1195,9 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
         capabilities: {
           sendIdempotency: "none",
           reconciliation: "webhook",
+          presenceSignals: false,
+          readReceipts: false,
+          lidResolution: false,
         },
         verifyWebhook: () => true,
         normalizeEvent: () => ({ kind: "unknown" }),
@@ -1281,6 +1284,9 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
         capabilities: {
           sendIdempotency: "none",
           reconciliation: "webhook",
+          presenceSignals: false,
+          readReceipts: false,
+          lidResolution: false,
         },
         verifyWebhook: () => true,
         normalizeEvent: () => ({ kind: "unknown" }),
@@ -1379,6 +1385,9 @@ test("POST /webhooks/waha routes message.ack to recordDeliveryStatus", async () 
         capabilities: {
           sendIdempotency: "none",
           reconciliation: "webhook",
+          presenceSignals: false,
+          readReceipts: false,
+          lidResolution: false,
         },
         verifyWebhook: () => true,
         normalizeEvent,
@@ -1429,6 +1438,67 @@ test("POST /webhooks/waha routes message.ack to recordDeliveryStatus", async () 
     });
     expect(otherSession.statusCode).toBe(200);
     expect(database.recordDeliveryStatus).toHaveBeenCalledTimes(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /webhooks/waha resolves lid senders to a real phone", async () => {
+  const workspaceId = randomUUID();
+  const channelInstanceId = randomUUID();
+  const database = createDatabaseStub();
+  database.getChannelInstance.mockResolvedValue({
+    id: channelInstanceId,
+    workspaceId,
+    provider: "waha",
+    providerInstanceId: "session-1",
+    webhookSecret: "secret",
+    isActive: true,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+  });
+  database.receiveInboundMessage.mockResolvedValue({ kind: "received" });
+  const resolveLid = vi.fn(async () => "5516999887766@c.us");
+  const app = buildApp({
+    database,
+    auth: createAuthStub(),
+    messaging: {
+      waha: {
+        name: "waha",
+        capabilities: {
+          sendIdempotency: "none",
+          reconciliation: "webhook",
+          presenceSignals: true,
+          readReceipts: true,
+          lidResolution: true,
+        },
+        verifyWebhook: () => true,
+        normalizeEvent: () => ({
+          kind: "message" as const,
+          providerThreadId: "122930570739927@lid",
+          providerMessageId: "waha-lid-1",
+          providerEventId: "evt-lid-1",
+          providerEventKind: "message",
+          sender: { lid: "122930570739927@lid" },
+          content: { type: "text" as const, text: "oi" },
+        }),
+        send: async () => ({ kind: "blocked" as const, reason: "unused" }),
+        resolveLid,
+      },
+    },
+  });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/webhooks/waha/${workspaceId}/${channelInstanceId}`,
+      payload: { event: "message", session: "session-1" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(resolveLid).toHaveBeenCalledWith("session-1", "122930570739927@lid");
+    expect(database.receiveInboundMessage).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({ senderPhone: "5516999887766" }),
+    );
   } finally {
     await app.close();
   }
