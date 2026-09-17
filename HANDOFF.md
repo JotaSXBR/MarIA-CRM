@@ -42,6 +42,11 @@ ADR 0010 effect-recovery contract.
   to ERROR/PENDING/SERVER/DEVICE/READ/PLAYED, `fromMe` messages are ignored,
   `sender.phone` is the bare number, and the webhook route drops events whose
   `session` differs from the instance's `providerInstanceId`.
+- `docker/compose.yaml` now runs WAHA (`devlikeapro/waha:latest-2026.8.2`,
+  port 127.0.0.1:3001, GOWS default engine) + Redis (`REDIS_URL`, internal
+  only) with session/media volumes; `docker/.env.example` documents required
+  values. Webhooks are configured per session (`POST /api/sessions` with
+  `config.webhooks[].hmac.key`) — see DEVELOPMENT.md "Local WAHA + Redis".
 - Known limitation: queue maintenance is request-driven (lazy per workspace);
   a dedicated dispatcher worker remains future work. Human-takeover epoch
   increments land with the agent runtime; intents already carry the epoch check.

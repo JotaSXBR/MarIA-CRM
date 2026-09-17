@@ -15,5 +15,74 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    # Backs WAHA Apps/background jobs via REDIS_URL. Internal only — no
+    # published port; reachable by other services on the compose network.
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - >-
+        redis-server --requirepass "$$REDIS_PASSWORD"
+        --appendonly yes --appendfsync everysec
+        --save 900 1 --save 300 10 --save 60 10000
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD for the local redis}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  waha:
+    # Pin format: devlikeapro/waha:<browser>-<version>. Keep a versioned tag;
+    # for production promote a digest-pinned image instead.
+    image: ${WAHA_IMAGE:-devlikeapro/waha:latest-2026.8.2}
+    restart: unless-stopped
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: ${WAHA_ENGINE:-GOWS}
+      WAHA_API_KEY: ${WAHA_API_KEY:?Set WAHA_API_KEY for the local WAHA}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?Set WAHA_DASHBOARD_PASSWORD}
+      WHATSAPP_SWAGGER_ENABLED: "true"
+      WHATSAPP_SWAGGER_USERNAME: ${WAHA_SWAGGER_USERNAME:-admin}
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_SWAGGER_PASSWORD:?Set WAHA_SWAGGER_PASSWORD}
+      WAHA_PRINT_QR: "false"
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TZ: ${TZ:-America/Sao_Paulo}
+    ports:
+      # API dev server already binds 3000; WAHA goes to 3001.
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - waha-sessions:/app/.sessions
+      - waha-media:/app/.media
+    # Lets WAHA reach the API running on the host (pnpm dev).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /health requires X-Api-Key when WAHA_API_KEY is configured.
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3000/health',
+          {headers:{'x-api-key':process.env.WAHA_API_KEY}})
+          .then((r) => process.exit(r.ok ? 0 : 1))
+          .catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres-data:
+  redis-data:
+  waha-sessions:
+  waha-media:
