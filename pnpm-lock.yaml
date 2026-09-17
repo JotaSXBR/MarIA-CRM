@@ -51,6 +51,9 @@ importers:
       '@maria/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@maria/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       fastify:
         specifier: 5.12.3
         version: 5.12.3

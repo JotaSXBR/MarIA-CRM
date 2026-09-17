@@ -12,20 +12,49 @@ gh pr status
 
 ## Current work
 
-Branch `feat/messaging-contact-link` (from `main`): automatically link inbound
-conversations to existing contacts by phone or create a contact on the first
-inbound message.
+Branch `feat/outbound-dispatch` (from `main`): outbound WAHA messaging under the
+ADR 0010 effect-recovery contract.
 
-- `packages/database/src/index.ts`: `receiveInboundMessage` now resolves a
-  `senderPhone` to a workspace contact and writes `conversation.contactId`.
-  If no active contact exists, it creates one with the phone as name.
-- New migration `0009_contact_phone_unique.sql` adds a partial unique index on
-  `(workspace_id, phone) where deleted_at is null` to prevent racy duplicates
-  across concurrent webhooks; `schema.ts` reflects the index.
-- `packages/database/test/messaging.integration.test.ts` covers first-message
-  contact creation, reuse, cross-tenant separation and the null case.
-- PR #36 is open: https://github.com/JotaSXBR/MarIA-CRM/pull/36
-- `main` contains the inbound slice and the inbox read API (PRs #34 and #35).
+- `packages/database/drizzle/0010_dispatch_ledger.sql` adds `dispatch_intents`
+  (effect identity = unique `(channel_instance_id, message_id)`, epoch captured
+  at commit) and `dispatch_attempts` (fencing token + lease, one open attempt
+  per intent), both RLS + FORCE, granted to `maria_runtime`.
+- `packages/database/src/index.ts` adds `createOutboundIntent` (message + intent
+  in one tx), `claimDispatchIntent` (atomic pending→dispatching, epoch check
+  cancels stale intents, inactive channel fails fast), `settleDispatch`
+  (fencing-token-matched completion; stale claimers are no-ops),
+  `reapExpiredDispatches` (expired lease → `unknown`, never retried) and
+  `listPendingIntents`.
+- `packages/messaging` extends `SendResult` with `rejected`/`unknown` and adds
+  `ProviderCapabilities`; `SendInput` carries `session`.
+- `packages/channel-waha` implements `send` via `POST {WAHA_BASE_URL}/api/sendText`
+  with `X-Api-Key`, 15s timeout; 4xx → `rejected`, 5xx/timeout/no-id → `unknown`.
+  Capabilities certified as `sendIdempotency: "none"`, `reconciliation: "webhook"`.
+- `apps/api` adds `POST /conversations/:id/messages` (commit intent → claim →
+  send → settle synchronously) plus lazy maintenance: `GET /conversations` reaps
+  expired leases and resumes orphaned `pending` intents in the background.
+  `WAHA_BASE_URL`/`WAHA_API_KEY` configure the provider; unset → sends `blocked`.
+- `apps/web` inbox has a message composer and shows outbound status
+  (`pending`/`sent`/`unknown`/`failed`/`cancelled`) on each bubble.
+- `normalizeEvent` was re-aligned to the real WAHA envelope after a docs
+  deep-dive: event data lives in `payload` (not `data`), dedup uses the
+  envelope `id` (`evt_<ULID>`), `message.ack` maps `ackName`/numeric `ack`
+  to ERROR/PENDING/SERVER/DEVICE/READ/PLAYED, `fromMe` messages are ignored,
+  `sender.phone` is the bare number, and the webhook route drops events whose
+  `session` differs from the instance's `providerInstanceId`.
+- `docker/compose.yaml` now runs WAHA (`devlikeapro/waha:latest-2026.8.2`,
+  port 127.0.0.1:3001, GOWS default engine) + Redis (`REDIS_URL`, internal
+  only) with session/media volumes; `docker/.env.example` documents required
+  values. Webhooks are configured per session (`POST /api/sessions` with
+  `config.webhooks[].hmac.key`) — see DEVELOPMENT.md "Local WAHA + Redis".
+- Known limitation: queue maintenance is request-driven (lazy per workspace);
+  a dedicated dispatcher worker remains future work. Human-takeover epoch
+  increments land with the agent runtime; intents already carry the epoch check.
+- Known gap: outbound replies reuse the inbound `providerThreadId` (already a
+  valid WhatsApp chatId). Starting a conversation with a CRM contact needs
+  Brazilian phone normalization (9th digit) in the adapter — the previous
+  WAHA setup delegated this to the Brazilian Phone Numbers app, which MarIA
+  does not use.
 
 ## Environment
 
@@ -33,20 +62,26 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 
 ## Verification for this slice
 
-- `pnpm typecheck` ✓
-- `pnpm fmt:check` ✓
-- `pnpm exec oxlint --type-aware apps packages` ✓ (0 errors, 9 pre-existing warnings)
-- `pnpm test` ✓
-- `pnpm test:integration` ✓ (database 14, auth 4, api 20)
-- `pnpm test:e2e` ✓
-- `pnpm build` ✓
+- `pnpm verify` ✓ — fmt:check, oxlint (0 errors, 9 pre-existing `apps/web`
+  warnings), typecheck, unit tests, integration (database 15, auth 4, api 22),
+  built API HTTP E2E, build.
+- Integration evidence covers: exclusive concurrent claim on independent
+  connections, stale-fencing no-op settle, expired lease → `unknown`,
+  epoch-mismatch cancellation, inactive-channel fast fail, cross-tenant
+  claim/reap isolation.
 
 ## Next actions
 
-1. Review/merge PR #36.
-2. Add an agent-facing inbox UI (`/conversations` list and thread view) that
-   displays the linked contact name.
-3. Outbound messaging remains blocked until ADR 0010 dispatch/idempotency
-   contract is validated.
+1. Review/merge this PR, then point a WAHA instance at the webhook route.
+   Deploy target baseline: **Coolify 4.3.21** on the VPS — WAHA + Redis ship
+   **inside the application stack** (same deploy compose), not as a separate
+   Coolify application; the API will ship as an immutable GHCR image
+   (CI-built, same digest promoted staging→prod). On the internal compose
+   network, the per-session webhook can target the API service name
+   directly. The Coolify compose/resource wiring is a later deploy slice,
+   deliberately separate from the dev compose in this PR.
+2. Delivery-status state machine from `message.ack` events (out-of-order safe).
+3. Meta WhatsApp Cloud API adapter as the second provider.
+4. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).

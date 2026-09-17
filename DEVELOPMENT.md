@@ -65,6 +65,49 @@ bypass this build orchestration. Stop with Ctrl+C; `docker compose -f docker/com
 stops the local DB without deleting its volume. Changing POSTGRES_PASSWORD does not rotate an
 existing volume's credentials. ADMIN_EMAIL/ADMIN_PASSWORD seed a missing user, not reset a password.
 
+WhatsApp messaging uses **WAHA_BASE_URL** (e.g. `http://localhost:3001`) and, when the WAHA
+server requires it, **WAHA_API_KEY**. Without a base URL, inbound webhooks still work but every
+outbound send resolves to `blocked`/`failed` — the dispatch ledger never silently retries an
+ambiguous outcome (ADR 0010). `POST /conversations/:id/messages` sends synchronously through
+`POST {WAHA_BASE_URL}/api/sendText`; expired leases and provider timeouts surface as `unknown`
+on the message until reconciled by an authenticated `message.ack` webhook or operator review.
+
+### Local WAHA + Redis
+
+`docker/compose.yaml` also runs **WAHA** (port `127.0.0.1:3001`, dashboard and Swagger enabled)
+backed by a **Redis** service (`REDIS_URL` for WAHA apps/background jobs; internal only, no
+published port). Session data persists in the `waha-sessions` volume; media in `waha-media`.
+
+```bash
+cp docker/.env.example docker/.env   # fill in the change-me values
+docker compose -f docker/compose.yaml up -d --wait
+```
+
+WAHA listens on `http://127.0.0.1:3001` (`X-Api-Key: $WAHA_API_KEY`). Because each channel
+instance has its own webhook URL and HMAC secret, configure the webhook **per session** when
+creating it — the global `WHATSAPP_HOOK_*` envs are intentionally unset:
+
+```bash
+curl -X POST http://127.0.0.1:3001/api/sessions \
+  -H "X-Api-Key: $WAHA_API_KEY" -H "content-type: application/json" \
+  -d '{
+    "name": "<providerInstanceId>",
+    "config": {
+      "webhooks": [{
+        "url": "http://host.docker.internal:3000/webhooks/waha/<workspaceId>/<channelInstanceId>",
+        "events": ["message", "message.ack", "session.status"],
+        "hmac": { "key": "<webhookSecret>" },
+        "retries": { "policy": "linear", "delaySeconds": 2, "attempts": 10 }
+      }]
+    }
+  }'
+```
+
+`host.docker.internal:3000` reaches the host `pnpm dev` API from inside the container
+(the compose file adds the `host-gateway` mapping for Linux). Scan the QR code on the
+dashboard (`http://127.0.0.1:3001/dashboard`) or via `GET /api/{session}/auth/qr`. Set
+`WAHA_BASE_URL=http://127.0.0.1:3001` and `WAHA_API_KEY` in the API environment for outbound.
+
 ## Migrations and runtime credentials
 
 `pnpm db:migrate` invokes the shared runner using **MIGRATION_DATABASE_URL**, never DATABASE_URL.

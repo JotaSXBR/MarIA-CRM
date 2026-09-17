@@ -59,6 +59,11 @@ function createDatabaseStub() {
     listConversations: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
+    createOutboundIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
+    claimDispatchIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
+    settleDispatch: vi.fn().mockResolvedValue({ kind: "settled" }),
+    reapExpiredDispatches: vi.fn().mockResolvedValue({ reaped: 0 }),
+    listPendingIntents: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -1128,6 +1133,214 @@ test("inbox routes forward the authorized workspace to the database", async () =
       headers: { authorization: "Bearer token" },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /conversations/:id/messages commits the intent and settles dispatch", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const intentId = randomUUID();
+  const messageId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const sentMessage = {
+    id: messageId,
+    workspaceId,
+    conversationId,
+    providerMessageId: "waha-msg-1",
+    direction: "outbound",
+    status: "sent",
+    contentType: "text",
+    body: "hi there",
+    createdAt: now,
+  };
+  const database = createDatabaseStub();
+  database.createOutboundIntent.mockResolvedValue({
+    kind: "created",
+    intentId,
+    messageId,
+  });
+  database.claimDispatchIntent.mockResolvedValue({
+    kind: "claimed",
+    attemptId: randomUUID(),
+    fencingToken: randomUUID(),
+    messageId,
+    body: "hi there",
+    to: "55119999@c.us",
+    session: "sales",
+  });
+  database.settleDispatch.mockResolvedValue({ kind: "settled" });
+  database.listMessages.mockResolvedValue([sentMessage]);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const send = vi.fn(async () => ({
+    kind: "sent" as const,
+    providerMessageId: "waha-msg-1",
+  }));
+  const app = buildApp({
+    database,
+    auth,
+    messaging: {
+      waha: {
+        name: "waha",
+        capabilities: {
+          sendIdempotency: "none",
+          reconciliation: "webhook",
+        },
+        verifyWebhook: () => true,
+        normalizeEvent: () => ({ kind: "unknown" }),
+        send,
+      },
+    },
+  });
+  try {
+    const unauthorized = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+      payload: { body: "hi there" },
+    });
+    expect(unauthorized.statusCode).toBe(401);
+    expect(database.createOutboundIntent).not.toHaveBeenCalled();
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "hi there" },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      id: messageId,
+      status: "sent",
+      providerMessageId: "waha-msg-1",
+      direction: "outbound",
+    });
+    expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
+      conversationId,
+      body: "hi there",
+    });
+    expect(database.claimDispatchIntent).toHaveBeenCalledWith(
+      workspaceId,
+      intentId,
+      { leaseMs: 60_000 },
+    );
+    expect(send).toHaveBeenCalledWith({
+      session: "sales",
+      to: "55119999@c.us",
+      content: { type: "text", text: "hi there" },
+    });
+    expect(database.settleDispatch).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({
+        intentId,
+        outcome: "succeeded",
+        providerMessageId: "waha-msg-1",
+      }),
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /conversations/:id/messages 404s for a missing conversation and maps provider outcomes", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const intentId = randomUUID();
+  const attemptId = randomUUID();
+  const fencingToken = randomUUID();
+  const database = createDatabaseStub();
+  database.createOutboundIntent.mockResolvedValue({ kind: "missing" });
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const send = vi.fn(async () => ({
+    kind: "unknown" as const,
+    reason: "timeout",
+  }));
+  const app = buildApp({
+    database,
+    auth,
+    messaging: {
+      waha: {
+        name: "waha",
+        capabilities: {
+          sendIdempotency: "none",
+          reconciliation: "webhook",
+        },
+        verifyWebhook: () => true,
+        normalizeEvent: () => ({ kind: "unknown" }),
+        send,
+      },
+    },
+  });
+  try {
+    const missing = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "hello" },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const messageId = randomUUID();
+    database.createOutboundIntent.mockResolvedValue({
+      kind: "created",
+      intentId,
+      messageId,
+    });
+    database.claimDispatchIntent.mockResolvedValue({
+      kind: "claimed",
+      attemptId,
+      fencingToken,
+      messageId,
+      body: "hello",
+      to: "5511@c.us",
+      session: "s",
+    });
+    database.listMessages.mockResolvedValue([
+      {
+        id: messageId,
+        workspaceId,
+        conversationId,
+        providerMessageId: null,
+        direction: "outbound",
+        status: "unknown",
+        contentType: "text",
+        body: "hello",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+    ]);
+    const response = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "hello" },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(database.settleDispatch).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({
+        intentId,
+        attemptId,
+        fencingToken,
+        outcome: "unknown",
+        error: "timeout",
+      }),
+    );
   } finally {
     await app.close();
   }
