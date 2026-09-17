@@ -584,3 +584,81 @@ test("recordDeliveryStatus reconciles outbound acks monotonically", async () => 
   ).toBe("missing");
   expect(await statusOf(pendingId)).toBe("sent");
 });
+
+test("resolveUnknownMessage only resolves unknown outbound messages", async () => {
+  const channel = await database.createChannelInstance(workspaceA, {
+    provider: "waha",
+    providerInstanceId: "resolve-a",
+    webhookSecret: "secret-a",
+  });
+  const received = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channel!.id,
+    providerThreadId: "55118888@c.us",
+    providerMessageId: "in-res-1",
+    providerEventId: "in-res-1",
+    providerEventKind: "message",
+    contentType: "text",
+    body: "hi",
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  if (received.kind !== "received") throw new Error("not received");
+  const conversationId = received.conversationId;
+
+  // Drive an outbound message into `unknown` via an expired lease.
+  const created = await database.createOutboundIntent(workspaceA, {
+    conversationId,
+    body: "uncertain",
+  });
+  if (created.kind !== "created") throw new Error("not created");
+  const claimed = await database.claimDispatchIntent(
+    workspaceA,
+    created.intentId,
+    { leaseMs: -1 },
+  );
+  if (claimed.kind !== "claimed") throw new Error("not claimed");
+  await database.reapExpiredDispatches(workspaceA);
+  const message = await database.getMessage(workspaceA, created.messageId);
+  expect(message?.status).toBe("unknown");
+
+  // Operator resolutions: not_sent → cancelled (retryable), sent → sent.
+  expect(
+    await database.resolveUnknownMessage(workspaceA, {
+      messageId: created.messageId,
+      resolution: "not_sent",
+    }),
+  ).toEqual({ kind: "applied", status: "cancelled" });
+  expect(
+    (await database.getMessage(workspaceA, created.messageId))?.status,
+  ).toBe("cancelled");
+
+  // A settled message can never be re-resolved.
+  expect(
+    await database.resolveUnknownMessage(workspaceA, {
+      messageId: created.messageId,
+      resolution: "sent",
+    }),
+  ).toMatchObject({ kind: "invalidState" });
+
+  // Inbound messages are ineligible.
+  const inbound = (
+    await database.listMessages(workspaceA, conversationId)
+  ).find((row) => row.direction === "inbound");
+  expect(
+    await database.resolveUnknownMessage(workspaceA, {
+      messageId: inbound!.id,
+      resolution: "sent",
+    }),
+  ).toMatchObject({ kind: "invalidState" });
+
+  // Cross-tenant reads/writes see nothing (RLS).
+  expect(
+    await database.resolveUnknownMessage(workspaceB, {
+      messageId: created.messageId,
+      resolution: "sent",
+    }),
+  ).toEqual({ kind: "missing" });
+  expect(
+    await database.getMessage(workspaceB, created.messageId),
+  ).toBeUndefined();
+});

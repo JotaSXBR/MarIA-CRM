@@ -287,6 +287,31 @@ type AppDependencies = {
       | { kind: "missing" }
       | { kind: "created"; intentId: string; messageId: string }
     >;
+    getMessage: (
+      workspaceId: string,
+      messageId: string,
+    ) => Promise<
+      | {
+          id: string;
+          workspaceId: string;
+          conversationId: string;
+          providerMessageId: string | null;
+          direction: string;
+          status: string;
+          contentType: string;
+          body: string | null;
+          createdAt: Date;
+        }
+      | undefined
+    >;
+    resolveUnknownMessage: (
+      workspaceId: string,
+      input: { messageId: string; resolution: "sent" | "not_sent" },
+    ) => Promise<
+      | { kind: "missing" }
+      | { kind: "invalidState"; status: string }
+      | { kind: "applied"; status: string }
+    >;
     claimDispatchIntent: (
       workspaceId: string,
       intentId: string,
@@ -2034,6 +2059,99 @@ export function buildApp(dependencies?: AppDependencies) {
         const message = messages.find((row) => row.id === created.messageId);
         if (!message) return reply.code(404).send();
         return reply.code(201).send(message);
+      },
+    );
+
+    // ADR 0010: retrying a failed/cancelled send is a NEW outbound message
+    // with its own effect identity — the failed bubble stays as history.
+    // `unknown` can never be resent blindly (the provider may have accepted
+    // it); it must be resolved first via /messages/:id/resolve.
+    app.post(
+      "/messages/:id/retry",
+      {
+        config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
+            201: messageSchema,
+            400: { type: "null" },
+            401: { type: "null" },
+            404: { type: "null" },
+            409: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const original = await database.getMessage(authorized.workspaceId, id);
+        if (!original) return reply.code(404).send();
+        if (original.direction !== "outbound" || !original.body) {
+          return reply.code(409).send();
+        }
+        if (!["failed", "cancelled"].includes(original.status)) {
+          return reply.code(409).send();
+        }
+        const created = await database.createOutboundIntent(
+          authorized.workspaceId,
+          { conversationId: original.conversationId, body: original.body },
+        );
+        if (created.kind === "missing") return reply.code(404).send();
+        void dispatcher.dispatchPending(authorized.workspaceId);
+        const message = await database.getMessage(
+          authorized.workspaceId,
+          created.messageId,
+        );
+        if (!message) return reply.code(404).send();
+        return reply.code(201).send(message);
+      },
+    );
+
+    // Operator resolution for `unknown` sends: confirm the provider outcome
+    // — `sent` (it arrived on the device) or `not_sent` (cancelled, freeing
+    // the message for retry). Only `unknown` outbound messages are eligible.
+    app.post(
+      "/messages/:id/resolve",
+      {
+        config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["resolution"],
+            properties: {
+              resolution: { type: "string", enum: ["sent", "not_sent"] },
+            },
+          },
+          response: {
+            200: messageSchema,
+            400: { type: "null" },
+            401: { type: "null" },
+            404: { type: "null" },
+            409: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { resolution } = request.body as {
+          resolution: "sent" | "not_sent";
+        };
+        const result = await database.resolveUnknownMessage(
+          authorized.workspaceId,
+          { messageId: id, resolution },
+        );
+        if (result.kind === "missing") return reply.code(404).send();
+        if (result.kind === "invalidState") return reply.code(409).send();
+        const message = await database.getMessage(authorized.workspaceId, id);
+        if (!message) return reply.code(404).send();
+        return reply.code(200).send(message);
       },
     );
 

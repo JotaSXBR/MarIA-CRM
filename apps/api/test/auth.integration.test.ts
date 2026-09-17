@@ -60,6 +60,8 @@ function createDatabaseStub() {
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
     createOutboundIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
+    getMessage: vi.fn().mockResolvedValue(undefined),
+    resolveUnknownMessage: vi.fn().mockResolvedValue({ kind: "missing" }),
     claimDispatchIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
     settleDispatch: vi.fn().mockResolvedValue({ kind: "settled" }),
     reapExpiredDispatches: vi.fn().mockResolvedValue({ reaped: 0 }),
@@ -1362,6 +1364,170 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
         }),
       );
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /messages/:id/retry creates a new intent for failed sends only", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const failedMessageId = randomUUID();
+  const retriedMessageId = randomUUID();
+  const intentId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const failedMessage = {
+    id: failedMessageId,
+    workspaceId,
+    conversationId,
+    providerMessageId: null,
+    direction: "outbound",
+    status: "failed",
+    contentType: "text",
+    body: "retry me",
+    createdAt: now,
+  };
+  const retriedMessage = {
+    ...failedMessage,
+    id: retriedMessageId,
+    status: "pending",
+  };
+  const database = createDatabaseStub();
+  database.getMessage.mockImplementation(async (_w: string, id: string) =>
+    id === failedMessageId
+      ? failedMessage
+      : id === retriedMessageId
+        ? retriedMessage
+        : undefined,
+  );
+  database.createOutboundIntent.mockResolvedValue({
+    kind: "created",
+    intentId,
+    messageId: retriedMessageId,
+  });
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const unauthorized = await app.inject({
+      method: "POST",
+      url: `/messages/${failedMessageId}/retry?workspaceId=${workspaceId}`,
+    });
+    expect(unauthorized.statusCode).toBe(401);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/messages/${failedMessageId}/retry?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      id: retriedMessageId,
+      status: "pending",
+      body: "retry me",
+    });
+    // The retry is a brand-new intent carrying the same body (ADR 0010).
+    expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
+      conversationId,
+      body: "retry me",
+    });
+    // The dispatcher drains in the background.
+    expect(database.listPendingIntents).toHaveBeenCalled();
+
+    // A message that may still reach the provider can never be resent.
+    database.getMessage.mockResolvedValue({
+      ...failedMessage,
+      status: "unknown",
+    });
+    const unknownRetry = await app.inject({
+      method: "POST",
+      url: `/messages/${failedMessageId}/retry?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(unknownRetry.statusCode).toBe(409);
+
+    database.getMessage.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "POST",
+      url: `/messages/${failedMessageId}/retry?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /messages/:id/resolve confirms the outcome of unknown sends", async () => {
+  const workspaceId = randomUUID();
+  const messageId = randomUUID();
+  const message = {
+    id: messageId,
+    workspaceId,
+    conversationId: randomUUID(),
+    providerMessageId: null,
+    direction: "outbound",
+    status: "sent",
+    contentType: "text",
+    body: "hello",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  const database = createDatabaseStub();
+  database.resolveUnknownMessage.mockResolvedValue({
+    kind: "applied",
+    status: "sent",
+  });
+  database.getMessage.mockResolvedValue(message);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/messages/${messageId}/resolve?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { resolution: "maybe" },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const applied = await app.inject({
+      method: "POST",
+      url: `/messages/${messageId}/resolve?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { resolution: "sent" },
+    });
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toMatchObject({ id: messageId, status: "sent" });
+    expect(database.resolveUnknownMessage).toHaveBeenCalledWith(workspaceId, {
+      messageId,
+      resolution: "sent",
+    });
+
+    database.resolveUnknownMessage.mockResolvedValue({
+      kind: "invalidState",
+      status: "read",
+    });
+    const conflict = await app.inject({
+      method: "POST",
+      url: `/messages/${messageId}/resolve?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { resolution: "not_sent" },
+    });
+    expect(conflict.statusCode).toBe(409);
   } finally {
     await app.close();
   }
