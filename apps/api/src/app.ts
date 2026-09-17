@@ -2,6 +2,8 @@ import { PassThrough } from "node:stream";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { createWahaProvider } from "@maria/channel-waha";
+import type { MessagingProvider } from "@maria/messaging";
+import { createDispatcher } from "./dispatch.ts";
 import type { AuthPort } from "@maria/auth";
 
 type Contact = {
@@ -238,6 +240,7 @@ type AppDependencies = {
         workspaceId: string;
         channelInstanceId: string;
         contactId: string | null;
+        contactName: string | null;
         providerThreadId: string;
         epoch: number;
         createdAt: Date;
@@ -253,6 +256,7 @@ type AppDependencies = {
           workspaceId: string;
           channelInstanceId: string;
           contactId: string | null;
+          contactName: string | null;
           providerThreadId: string;
           epoch: number;
           createdAt: Date;
@@ -276,8 +280,52 @@ type AppDependencies = {
         createdAt: Date;
       }[]
     >;
+    createOutboundIntent: (
+      workspaceId: string,
+      input: { conversationId: string; body: string },
+    ) => Promise<
+      | { kind: "missing" }
+      | { kind: "created"; intentId: string; messageId: string }
+    >;
+    claimDispatchIntent: (
+      workspaceId: string,
+      intentId: string,
+      options: { leaseMs: number },
+    ) => Promise<
+      | { kind: "missing" }
+      | { kind: "notPending"; status: string }
+      | { kind: "stale" }
+      | { kind: "failed"; reason: string }
+      | {
+          kind: "claimed";
+          attemptId: string;
+          fencingToken: string;
+          messageId: string;
+          body: string;
+          to: string;
+          session: string;
+        }
+    >;
+    settleDispatch: (
+      workspaceId: string,
+      input: {
+        intentId: string;
+        attemptId: string;
+        fencingToken: string;
+        outcome: "succeeded" | "unknown" | "failed";
+        providerMessageId?: string;
+        error?: string;
+      },
+    ) => Promise<{ kind: "missing" } | { kind: "stale" } | { kind: "settled" }>;
+    reapExpiredDispatches: (workspaceId: string) => Promise<{ reaped: number }>;
+    listPendingIntents: (
+      workspaceId: string,
+      limit?: number,
+    ) => Promise<{ id: string }[]>;
   };
   auth: AuthPort;
+  /** Injectable provider registry; defaults to env-configured WAHA. */
+  messaging?: { waha?: MessagingProvider };
 };
 
 function extractBearerToken(request: FastifyRequest): string | undefined {
@@ -328,7 +376,14 @@ const workspaceQuerySchema = {
 
 export function buildApp(dependencies?: AppDependencies) {
   const app = Fastify({ logger: true });
-  const waha = createWahaProvider();
+  const waha =
+    dependencies?.messaging?.waha ??
+    createWahaProvider({
+      ...(process.env.WAHA_BASE_URL
+        ? { baseUrl: process.env.WAHA_BASE_URL }
+        : {}),
+      ...(process.env.WAHA_API_KEY ? { apiKey: process.env.WAHA_API_KEY } : {}),
+    });
 
   app.addHook(
     "preParsing",
@@ -371,6 +426,11 @@ export function buildApp(dependencies?: AppDependencies) {
 
   if (dependencies) {
     const { auth, database } = dependencies;
+    const dispatcher = createDispatcher({
+      database,
+      provider: waha,
+      onError: (error) => app.log.error(error),
+    });
 
     const authorizeWorkspaceRequest = async (
       request: FastifyRequest,
@@ -1783,6 +1843,7 @@ export function buildApp(dependencies?: AppDependencies) {
         "workspaceId",
         "channelInstanceId",
         "contactId",
+        "contactName",
         "providerThreadId",
         "epoch",
         "createdAt",
@@ -1793,6 +1854,7 @@ export function buildApp(dependencies?: AppDependencies) {
         workspaceId: { type: "string", format: "uuid" },
         channelInstanceId: { type: "string", format: "uuid" },
         contactId: { type: ["string", "null"] },
+        contactName: { type: ["string", "null"] },
         providerThreadId: { type: "string" },
         epoch: { type: "integer" },
         createdAt: { type: "string", format: "date-time" },
@@ -1901,7 +1963,62 @@ export function buildApp(dependencies?: AppDependencies) {
       async (request, reply) => {
         const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
+        // Lazy dispatch maintenance: expired leases become `unknown` so the
+        // list reflects blocked sends, and orphaned `pending` intents (e.g.
+        // after a crash between commit and claim) are resumed safely — a
+        // pending intent was never sent to the provider (ADR 0010 §2,§4).
+        await database.reapExpiredDispatches(authorized.workspaceId);
+        void dispatcher.dispatchPending(authorized.workspaceId);
         return database.listConversations(authorized.workspaceId);
+      },
+    );
+
+    app.post(
+      "/conversations/:id/messages",
+      {
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["body"],
+            properties: {
+              body: { type: "string", minLength: 1, maxLength: 4096 },
+            },
+          },
+          response: {
+            201: messageSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { body } = request.body as { body: string };
+        // Commit message + intent in one transaction, then claim/send/settle
+        // synchronously so the response carries the final status (ADR 0010).
+        const created = await database.createOutboundIntent(
+          authorized.workspaceId,
+          { conversationId: id, body },
+        );
+        if (created.kind === "missing") return reply.code(404).send();
+        await dispatcher.dispatchIntent(
+          authorized.workspaceId,
+          created.intentId,
+        );
+        void dispatcher.maintainWorkspace(authorized.workspaceId);
+        const messages = await database.listMessages(
+          authorized.workspaceId,
+          id,
+        );
+        const message = messages.find((row) => row.id === created.messageId);
+        if (!message) return reply.code(404).send();
+        return reply.code(201).send(message);
       },
     );
 
@@ -1996,6 +2113,19 @@ export function buildApp(dependencies?: AppDependencies) {
           parsed = JSON.parse(rawBody.toString("utf8"));
         } catch {
           return reply.code(400).send();
+        }
+        // A WAHA webhook URL receives events for every session it is
+        // subscribed to; drop events that do not belong to this channel
+        // instance's WAHA session.
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "session" in parsed &&
+          typeof parsed.session === "string" &&
+          instance.providerInstanceId &&
+          parsed.session !== instance.providerInstanceId
+        ) {
+          return reply.code(200).send({ received: true });
         }
         const event = waha.normalizeEvent(parsed);
         if (event.kind === "unknown" || event.kind !== "message") {

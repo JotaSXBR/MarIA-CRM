@@ -55,6 +55,9 @@ export const contacts = pgTable(
     index("contacts_workspace_active_idx")
       .on(table.workspaceId)
       .where(sql`deleted_at is null`),
+    uniqueIndex("contacts_workspace_phone_active_idx")
+      .on(table.workspaceId, table.phone)
+      .where(sql`deleted_at is null`),
   ],
 );
 
@@ -338,5 +341,70 @@ export const webhookEvents = pgTable(
       table.providerEventId,
       table.providerEventKind,
     ),
+  ],
+);
+
+export const dispatchIntents = pgTable(
+  "dispatch_intents",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    channelInstanceId: uuid("channel_instance_id")
+      .references(() => channelInstances.id, { onDelete: "cascade" })
+      .notNull(),
+    messageId: uuid("message_id")
+      .references(() => messages.id, { onDelete: "cascade" })
+      .notNull(),
+    epoch: integer().notNull(),
+    status: text().notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("dispatch_intents_effect_key_idx").on(
+      table.channelInstanceId,
+      table.messageId,
+    ),
+    index("dispatch_intents_workspace_status_idx").on(
+      table.workspaceId,
+      table.status,
+    ),
+  ],
+);
+
+export const dispatchAttempts = pgTable(
+  "dispatch_attempts",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    intentId: uuid("intent_id")
+      .references(() => dispatchIntents.id, { onDelete: "cascade" })
+      .notNull(),
+    fencingToken: uuid("fencing_token").defaultRandom().notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    status: text().notNull().default("dispatching"),
+    error: text(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("dispatch_attempts_lease_idx")
+      .on(table.leaseExpiresAt)
+      .where(sql`${table.completedAt} IS NULL`),
   ],
 );
