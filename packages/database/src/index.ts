@@ -874,6 +874,64 @@ export function createDatabase(pool: Pool) {
           .where(eq(messages.conversationId, conversationId))
           .orderBy(messages.createdAt, messages.id);
       }),
+    getMessage: (workspaceId: string, messageId: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: messages.id,
+            workspaceId: messages.workspaceId,
+            conversationId: messages.conversationId,
+            providerMessageId: messages.providerMessageId,
+            direction: messages.direction,
+            status: messages.status,
+            contentType: messages.contentType,
+            body: messages.body,
+            createdAt: messages.createdAt,
+          })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.id, messageId),
+              eq(messages.workspaceId, workspaceId),
+            ),
+          )
+          .limit(1);
+        return rows[0];
+      }),
+    /**
+     * ADR 0010 operator resolution for `unknown` sends: the provider may have
+     * accepted the message, so a human must confirm the outcome — `sent` (it
+     * arrived) or `not_sent` (cancelled, safe to retry as a new intent).
+     * Only `unknown` outbound messages are eligible; anything else is a
+     * state violation and rejected.
+     */
+    resolveUnknownMessage: (
+      workspaceId: string,
+      input: { messageId: string; resolution: "sent" | "not_sent" },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({ status: messages.status, direction: messages.direction })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.id, input.messageId),
+              eq(messages.workspaceId, workspaceId),
+            ),
+          )
+          .limit(1);
+        const row = rows[0];
+        if (!row) return { kind: "missing" as const };
+        if (row.direction !== "outbound" || row.status !== "unknown") {
+          return { kind: "invalidState" as const, status: row.status };
+        }
+        const status = input.resolution === "sent" ? "sent" : "cancelled";
+        await tx
+          .update(messages)
+          .set({ status })
+          .where(eq(messages.id, input.messageId));
+        return { kind: "applied" as const, status };
+      }),
     // ADR 0010: outbound send commits the message and its dispatch intent in one
     // transaction. The (channel_instance_id, message_id) unique is the stable
     // effect identity; epoch is captured for stale-intent cancellation.

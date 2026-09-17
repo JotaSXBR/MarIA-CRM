@@ -36,6 +36,17 @@ function formatTime(iso: string) {
   });
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: "enviando",
+  dispatching: "enviando",
+  sent: "enviada",
+  delivered: "entregue",
+  read: "lida",
+  failed: "falhou",
+  unknown: "não confirmada",
+  cancelled: "cancelada",
+};
+
 export function InboxPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
@@ -83,6 +94,47 @@ export function InboxPage() {
     if (!body || !selectedId) return;
     sendMessage.mutate(body);
   };
+
+  const invalidateMessages = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["messages", workspaceId, selectedId],
+    });
+
+  // ADR 0010: retrying creates a NEW message+intent; the failed bubble stays
+  // as history. `unknown` is never resent blindly — it must be resolved first
+  // ("not_sent" cancels it, then retry is allowed; "sent" confirms arrival).
+  const retryMessage = useMutation({
+    mutationFn: (messageId: string) =>
+      api<Message>(`/messages/${messageId}/retry`, {
+        method: "POST",
+        workspaceId,
+      }),
+    onSuccess: invalidateMessages,
+    onError: () => setSendError("Não foi possível reenviar a mensagem."),
+  });
+
+  const resolveUnknown = useMutation({
+    mutationFn: async (input: {
+      messageId: string;
+      resolution: "sent" | "not_sent";
+    }) => {
+      await api<Message>(`/messages/${input.messageId}/resolve`, {
+        method: "POST",
+        workspaceId,
+        body: { resolution: input.resolution },
+      });
+      if (input.resolution === "not_sent") {
+        await api<Message>(`/messages/${input.messageId}/retry`, {
+          method: "POST",
+          workspaceId,
+        });
+      }
+    },
+    onSuccess: invalidateMessages,
+    onError: () => setSendError("Não foi possível resolver a mensagem."),
+  });
+
+  const actionPending = retryMessage.isPending || resolveUnknown.isPending;
 
   if (!workspaceId) return <p>Selecione um workspace.</p>;
 
@@ -171,9 +223,51 @@ export function InboxPage() {
                       >
                         {formatTime(message.createdAt)}
                         {message.direction === "outbound"
-                          ? ` · ${message.status}`
+                          ? ` · ${STATUS_LABELS[message.status] ?? message.status}`
                           : ""}
                       </p>
+                      {message.direction === "outbound" &&
+                      ["failed", "cancelled"].includes(message.status) ? (
+                        <button
+                          type="button"
+                          disabled={actionPending}
+                          onClick={() => retryMessage.mutate(message.id)}
+                          className="mt-1 text-xs font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
+                        >
+                          Reenviar
+                        </button>
+                      ) : null}
+                      {message.direction === "outbound" &&
+                      message.status === "unknown" ? (
+                        <div className="mt-1 flex items-center justify-end gap-2 text-xs">
+                          <button
+                            type="button"
+                            disabled={actionPending}
+                            onClick={() =>
+                              resolveUnknown.mutate({
+                                messageId: message.id,
+                                resolution: "sent",
+                              })
+                            }
+                            className="text-indigo-100 underline hover:text-white disabled:opacity-50"
+                          >
+                            Foi entregue
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionPending}
+                            onClick={() =>
+                              resolveUnknown.mutate({
+                                messageId: message.id,
+                                resolution: "not_sent",
+                              })
+                            }
+                            className="font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
+                          >
+                            Reenviar
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))
