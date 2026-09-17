@@ -11,18 +11,18 @@ ADR 0009 defines the record lifecycle.
   record historical corrections without rewriting the original decision.
 - Keep verification/approval evidence in the PR and the latest checkpoint in HANDOFF.md.
 
-| #    | Title                                                                                           | Status                           |
-| ---- | ----------------------------------------------------------------------------------------------- | -------------------------------- |
-| 0001 | [Record decisions](0001-record-decisions.md)                                                    | superseded by 0009               |
-| 0002 | [Local authentication](0002-local-authentication.md)                                            | accepted                         |
-| 0003 | [Web stack](0003-web-stack.md)                                                                  | accepted                         |
-| 0004 | [Pipeline ordering](0004-pipeline-ordering.md)                                                  | accepted                         |
-| 0005 | [Global admin model](0005-global-admin-model.md)                                                | superseded by 0011               |
-| 0006 | [uuid override](0006-uuid-override.md)                                                          | accepted                         |
-| 0007 | [Agent tooling](0007-agent-tooling.md)                                                          | superseded by 0009               |
-| 0008 | [Messaging model](0008-messaging-waha-meta.md)                                                  | superseded by 0010               |
-| 0009 | [Development contract and verification](0009-development-contract-and-verification.md)          | accepted                         |
-| 0010 | [Messaging effect recovery](0010-messaging-effect-recovery.md)                                  | accepted; implementation planned |
-| 0011 | [Concurrent administrator protection](0011-admin-invariant-concurrency.md)                      | accepted                         |
-| 0012 | [Transactional migration history](0012-transactional-migration-history.md)                      | accepted                         |
-| 0013 | [WhatsApp interaction choreography and LID identity](0013-whatsapp-interaction-choreography.md) | accepted; orchestration pending  |
+| #    | Title                                                                                           | Status                                      |
+| ---- | ----------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 0001 | [Record decisions](0001-record-decisions.md)                                                    | superseded by 0009                          |
+| 0002 | [Local authentication](0002-local-authentication.md)                                            | accepted                                    |
+| 0003 | [Web stack](0003-web-stack.md)                                                                  | accepted                                    |
+| 0004 | [Pipeline ordering](0004-pipeline-ordering.md)                                                  | accepted                                    |
+| 0005 | [Global admin model](0005-global-admin-model.md)                                                | superseded by 0011                          |
+| 0006 | [uuid override](0006-uuid-override.md)                                                          | accepted                                    |
+| 0007 | [Agent tooling](0007-agent-tooling.md)                                                          | superseded by 0009                          |
+| 0008 | [Messaging model](0008-messaging-waha-meta.md)                                                  | superseded by 0010                          |
+| 0009 | [Development contract and verification](0009-development-contract-and-verification.md)          | accepted                                    |
+| 0010 | [Messaging effect recovery](0010-messaging-effect-recovery.md)                                  | accepted; implemented on WAHA (PRs #34–#54) |
+| 0011 | [Concurrent administrator protection](0011-admin-invariant-concurrency.md)                      | accepted                                    |
+| 0012 | [Transactional migration history](0012-transactional-migration-history.md)                      | accepted                                    |
+| 0013 | [WhatsApp interaction choreography and LID identity](0013-whatsapp-interaction-choreography.md) | accepted; implemented (PRs #51–#54)         |

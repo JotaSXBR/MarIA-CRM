@@ -12,10 +12,14 @@ gh pr status
 
 ## Current objective
 
-- Branch: `feat/media-messages`, PR #54, now merged with `main` at `adad13d`.
-- Scope: WhatsApp-style attachments end to end — composer `+` menu (Fotos e vídeos / Documento / Contato), outbound image/video/document/voice + vCard contact sends, inbound media download and persistence, authenticated media retrieval, and inbox rendering.
-- Product baseline on `main`: text inbox, WAHA interaction choreography, delivery reconciliation, and failed/unknown-send operator recovery are merged through PR #53.
-- Related merged process change: PR #55 added the layered memory model and `maria-pattern-research`; it is included in this branch through the merge of `main`.
+- Branch: `chore/docs-drift-fixes` off `main` (`b4f2b11`).
+- Scope: correct documentation drift found in the ADR audit, fix the `/messages` Vite
+  proxy omission (ADR 0003 footgun recurrence), and vendor the two UI agent skills
+  (`maria-shadcn` from shadcn-ui/ui MIT, `maria-frontend-design` from
+  anthropics/skills Apache-2.0) that govern the upcoming frontend slices.
+- Direction set with the operator: next product slices are CRM surface, not agents —
+  app shell + vendored shadcn primitives, settings/user area (`/me` is read-only today),
+  channel-management UI, then tasks/notes and detail pages.
 
 ## Memory model
 
@@ -28,19 +32,25 @@ gh pr status
 
 ## Verified state
 
-- `pnpm verify` passed locally on 2026-09-17 after merging `main` and fixing `MediaStore` path handling: formatting, lint, typecheck, unit tests, PostgreSQL/API integration tests, built HTTP E2E, and build.
-- `media-store.test.ts` covers a put/read round-trip and rejects invalid workspace IDs, traversal keys, and cross-workspace key reads.
-- CodeQL must re-run in CI to confirm the two `js/path-injection` alerts are closed.
-- Environment: Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
+- `main` at `b4f2b11`: media messages merged via PR #54 with all checks green.
+- Full ADR audit (0001–0013) on 2026-09-17: no architectural deviation; drift items were
+  stale implementation statuses (ADRs 0010, 0013), the stale `ARCHITECTURE.md` inventory,
+  and the missing `/messages` dev-proxy entry — all corrected on this branch.
+- UX research pass (`maria-pattern-research`): Twenty and Chatwoot classified UX-only
+  (mixed licenses), atomic-crm and shadcn/ui classified adapt (MIT); Refine CRM rejected.
 
 ## Blockers and risks
 
-- PR #54 still requires normal review and all required GitHub checks before merge.
-- Media sends remain dependent on the tenant-scoped `MediaStore`; missing bytes must fail the dispatch rather than downgrade to text.
-- Pre-existing local runtime artifacts remain untracked under `apps/api/data/media/` and must stay excluded from commits.
+- None blocking. Local branch `feat/media-messages` is merged and can be deleted.
+- CRM domain gaps remain open work, not regressions: no tasks/notes/tags/custom
+  attributes, `/me` is GET-only (no profile/password endpoints), `channel-instances`
+  has no UI, no detail pages, no global search.
 
 ## Next actions
 
-1. Push the merge and `MediaStore` fix, then watch PR #54 CI.
-2. Merge PR #54 only after review and all required checks pass.
-3. Choose the next product objective from current Git/PR state after this slice merges.
+1. Run `pnpm fmt` + `pnpm lint`, commit and push this branch, open the PR.
+2. Slice 1 (next feature branch): app shell restructure + vendored shadcn/ui sidebar,
+   dropdown and dialog primitives.
+3. Slice 2: settings/user area — `PATCH /me` in `@maria/auth`, profile and channel
+   management UI over the existing `channel-instances` API.
+4. Slice 3: tasks/notes domain (RLS tables + API + UI), then contact/deal detail pages.

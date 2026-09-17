@@ -1,7 +1,11 @@
 # 0010 — Recoverable messaging effects and webhook identity
 
 **Status:** accepted (2026-09-16; supersedes ADR 0008)
-**Implementation:** planned; no messaging worker, outbox or provider adapter is implemented yet.
+**Implementation:** WAHA shipped through PR #54 — raw-body HMAC verification and
+provider-event dedup (#34), channel instances and inbox (#35, #43), contact linking (#36),
+dispatch ledger with atomic claim/fencing/lease and `unknown` blocking (#44), `message.ack`
+reconciliation (#49), operator retry/resolve (#53), media intents (#54). Dispatch still runs
+in-process inside `apps/api`; the dedicated worker and the Meta adapter remain pending.
 
 ## Context
 

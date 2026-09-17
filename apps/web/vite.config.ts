@@ -18,6 +18,7 @@ export default defineConfig({
       "/stages": api,
       "/deals": api,
       "/conversations": api,
+      "/messages": api,
       "/channel-instances": api,
       "/webhooks": api,
     },

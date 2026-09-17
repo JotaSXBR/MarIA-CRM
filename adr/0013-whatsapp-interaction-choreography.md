@@ -1,6 +1,7 @@
 # 0013 — WhatsApp interaction choreography and LID identity
 
-**Status:** accepted (2026-09-17) · primitives implemented; orchestration activates with the dispatcher
+**Status:** accepted (2026-09-17) · implemented — primitives in PR #51, dispatcher-owned
+choreography in PR #52, media/contact sends choreographed in PR #54 (`recording` for audio)
 
 ## Context
 

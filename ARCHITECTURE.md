@@ -9,9 +9,12 @@ Currently implemented: `apps/api`, `apps/web`, `packages/auth`, `packages/databa
 `packages/messaging` and `packages/channel-waha` — covering local sessions, administration,
 workspace-scoped contacts, companies, pipelines, and the WAHA messaging slice: inbound
 webhooks with raw-body HMAC verification and provider-event dedup, workspace inbox APIs,
-contact linking by phone, and outbound dispatch with the ADR 0010 effect ledger
-(intent + attempt/fencing/lease, `unknown` outcomes blocked from blind retry).
-Not yet implemented: the dedicated worker/outbox process, the agent runtime, the Meta
+contact linking by phone and LID resolution, outbound dispatch with the ADR 0010 effect
+ledger (intent + attempt/fencing/lease, `unknown` outcomes blocked from blind retry),
+operator retry/resolve recovery, `message.ack` delivery reconciliation, ADR 0013 presence
+choreography, and text/media/contact messages with binaries behind `StoragePort`.
+Not yet implemented: tags, custom attributes, tasks and notes; workspace settings and
+channel-management UI; the dedicated worker/outbox process, the agent runtime, the Meta
 adapter and deployment publication.
 Use `HANDOFF.md` for the current checkpoint and `DEVELOPMENT.md` for actual verification coverage.
 
