@@ -41,3 +41,23 @@ export async function api<T>(
   if (!response.ok) throw new ApiError(response.status);
   return (await response.json()) as T;
 }
+
+/** Authenticated binary fetch — <img>/<video> tags cannot set the Bearer
+ * header, so media is fetched as a blob and rendered via object URL. */
+export async function apiBlob(
+  path: string,
+  init: { workspaceId?: string | undefined } = {},
+): Promise<Blob> {
+  const url = new URL(path, window.location.origin);
+  if (init.workspaceId) url.searchParams.set("workspaceId", init.workspaceId);
+  const token = getToken();
+  const response = await fetch(url, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  if (response.status === 401) {
+    setToken(null);
+    throw new ApiError(401);
+  }
+  if (!response.ok) throw new ApiError(response.status);
+  return response.blob();
+}

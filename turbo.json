@@ -13,7 +13,8 @@
         "ADMIN_EMAIL",
         "ADMIN_PASSWORD",
         "WAHA_BASE_URL",
-        "WAHA_API_KEY"
+        "WAHA_API_KEY",
+        "MEDIA_DIR"
       ]
     },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },

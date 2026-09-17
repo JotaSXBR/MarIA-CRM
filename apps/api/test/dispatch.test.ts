@@ -15,6 +15,8 @@ function claimed(body: string, over: Record<string, unknown> = {}) {
     fencingToken: "fence-1",
     messageId: "msg-1",
     body,
+    contentType: "text",
+    media: null,
     to: "5511999999999@c.us",
     session: "sales",
     ...over,
@@ -256,6 +258,123 @@ describe("dispatch choreography (ADR 0013)", () => {
         expect.objectContaining({ outcome }),
       );
     }
+  });
+
+  test("media sends rebuild content from the attachment store", async () => {
+    const provider = createProvider();
+    const media = {
+      read: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    };
+    const dispatcher = createDispatcher({
+      database: createDb({
+        claimDispatchIntent: vi.fn(async () =>
+          claimed("olha essa foto", {
+            contentType: "image",
+            media: { key: "w/abc.png", mime: "image/png", filename: "f.png" },
+          }),
+        ),
+      }),
+      provider,
+      media,
+      sleep: instant,
+      rng: () => 0.5,
+    });
+    await dispatcher.dispatchIntent(workspaceId, "i");
+    expect(media.read).toHaveBeenCalledWith(workspaceId, "w/abc.png");
+    expect(provider.send).toHaveBeenCalledWith({
+      session: "sales",
+      to: "5511999999999@c.us",
+      content: {
+        type: "image",
+        data: Buffer.from([1, 2, 3]).toString("base64"),
+        mimetype: "image/png",
+        filename: "f.png",
+        caption: "olha essa foto",
+      },
+    });
+    expect(provider.setPresence).toHaveBeenCalledWith(
+      expect.objectContaining({ presence: "typing" }),
+    );
+  });
+
+  test("audio sends use recording presence instead of typing", async () => {
+    const provider = createProvider();
+    const dispatcher = createDispatcher({
+      database: createDb({
+        claimDispatchIntent: vi.fn(async () =>
+          claimed("", {
+            contentType: "audio",
+            media: { key: "w/n.ogg", mime: "audio/ogg", filename: null },
+          }),
+        ),
+      }),
+      provider,
+      media: { read: async () => new Uint8Array([9]) },
+      sleep: instant,
+    });
+    await dispatcher.dispatchIntent(workspaceId, "i");
+    expect(provider.setPresence).toHaveBeenCalledWith(
+      expect.objectContaining({ presence: "recording" }),
+    );
+    expect(provider.setPresence).not.toHaveBeenCalledWith(
+      expect.objectContaining({ presence: "typing" }),
+    );
+    expect(provider.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ type: "audio" }),
+      }),
+    );
+  });
+
+  test("missing attachment bytes settle as failed, never send", async () => {
+    const db = createDb({
+      claimDispatchIntent: vi.fn(async () =>
+        claimed("", {
+          contentType: "image",
+          media: { key: "w/gone.png", mime: "image/png", filename: null },
+        }),
+      ),
+    });
+    const provider = createProvider();
+    const dispatcher = createDispatcher({
+      database: db,
+      provider,
+      media: { read: async () => null },
+      sleep: instant,
+    });
+    await dispatcher.dispatchIntent(workspaceId, "i");
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(db.settleDispatch).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({
+        outcome: "failed",
+        error: "attachment bytes unavailable",
+      }),
+    );
+  });
+
+  test("contact sends read the vcard payload from the store", async () => {
+    const vcard = "BEGIN:VCARD\nVERSION:3.0\nFN:Ana\nEND:VCARD";
+    const provider = createProvider();
+    const dispatcher = createDispatcher({
+      database: createDb({
+        claimDispatchIntent: vi.fn(async () =>
+          claimed("Ana · +55 16 90000-0000", {
+            contentType: "contact",
+            media: { key: "w/c.vcf", mime: "text/vcard", filename: "Ana.vcf" },
+          }),
+        ),
+      }),
+      provider,
+      media: { read: async () => new TextEncoder().encode(vcard) },
+      sleep: instant,
+    });
+    await dispatcher.dispatchIntent(workspaceId, "i");
+    expect(provider.send).toHaveBeenCalledWith({
+      session: "sales",
+      to: "5511999999999@c.us",
+      content: { type: "contact", contacts: [{ vcard }] },
+    });
   });
 
   test("claim honour the lease and skips non-claimed intents", async () => {

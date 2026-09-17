@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api.ts";
+import { api, apiBlob } from "../lib/api.ts";
 import { useWorkspace } from "../lib/workspace.tsx";
 
 type Conversation = {
@@ -24,7 +24,16 @@ type Message = {
   status: string;
   contentType: string;
   body: string | null;
+  hasMedia: boolean;
+  mediaMime: string | null;
+  mediaFilename: string | null;
   createdAt: string;
+};
+
+type Contact = {
+  id: string;
+  name: string;
+  phone: string | null;
 };
 
 function formatTime(iso: string) {
@@ -47,13 +56,83 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "cancelada",
 };
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Renders an attachment bubble: bytes are fetched with the session token
+ * (media routes are workspace-scoped) and shown via a temporary object URL. */
+function MediaAttachment({
+  message,
+  workspaceId,
+}: {
+  message: Message;
+  workspaceId: string;
+}) {
+  const { data: url } = useQuery({
+    queryKey: ["media", workspaceId, message.id],
+    queryFn: async () => {
+      const blob = await apiBlob(`/messages/${message.id}/media`, {
+        workspaceId,
+      });
+      return URL.createObjectURL(blob);
+    },
+    enabled: message.hasMedia,
+    staleTime: Infinity,
+  });
+  if (!message.hasMedia) return null;
+  const label = message.mediaFilename ?? "anexo";
+  if (!url) {
+    return <p className="text-xs opacity-80">Carregando anexo…</p>;
+  }
+  switch (message.contentType) {
+    case "image":
+      return (
+        <a href={url} target="_blank" rel="noreferrer">
+          <img
+            src={url}
+            alt={label}
+            className="max-h-64 rounded-md object-contain"
+          />
+        </a>
+      );
+    case "video":
+      return <video src={url} controls className="max-h-64 rounded-md" />;
+    case "audio":
+      return <audio src={url} controls className="w-64" />;
+    default:
+      return (
+        <a
+          href={url}
+          download={label}
+          className="flex items-center gap-2 rounded-md border border-current/30 px-3 py-2 text-xs underline"
+        >
+          {message.contentType === "contact" ? "Contato" : "Documento"}: {label}
+        </a>
+      );
+  }
+}
+
 export function InboxPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const imageVideoInput = useRef<HTMLInputElement>(null);
+  const documentInput = useRef<HTMLInputElement>(null);
 
   const { data: conversations = [], isLoading: loadingConversations } =
     useQuery({
@@ -69,17 +148,39 @@ export function InboxPage() {
     enabled: Boolean(workspaceId && selectedId),
   });
 
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", workspaceId],
+    queryFn: () => api<Contact[]>("/contacts", { workspaceId }),
+    enabled: Boolean(workspaceId && contactPickerOpen),
+  });
+
   const selected = conversations.find((c) => c.id === selectedId);
 
   const sendMessage = useMutation({
-    mutationFn: (body: string) =>
-      api<Message>(`/conversations/${selectedId}/messages`, {
+    mutationFn: async (input: { body: string; file: File | null }) => {
+      if (input.file) {
+        return api<Message>(`/conversations/${selectedId}/messages`, {
+          method: "POST",
+          workspaceId,
+          body: {
+            ...(input.body ? { body: input.body } : {}),
+            attachment: {
+              data: await fileToBase64(input.file),
+              mimetype: input.file.type || "application/octet-stream",
+              filename: input.file.name,
+            },
+          },
+        });
+      }
+      return api<Message>(`/conversations/${selectedId}/messages`, {
         method: "POST",
         workspaceId,
-        body: { body },
-      }),
+        body: { body: input.body },
+      });
+    },
     onSuccess: async () => {
       setDraft("");
+      setAttachment(null);
       setSendError(null);
       await queryClient.invalidateQueries({
         queryKey: ["messages", workspaceId, selectedId],
@@ -88,11 +189,41 @@ export function InboxPage() {
     onError: () => setSendError("Não foi possível enviar a mensagem."),
   });
 
+  const sendContact = useMutation({
+    mutationFn: (contact: Contact) =>
+      api<Message>(`/conversations/${selectedId}/messages`, {
+        method: "POST",
+        workspaceId,
+        body: {
+          contact: { fullName: contact.name, phoneNumber: contact.phone },
+        },
+      }),
+    onSuccess: async () => {
+      setContactPickerOpen(false);
+      setSendError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", workspaceId, selectedId],
+      });
+    },
+    onError: () => setSendError("Não foi possível enviar o contato."),
+  });
+
   const onSend = (event: FormEvent) => {
     event.preventDefault();
     const body = draft.trim();
-    if (!body || !selectedId) return;
-    sendMessage.mutate(body);
+    if (!selectedId || (!body && !attachment)) return;
+    sendMessage.mutate({ body, file: attachment });
+  };
+
+  const onAttach = (input: React.RefObject<HTMLInputElement | null>) => () => {
+    setAttachMenuOpen(false);
+    input.current?.click();
+  };
+
+  const onFilePicked = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) setAttachment(file);
+    event.target.value = "";
   };
 
   const invalidateMessages = () =>
@@ -135,6 +266,7 @@ export function InboxPage() {
   });
 
   const actionPending = retryMessage.isPending || resolveUnknown.isPending;
+  const sendable = Boolean(draft.trim() || attachment);
 
   if (!workspaceId) return <p>Selecione um workspace.</p>;
 
@@ -213,7 +345,14 @@ export function InboxPage() {
                           : "bg-indigo-600 text-white"
                       }`}
                     >
-                      <p>{message.body ?? "(mídia)"}</p>
+                      <MediaAttachment
+                        message={message}
+                        workspaceId={workspaceId}
+                      />
+                      {message.body ? <p>{message.body}</p> : null}
+                      {!message.body && !message.hasMedia ? (
+                        <p>(mídia)</p>
+                      ) : null}
                       <p
                         className={`mt-1 text-right text-xs ${
                           message.direction === "inbound"
@@ -273,26 +412,135 @@ export function InboxPage() {
                 ))
               )}
             </div>
+            {attachment ? (
+              <div className="flex items-center gap-2 border-t border-slate-200 px-3 py-2 text-xs text-slate-600">
+                <span className="truncate">
+                  Anexo: {attachment.name} ({Math.ceil(attachment.size / 1024)}{" "}
+                  KB)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachment(null)}
+                  className="font-medium text-red-600 hover:underline"
+                >
+                  Remover
+                </button>
+              </div>
+            ) : null}
             <form
               onSubmit={onSend}
               className="flex items-center gap-2 border-t border-slate-200 p-3"
             >
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Anexar"
+                  onClick={() => {
+                    setContactPickerOpen(false);
+                    setAttachMenuOpen((open) => !open);
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  +
+                </button>
+                {attachMenuOpen ? (
+                  <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={onAttach(imageVideoInput)}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Fotos e vídeos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onAttach(documentInput)}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Documento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setContactPickerOpen(true);
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Contato
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <input
+                ref={imageVideoInput}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={onFilePicked}
+              />
+              <input
+                ref={documentInput}
+                type="file"
+                className="hidden"
+                onChange={onFilePicked}
+              />
               <input
                 type="text"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Escreva uma mensagem…"
+                placeholder={
+                  attachment ? "Legenda (opcional)…" : "Escreva uma mensagem…"
+                }
                 aria-label="Mensagem"
                 className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
               <button
                 type="submit"
-                disabled={sendMessage.isPending || !draft.trim()}
+                disabled={sendMessage.isPending || !sendable}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 Enviar
               </button>
             </form>
+            {contactPickerOpen ? (
+              <div className="max-h-48 overflow-y-auto border-t border-slate-200">
+                <div className="flex items-center justify-between px-4 py-2">
+                  <p className="text-xs font-medium text-slate-600">
+                    Enviar contato
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setContactPickerOpen(false)}
+                    className="text-xs text-slate-500 hover:underline"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                {contacts.filter((contact) => contact.phone).length === 0 ? (
+                  <p className="px-4 pb-3 text-xs text-slate-500">
+                    Nenhum contato com telefone.
+                  </p>
+                ) : (
+                  contacts
+                    .filter((contact) => contact.phone)
+                    .map((contact) => (
+                      <button
+                        key={contact.id}
+                        type="button"
+                        disabled={sendContact.isPending}
+                        onClick={() => sendContact.mutate(contact)}
+                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {contact.name}{" "}
+                        <span className="text-xs text-slate-500">
+                          {contact.phone}
+                        </span>
+                      </button>
+                    ))
+                )}
+              </div>
+            ) : null}
             {sendError ? (
               <p className="px-3 pb-3 text-xs text-red-600">{sendError}</p>
             ) : null}

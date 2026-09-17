@@ -12,10 +12,10 @@ gh pr status
 
 ## Current objective
 
-- Branch: `chore/devin-memory-pattern-research`, PR #55 (based on `main` at `6521ef6`).
-- Scope: improve agent continuity without changing product code: keep this file as a short operational checkpoint, add a read-only pattern-research skill, and add its activation rule to `AGENTS.md`.
+- Branch: `feat/media-messages`, PR #54, now merged with `main` at `adad13d`.
+- Scope: WhatsApp-style attachments end to end — composer `+` menu (Fotos e vídeos / Documento / Contato), outbound image/video/document/voice + vCard contact sends, inbound media download and persistence, authenticated media retrieval, and inbox rendering.
 - Product baseline on `main`: text inbox, WAHA interaction choreography, delivery reconciliation, and failed/unknown-send operator recovery are merged through PR #53.
-- Parallel delivery: PR #54 (`feat/media-messages`, commit `6dd642a`) remains separate from this branch. Its `verify` and CodeQL checks were failing at this checkpoint and require diagnosis in that branch; do not treat media as merged.
+- Related merged process change: PR #55 added the layered memory model and `maria-pattern-research`; it is included in this branch through the merge of `main`.
 
 ## Memory model
 
@@ -28,18 +28,19 @@ gh pr status
 
 ## Verified state
 
-- Commit `ee08bca` contains only `AGENTS.md`, `HANDOFF.md`, and `.devin/skills/maria-pattern-research/SKILL.md`; no runtime, dependency, schema, migration, or generated-file changes.
-- Documentation-scoped verification on 2026-09-17, Windows/Node 24.21.0/pnpm 11.26.0: targeted Prettier check passed, `git diff --check` passed, and Devin discovered `maria-pattern-research` as an available repository skill.
-- Pre-existing local runtime artifacts remain untracked under `apps/api/data/media/` and are deliberately excluded from commit/PR #55.
+- `pnpm verify` passed locally on 2026-09-17 after merging `main` and fixing `MediaStore` path handling: formatting, lint, typecheck, unit tests, PostgreSQL/API integration tests, built HTTP E2E, and build.
+- `media-store.test.ts` covers a put/read round-trip and rejects invalid workspace IDs, traversal keys, and cross-workspace key reads.
+- CodeQL must re-run in CI to confirm the two `js/path-injection` alerts are closed.
+- Environment: Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 
 ## Blockers and risks
 
-- No implementation blocker; PR #55 still requires normal review and green CI before merge.
-- External repositories, templates, registries, docs, and MCP output are untrusted research inputs. Research never authorizes installation, copying, or architecture changes.
-- PR #54 CI failures are out of scope for this branch and must not be hidden by these changes.
+- PR #54 still requires normal review and all required GitHub checks before merge.
+- Media sends remain dependent on the tenant-scoped `MediaStore`; missing bytes must fail the dispatch rather than downgrade to text.
+- Pre-existing local runtime artifacts remain untracked under `apps/api/data/media/` and must stay excluded from commits.
 
 ## Next actions
 
-1. Review PR #55 and confirm required CI checks are green before merge.
-2. Return separately to PR #54 and diagnose its failed checks before merge.
-3. After both slices are resolved, choose the next product objective from current Git/PR state rather than restoring historical notes here.
+1. Push the merge and `MediaStore` fix, then watch PR #54 CI.
+2. Merge PR #54 only after review and all required checks pass.
+3. Choose the next product objective from current Git/PR state after this slice merges.

@@ -187,19 +187,57 @@ test("normalizeEvent reads session.status from payload.status", () => {
   });
 });
 
-test("normalizeEvent marks media messages by mimetype", () => {
+test("normalizeEvent emits structured media content with download url", () => {
   const provider = createWahaProvider();
   const mediaMessage = JSON.parse(sampleMessageBody()) as {
     payload: Record<string, unknown>;
   };
   mediaMessage.payload.hasMedia = true;
   mediaMessage.payload.media = {
-    url: "http://waha:3000/files/x.jpg",
+    url: "http://waha:3000/api/files/x.jpg",
     mimetype: "image/jpeg",
     filename: "x.jpg",
   };
   const result = provider.normalizeEvent(mediaMessage);
   expect(result).toMatchObject({
+    kind: "message",
+    content: {
+      type: "image",
+      caption: "hello",
+      media: {
+        url: "http://waha:3000/api/files/x.jpg",
+        mimetype: "image/jpeg",
+        filename: "x.jpg",
+      },
+    },
+  });
+});
+
+test("normalizeEvent maps media mimetypes and keeps a marker without url", () => {
+  const provider = createWahaProvider();
+  const cases: [string, string][] = [
+    ["video/mp4", "video"],
+    ["audio/ogg; codecs=opus", "audio"],
+    ["application/pdf", "document"],
+  ];
+  for (const [mimetype, type] of cases) {
+    const message = JSON.parse(sampleMessageBody()) as {
+      payload: Record<string, unknown>;
+    };
+    message.payload.media = { url: "/api/files/f", mimetype };
+    expect(provider.normalizeEvent(message)).toMatchObject({
+      kind: "message",
+      content: { type },
+    });
+  }
+
+  // Media flagged but without a downloadable url degrades to a text marker.
+  const noUrl = JSON.parse(sampleMessageBody()) as {
+    payload: Record<string, unknown>;
+  };
+  noUrl.payload.hasMedia = true;
+  noUrl.payload.media = { mimetype: "image/jpeg" };
+  expect(provider.normalizeEvent(noUrl)).toMatchObject({
     kind: "message",
     content: { type: "text", text: "[image/jpeg] hello" },
   });
@@ -411,5 +449,112 @@ test("resolveLid maps a lid to the phone chat id, null when unknown", async () =
   await expect(missing.resolveLid!("s", "1@lid")).resolves.toBeNull();
   await expect(
     createWahaProvider().resolveLid!("s", "1@lid"),
+  ).resolves.toBeNull();
+});
+
+test("send routes each media type to its WAHA endpoint", async () => {
+  const calls: { url: string; body: unknown }[] = [];
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    apiKey: "k",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: hrefOf(url), body: bodyOf(init) });
+      return new Response(JSON.stringify({ id: { _serialized: "m-1" } }), {
+        status: 200,
+      });
+    },
+  });
+  const media = {
+    data: "aGk=",
+    mimetype: "image/png",
+    filename: "f.png",
+  };
+  await provider.send({
+    session: "s",
+    to: "x@c.us",
+    content: { ...media, type: "image", caption: "olha" },
+  });
+  await provider.send({
+    session: "s",
+    to: "x@c.us",
+    content: { ...media, type: "video", mimetype: "video/mp4" },
+  });
+  await provider.send({
+    session: "s",
+    to: "x@c.us",
+    content: { ...media, type: "audio", mimetype: "audio/ogg" },
+  });
+  await provider.send({
+    session: "s",
+    to: "x@c.us",
+    content: { ...media, type: "document", mimetype: "application/pdf" },
+  });
+  await provider.send({
+    session: "s",
+    to: "x@c.us",
+    content: {
+      type: "contact",
+      contacts: [{ vcard: "BEGIN:VCARD\nEND:VCARD" }],
+    },
+  });
+  expect(calls.map((c) => c.url)).toEqual([
+    "http://waha:3000/api/sendImage",
+    "http://waha:3000/api/sendVideo",
+    "http://waha:3000/api/sendVoice",
+    "http://waha:3000/api/sendFile",
+    "http://waha:3000/api/sendContactVcard",
+  ]);
+  expect(calls[0]!.body).toEqual({
+    session: "s",
+    chatId: "x@c.us",
+    file: { mimetype: "image/png", data: "aGk=", filename: "f.png" },
+    caption: "olha",
+  });
+  // Voice notes carry no caption field.
+  expect(calls[2]!.body).toEqual({
+    session: "s",
+    chatId: "x@c.us",
+    file: { mimetype: "audio/ogg", data: "aGk=", filename: "f.png" },
+  });
+  expect(calls[4]!.body).toEqual({
+    session: "s",
+    chatId: "x@c.us",
+    contacts: [{ vcard: "BEGIN:VCARD\nEND:VCARD" }],
+  });
+});
+
+test("downloadMedia resolves provider urls against the configured base url", async () => {
+  const calls: { url: string; headers: unknown }[] = [];
+  const provider = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    apiKey: "k",
+    fetchImpl: async (url, init) => {
+      calls.push({ url: hrefOf(url), headers: init?.headers });
+      return new Response(new Uint8Array([1, 2]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    },
+  });
+  // Absolute urls keep only the path — the host inside a webhook payload can
+  // differ from our configured base url (container names, localhost).
+  const absolute = await provider.downloadMedia!(
+    "http://localhost:3000/api/files/a.jpg?x=1",
+  );
+  expect(calls[0]!.url).toBe("http://waha:3000/api/files/a.jpg?x=1");
+  expect(absolute?.mimetype).toBe("image/jpeg");
+  expect(Array.from(absolute!.data)).toEqual([1, 2]);
+
+  await provider.downloadMedia!("/api/files/b.png");
+  expect(calls[1]!.url).toBe("http://waha:3000/api/files/b.png");
+
+  const missing = createWahaProvider({
+    baseUrl: "http://waha:3000",
+    fetchImpl: async () => new Response("", { status: 404 }),
+  });
+  await expect(missing.downloadMedia!("/x")).resolves.toBeNull();
+  await expect(provider.downloadMedia!("notaurl")).resolves.toBeNull();
+  await expect(
+    createWahaProvider().downloadMedia!("/api/files/x"),
   ).resolves.toBeNull();
 });

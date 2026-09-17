@@ -662,3 +662,71 @@ test("resolveUnknownMessage only resolves unknown outbound messages", async () =
     await database.getMessage(workspaceB, created.messageId),
   ).toBeUndefined();
 });
+
+test("media fields round-trip through inbound, outbound and claim", async () => {
+  const channelA = await database.createChannelInstance(workspaceA, {
+    provider: "waha",
+    providerInstanceId: "media-a",
+    webhookSecret: "secret-a",
+  });
+  const received = await database.receiveInboundMessage(workspaceA, {
+    channelInstanceId: channelA!.id,
+    providerThreadId: "55117777@c.us",
+    providerMessageId: "in-media-1",
+    providerEventId: "in-media-1",
+    providerEventKind: "message",
+    contentType: "image",
+    body: "veja isso",
+    media: {
+      key: `${workspaceA}/in-1.jpg`,
+      mime: "image/jpeg",
+      filename: "foto.jpg",
+    },
+    rawPayload: { event: "message" },
+    signatureVerified: true,
+  });
+  if (received.kind !== "received") throw new Error("not received");
+  const inbound = await database.getMessage(workspaceA, received.messageId!);
+  expect(inbound).toMatchObject({
+    contentType: "image",
+    body: "veja isso",
+    mediaKey: `${workspaceA}/in-1.jpg`,
+    mediaMime: "image/jpeg",
+    mediaFilename: "foto.jpg",
+  });
+
+  // Outbound media intent: caption in body, bytes referenced by key.
+  const created = await database.createOutboundIntent(workspaceA, {
+    conversationId: received.conversationId,
+    body: "resposta",
+    contentType: "document",
+    media: {
+      key: `${workspaceA}/out-1.pdf`,
+      mime: "application/pdf",
+      filename: "doc.pdf",
+    },
+  });
+  if (created.kind !== "created") throw new Error("not created");
+  const claim = await database.claimDispatchIntent(
+    workspaceA,
+    created.intentId,
+    {
+      leaseMs: 60_000,
+    },
+  );
+  if (claim.kind !== "claimed") throw new Error(`not claimed: ${claim.kind}`);
+  expect(claim).toMatchObject({
+    contentType: "document",
+    body: "resposta",
+    media: {
+      key: `${workspaceA}/out-1.pdf`,
+      mime: "application/pdf",
+      filename: "doc.pdf",
+    },
+  });
+
+  // Cross-tenant invisibility covers the media columns too (RLS).
+  expect(
+    await database.getMessage(workspaceB, received.messageId!),
+  ).toBeUndefined();
+});
