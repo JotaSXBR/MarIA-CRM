@@ -12,7 +12,7 @@
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run test/config.test.ts test/dispatch.test.ts",
+    "test": "vitest run test/config.test.ts test/dispatch.test.ts test/media-store.test.ts",
     "test:integration": "vitest run test/auth.integration.test.ts test/media.integration.test.ts",
     "test:e2e": "vitest run test/server.e2e.test.ts"
   },

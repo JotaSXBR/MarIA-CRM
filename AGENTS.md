@@ -54,6 +54,11 @@ During work:
   GitHub connector for richer queries when available. Use Context7 for newly introduced libraries
   or uncertain APIs, with official documentation as fallback. If a tool is unavailable, record
   the limitation and use an equivalent available tool. Local RTK hooks are optional and untracked.
+- Before designing a non-trivial new module or UI workflow, inspect local patterns, then invoke
+  `maria-pattern-research` to compare official examples and a small set of maintained external
+  references. Research is read-only and does not authorize copying code, installing dependencies
+  or changing architecture; verify provenance and license, and record adopted material tradeoffs
+  in the relevant ADR or PR.
 - The `code-simplifier` skill is a read-only review when requested; apply its findings only
   within an explicitly authorized implementation task. Reuse authorization already given.
 
