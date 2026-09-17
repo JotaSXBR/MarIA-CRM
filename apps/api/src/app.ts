@@ -238,6 +238,7 @@ type AppDependencies = {
         workspaceId: string;
         channelInstanceId: string;
         contactId: string | null;
+        contactName: string | null;
         providerThreadId: string;
         epoch: number;
         createdAt: Date;
@@ -253,6 +254,7 @@ type AppDependencies = {
           workspaceId: string;
           channelInstanceId: string;
           contactId: string | null;
+          contactName: string | null;
           providerThreadId: string;
           epoch: number;
           createdAt: Date;
@@ -1783,6 +1785,7 @@ export function buildApp(dependencies?: AppDependencies) {
         "workspaceId",
         "channelInstanceId",
         "contactId",
+        "contactName",
         "providerThreadId",
         "epoch",
         "createdAt",
@@ -1793,6 +1796,7 @@ export function buildApp(dependencies?: AppDependencies) {
         workspaceId: { type: "string", format: "uuid" },
         channelInstanceId: { type: "string", format: "uuid" },
         contactId: { type: ["string", "null"] },
+        contactName: { type: ["string", "null"] },
         providerThreadId: { type: "string" },
         epoch: { type: "integer" },
         createdAt: { type: "string", format: "date-time" },

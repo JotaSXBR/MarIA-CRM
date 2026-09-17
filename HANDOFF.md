@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-16
+Updated: 2026-09-17
 
 ## Verify first
 

@@ -17,6 +17,9 @@ export default defineConfig({
       "/pipelines": api,
       "/stages": api,
       "/deals": api,
+      "/conversations": api,
+      "/channel-instances": api,
+      "/webhooks": api,
     },
   },
 });
