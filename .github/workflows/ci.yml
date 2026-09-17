@@ -54,7 +54,13 @@ jobs:
             -e POSTGRES_PASSWORD=postgres \
             postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af)
           for attempt in {1..30}; do
-            docker exec maria-postgres-ci pg_isready -U maria_admin -d maria && break
+            # Force TCP (-h): the postgres image's initdb phase serves the unix
+            # socket before the real server starts, so a socket-level
+            # pg_isready would race the post-init restart and drop the migrate
+            # connection. Then prove a real query succeeds over TCP.
+            docker exec maria-postgres-ci pg_isready -h 127.0.0.1 -p 5432 -U maria_admin -d maria \
+              && docker exec maria-postgres-ci psql "host=127.0.0.1 user=maria_admin dbname=maria" -c "SELECT 1" >/dev/null \
+              && break
             if [ "$attempt" -eq 30 ]; then exit 1; fi
             sleep 1
           done
