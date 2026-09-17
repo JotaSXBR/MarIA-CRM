@@ -2114,6 +2114,19 @@ export function buildApp(dependencies?: AppDependencies) {
         } catch {
           return reply.code(400).send();
         }
+        // A WAHA webhook URL receives events for every session it is
+        // subscribed to; drop events that do not belong to this channel
+        // instance's WAHA session.
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "session" in parsed &&
+          typeof parsed.session === "string" &&
+          instance.providerInstanceId &&
+          parsed.session !== instance.providerInstanceId
+        ) {
+          return reply.code(200).send({ received: true });
+        }
         const event = waha.normalizeEvent(parsed);
         if (event.kind === "unknown" || event.kind !== "message") {
           return reply.code(200).send({ received: true });

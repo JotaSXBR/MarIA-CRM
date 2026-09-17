@@ -36,6 +36,12 @@ ADR 0010 effect-recovery contract.
   `WAHA_BASE_URL`/`WAHA_API_KEY` configure the provider; unset → sends `blocked`.
 - `apps/web` inbox has a message composer and shows outbound status
   (`pending`/`sent`/`unknown`/`failed`/`cancelled`) on each bubble.
+- `normalizeEvent` was re-aligned to the real WAHA envelope after a docs
+  deep-dive: event data lives in `payload` (not `data`), dedup uses the
+  envelope `id` (`evt_<ULID>`), `message.ack` maps `ackName`/numeric `ack`
+  to ERROR/PENDING/SERVER/DEVICE/READ/PLAYED, `fromMe` messages are ignored,
+  `sender.phone` is the bare number, and the webhook route drops events whose
+  `session` differs from the instance's `providerInstanceId`.
 - Known limitation: queue maintenance is request-driven (lazy per workspace);
   a dedicated dispatcher worker remains future work. Human-takeover epoch
   increments land with the agent runtime; intents already carry the epoch check.

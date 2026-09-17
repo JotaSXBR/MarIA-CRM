@@ -131,24 +131,67 @@ function extractMessageId(raw: unknown): string | undefined {
   return undefined;
 }
 
+const WAHA_ACK_NAMES: Record<number, string> = {
+  [-1]: "ERROR",
+  0: "PENDING",
+  1: "SERVER",
+  2: "DEVICE",
+  3: "READ",
+  4: "PLAYED",
+};
+
+function ackStatus(payload: Record<string, unknown>): string {
+  if (typeof payload.ackName === "string" && payload.ackName) {
+    return payload.ackName;
+  }
+  if (typeof payload.ack === "number") {
+    return WAHA_ACK_NAMES[payload.ack] ?? `ACK_${payload.ack}`;
+  }
+  return "";
+}
+
+function chatIdToPhone(chatId: string): string {
+  return chatId.split("@")[0] ?? chatId;
+}
+
 function normalizeEvent(raw: unknown): InboundEvent {
   if (!isRecord(raw)) return { kind: "unknown" };
   const event = typeof raw.event === "string" ? raw.event : "";
-  const data = isRecord(raw.data) ? raw.data : {};
-  const from = typeof data.from === "string" ? data.from : "";
-  const messageId = extractMessageId(data.id);
+  // WAHA envelopes carry event data in `payload`; `data` is kept as a
+  // defensive fallback for older payload shapes.
+  const payload = isRecord(raw.payload)
+    ? raw.payload
+    : isRecord(raw.data)
+      ? raw.data
+      : {};
+  // The envelope `id` (evt_<ULID>) is the provider event id used for
+  // deduplication; `payload.id` is the message id. They are not the same
+  // identity (ADR 0010).
+  const envelopeId = typeof raw.id === "string" ? raw.id : undefined;
+  const from = typeof payload.from === "string" ? payload.from : "";
+  const messageId = extractMessageId(payload.id);
 
-  if (event === "message") {
-    const text = typeof data.body === "string" ? data.body : "";
-    const type = typeof data.type === "string" ? data.type : "unknown";
+  if (event === "message" || event === "message.any") {
+    // `message` is documented as incoming-only, but both events can carry
+    // `fromMe: true` (e.g. `source: "api"` for our own sends on message.any).
+    // Our own messages must never become inbound conversations.
+    if (payload.fromMe === true) return { kind: "unknown" };
+    const text = typeof payload.body === "string" ? payload.body : "";
+    const media = isRecord(payload.media) ? payload.media : undefined;
+    const type =
+      typeof media?.mimetype === "string"
+        ? media.mimetype
+        : payload.hasMedia === true
+          ? "media"
+          : "text";
     if (!messageId || !from) return { kind: "unknown" };
     return {
       kind: "message",
       providerThreadId: from,
       providerMessageId: messageId,
-      providerEventId: messageId,
+      providerEventId: envelopeId ?? messageId,
       providerEventKind: "message",
-      sender: { phone: from },
+      sender: { phone: chatIdToPhone(from) },
       content:
         type === "text"
           ? { type: "text", text }
@@ -156,25 +199,24 @@ function normalizeEvent(raw: unknown): InboundEvent {
     };
   }
 
-  if (event === "message.ack") {
-    const ack = typeof data.ack === "string" ? data.ack : "";
+  if (event === "message.ack" || event === "message.ack.group") {
+    const status = ackStatus(payload);
     if (!messageId) return { kind: "unknown" };
     return {
       kind: "status",
       providerThreadId: from,
       providerMessageId: messageId,
-      providerEventId: messageId,
-      providerEventKind: `ack.${ack}`,
-      status: ack,
+      providerEventId: envelopeId ?? messageId,
+      providerEventKind: `ack.${status}`,
+      status,
     };
   }
 
   if (event === "session.status") {
-    const status = typeof data.status === "string" ? data.status : "";
-    const eventId = messageId ?? `${status}:${Date.now()}`;
+    const status = typeof payload.status === "string" ? payload.status : "";
     return {
       kind: "session",
-      providerEventId: eventId,
+      providerEventId: envelopeId ?? `session.status:${status}:${from}`,
       providerEventKind: `session.${status}`,
       status,
     };
