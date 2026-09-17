@@ -104,4 +104,18 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 4. Meta WhatsApp Cloud API adapter as the second provider.
 5. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
 
+## Live WAHA round-trip (verified 2026-09-17)
+
+Real WEBJS session linked via QR on the local compose stack; full loop
+verified: inbound DM → webhook → conversation/contact/message; API outbound
+→ `sendText` → `sent`; `message.ack` advanced it to `read`. Live findings
+fixed in PR #50: turbo dev `passThroughEnv` was stripping
+`WAHA_BASE_URL`/`WAHA_API_KEY`; `POST /channel-instances` 500'd on a missing
+`createdAt` in the response `returning`; `status@broadcast` Status updates
+flooded the inbox (now dropped by the adapter + `ignore.status` session
+flag). Remaining live observations: senders can arrive as `@lid` (privacy
+identifier) — replies work, but the stored "phone" is a LID that won't match
+phone-based contact linking; inbound `body` may carry a `_#Name:_` prefix on
+some messages (LID/attribution formatting worth revisiting).
+
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
