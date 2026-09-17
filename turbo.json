@@ -8,7 +8,13 @@
       "persistent": true,
       "interruptible": true,
       "env": ["HOST", "PORT"],
-      "passThroughEnv": ["DATABASE_URL", "ADMIN_EMAIL", "ADMIN_PASSWORD"]
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "ADMIN_EMAIL",
+        "ADMIN_PASSWORD",
+        "WAHA_BASE_URL",
+        "WAHA_API_KEY"
+      ]
     },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
