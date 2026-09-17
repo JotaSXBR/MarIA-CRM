@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import bcryptjs from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gt, sql } from "drizzle-orm";
+import { eq, and, gt, ne, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { Database } from "@maria/database";
 import {
@@ -56,6 +56,14 @@ export type AuthPort = {
     userId: string,
     input: { name?: string | undefined; active?: boolean | undefined },
   ): Promise<"updated" | "not-found" | "last-admin">;
+  changePassword(
+    userId: string,
+    input: {
+      currentPassword: string;
+      newPassword: string;
+      exceptToken?: string | undefined;
+    },
+  ): Promise<"updated" | "invalid-password" | "not-found">;
   listMembers(workspaceId: string): Promise<
     {
       id: string;
@@ -308,6 +316,42 @@ export function createLocalAuth(
     });
   };
 
+  const changePassword = async (
+    userId: string,
+    input: {
+      currentPassword: string;
+      newPassword: string;
+      exceptToken?: string | undefined;
+    },
+  ): Promise<"updated" | "invalid-password" | "not-found"> => {
+    const rows = await db
+      .select({ passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, userId));
+    const user = rows[0];
+    if (!user) return "not-found";
+    const valid = await verifyPassword(
+      input.currentPassword,
+      user.passwordHash,
+    );
+    if (!valid) return "invalid-password";
+    const passwordHash = await hashPassword(input.newPassword);
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ passwordHash }).where(eq(users.id, userId));
+      // Revoke every other session so a leaked token cannot outlive a
+      // password change; the caller's session stays valid via exceptToken.
+      await tx
+        .delete(sessions)
+        .where(
+          and(
+            eq(sessions.userId, userId),
+            input.exceptToken ? ne(sessions.id, input.exceptToken) : undefined,
+          ),
+        );
+    });
+    return "updated";
+  };
+
   const listMembers = async (workspaceId: string) =>
     database.withWorkspace(workspaceId, async (tx) =>
       tx
@@ -452,6 +496,7 @@ export function createLocalAuth(
     createUser,
     listUsers,
     updateUser,
+    changePassword,
     listMembers,
     addMembership,
     updateMembershipRole,

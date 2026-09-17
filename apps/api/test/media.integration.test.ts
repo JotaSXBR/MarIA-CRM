@@ -12,6 +12,7 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     createUser: vi.fn().mockResolvedValue(undefined),
     listUsers: vi.fn().mockResolvedValue([]),
     updateUser: vi.fn().mockResolvedValue("not-found"),
+    changePassword: vi.fn().mockResolvedValue("not-found"),
     listMembers: vi.fn().mockResolvedValue([]),
     addMembership: vi.fn().mockResolvedValue("not-found"),
     updateMembershipRole: vi.fn().mockResolvedValue("not-found"),

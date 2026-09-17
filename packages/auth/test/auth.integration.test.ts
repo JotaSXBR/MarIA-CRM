@@ -319,6 +319,47 @@ test("session expires after token lifetime", async () => {
   expect(await auth.verifySession(login!.token)).toBeUndefined();
 });
 
+test("changePassword verifies the current password and revokes other sessions", async () => {
+  const email = `change-${randomUUID()}@example.com`;
+  const user = await auth.createUser({
+    email,
+    name: "Change",
+    password: "old-password",
+  });
+  expect(user).toBeDefined();
+  const first = await auth.login(email, "old-password");
+  const second = await auth.login(email, "old-password");
+  expect(first).toBeDefined();
+  expect(second).toBeDefined();
+
+  expect(
+    await auth.changePassword(user!.userId, {
+      currentPassword: "wrong-password",
+      newPassword: "new-password",
+    }),
+  ).toBe("invalid-password");
+
+  expect(
+    await auth.changePassword(user!.userId, {
+      currentPassword: "old-password",
+      newPassword: "new-password",
+      exceptToken: first!.token,
+    }),
+  ).toBe("updated");
+  expect(await auth.verifySession(first!.token)).toBeDefined();
+  expect(await auth.verifySession(second!.token)).toBeUndefined();
+
+  await expect(auth.login(email, "old-password")).resolves.toBeUndefined();
+  await expect(auth.login(email, "new-password")).resolves.toBeDefined();
+
+  expect(
+    await auth.changePassword(randomUUID(), {
+      currentPassword: "old-password",
+      newPassword: "new-password",
+    }),
+  ).toBe("not-found");
+});
+
 test("concurrent admin removals preserve the last administrators", async () => {
   const globalOne = await auth.createUser({
     email: "global-one@example.com",

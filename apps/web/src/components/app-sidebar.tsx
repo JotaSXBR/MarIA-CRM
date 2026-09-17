@@ -6,6 +6,7 @@ import {
   Inbox,
   Kanban,
   LogOut,
+  Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -166,6 +167,9 @@ function NavAdmin() {
 function NavUser() {
   const { session } = useWorkspace();
   const navigate = useNavigate();
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
 
   const logout = async () => {
     setToken(null);
@@ -174,6 +178,16 @@ function NavUser() {
 
   return (
     <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          render={<Link to="/settings" />}
+          isActive={pathname.startsWith("/settings")}
+          tooltip="Configurações"
+        >
+          <Settings />
+          <span>Configurações</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger

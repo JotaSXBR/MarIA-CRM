@@ -13,6 +13,9 @@ import { CompaniesPage } from "./routes/companies.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
 import { InboxPage } from "./routes/inbox.tsx";
 import { AdminPage } from "./routes/admin.tsx";
+import { SettingsLayout } from "./routes/settings.tsx";
+import { SettingsProfilePage } from "./routes/settings-profile.tsx";
+import { SettingsChannelsPage } from "./routes/settings-channels.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -69,6 +72,32 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/settings",
+  component: SettingsLayout,
+});
+
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/profile" });
+  },
+});
+
+const settingsProfileRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/profile",
+  component: SettingsProfilePage,
+});
+
+const settingsChannelsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/channels",
+  component: SettingsChannelsPage,
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -78,6 +107,11 @@ export const routeTree = rootRoute.addChildren([
     companiesRoute,
     inboxRoute,
     adminRoute,
+    settingsRoute.addChildren([
+      settingsIndexRoute,
+      settingsProfileRoute,
+      settingsChannelsRoute,
+    ]),
   ]),
 ]);
 

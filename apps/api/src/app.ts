@@ -646,6 +646,71 @@ export function buildApp(dependencies?: AppDependencies) {
       },
     );
 
+    app.patch(
+      "/me",
+      {
+        config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+        schema: {
+          body: {
+            type: "object",
+            additionalProperties: false,
+            minProperties: 1,
+            properties: {
+              name: { type: "string", minLength: 1 },
+              currentPassword: { type: "string", minLength: 1 },
+              newPassword: { type: "string", minLength: 8 },
+            },
+          },
+          response: {
+            200: {
+              type: "object",
+              additionalProperties: false,
+              required: ["userId", "email", "name", "isAdmin"],
+              properties: {
+                userId: { type: "string", format: "uuid" },
+                email: { type: "string" },
+                name: { type: "string" },
+                isAdmin: { type: "boolean" },
+              },
+            },
+            400: { type: "null" },
+            401: { type: "null" },
+            403: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const token = extractBearerToken(request);
+        if (!token) return reply.code(401).send();
+        const session = await auth.verifySession(token);
+        if (!session) return reply.code(401).send();
+        const input = request.body as {
+          name?: string;
+          currentPassword?: string;
+          newPassword?: string;
+        };
+        if (input.newPassword !== undefined) {
+          if (input.currentPassword === undefined) {
+            return reply.code(400).send();
+          }
+          const result = await auth.changePassword(session.userId, {
+            currentPassword: input.currentPassword,
+            newPassword: input.newPassword,
+            exceptToken: token,
+          });
+          if (result === "invalid-password") return reply.code(403).send();
+          if (result === "not-found") return reply.code(401).send();
+        }
+        if (input.name !== undefined) {
+          const result = await auth.updateUser(session.userId, {
+            name: input.name,
+          });
+          if (result === "not-found") return reply.code(401).send();
+        }
+        return auth.verifySession(token);
+      },
+    );
+
     app.get(
       "/me/workspaces",
       {
