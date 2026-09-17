@@ -72,6 +72,9 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 
 ## Next actions
 
+0. Branch protection now requires `verify`, `analyze`, `dependency-review`
+   and the `CodeQL` results check on `main` (strict=false so Dependabot PRs
+   are not forced to rebase on every merge). All green on PR #45.
 1. Review/merge this PR, then point a WAHA instance at the webhook route.
    Deploy target baseline: **Coolify 4.3.21** on the VPS — WAHA + Redis ship
    **inside the application stack** (same deploy compose), not as a separate
