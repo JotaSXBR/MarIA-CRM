@@ -211,6 +211,70 @@ export const deals = pgTable(
   ],
 );
 
+export const notes = pgTable(
+  "notes",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id").references(() => contacts.id),
+    companyId: uuid("company_id").references(() => companies.id),
+    dealId: uuid("deal_id").references(() => deals.id),
+    authorId: uuid("author_id").references(() => users.id),
+    body: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("notes_workspace_id_idx").on(table.workspaceId),
+    index("notes_contact_active_idx")
+      .on(table.contactId)
+      .where(sql`deleted_at is null`),
+    index("notes_company_active_idx")
+      .on(table.companyId)
+      .where(sql`deleted_at is null`),
+    index("notes_deal_active_idx")
+      .on(table.dealId)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id").references(() => contacts.id),
+    companyId: uuid("company_id").references(() => companies.id),
+    dealId: uuid("deal_id").references(() => deals.id),
+    assigneeId: uuid("assignee_id").references(() => users.id),
+    title: text().notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("tasks_workspace_id_idx").on(table.workspaceId),
+    index("tasks_contact_active_idx")
+      .on(table.contactId)
+      .where(sql`deleted_at is null`),
+    index("tasks_company_active_idx")
+      .on(table.companyId)
+      .where(sql`deleted_at is null`),
+    index("tasks_deal_active_idx")
+      .on(table.dealId)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
 export const invitations = pgTable(
   "invitations",
   {

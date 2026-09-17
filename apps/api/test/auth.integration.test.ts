@@ -49,6 +49,14 @@ function createDatabaseStub() {
     updateDeal: vi.fn().mockResolvedValue(undefined),
     moveDeal: vi.fn().mockResolvedValue(undefined),
     deleteDeal: vi.fn().mockResolvedValue(false),
+    listDealsForContact: vi.fn().mockResolvedValue([]),
+    listNotes: vi.fn().mockResolvedValue([]),
+    createNote: vi.fn().mockResolvedValue(undefined),
+    deleteNote: vi.fn().mockResolvedValue(false),
+    listTasks: vi.fn().mockResolvedValue([]),
+    createTask: vi.fn().mockResolvedValue(undefined),
+    updateTask: vi.fn().mockResolvedValue(undefined),
+    deleteTask: vi.fn().mockResolvedValue(false),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -384,6 +392,332 @@ test("only workspace admins can delete contacts", async () => {
       headers: { authorization: "Bearer admin-token" },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("contact detail routes list deals, notes and tasks in the authorized workspace", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const contact = {
+    id: randomUUID(),
+    name: "Contact",
+    email: null,
+    phone: null,
+    createdAt: new Date(),
+  };
+  const deal = {
+    id: randomUUID(),
+    pipelineId: randomUUID(),
+    stageId: randomUUID(),
+    title: "Negócio",
+    valueCents: null,
+    contactId: contact.id,
+    companyId: null,
+    position: "a0",
+    stageName: "Novo",
+    pipelineName: "Vendas",
+    createdAt: new Date(),
+  };
+  const note = {
+    id: randomUUID(),
+    contactId: contact.id,
+    companyId: null,
+    dealId: null,
+    authorId: userId,
+    authorName: "User",
+    body: "Anotação",
+    createdAt: new Date(),
+  };
+  const task = {
+    id: randomUUID(),
+    contactId: contact.id,
+    companyId: null,
+    dealId: null,
+    assigneeId: userId,
+    assigneeName: "User",
+    title: "Ligar",
+    dueAt: null,
+    doneAt: null,
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.getContact.mockResolvedValue(contact);
+  database.listDealsForContact.mockResolvedValue([deal]);
+  database.listNotes.mockResolvedValue([note]);
+  database.listTasks.mockResolvedValue([task]);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const deals = await app.inject({
+      method: "GET",
+      url: `/contacts/${contact.id}/deals?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(deals.statusCode).toBe(200);
+    expect(deals.json()).toEqual([
+      { ...deal, createdAt: deal.createdAt.toISOString() },
+    ]);
+    expect(database.listDealsForContact).toHaveBeenCalledWith(
+      workspaceId,
+      contact.id,
+    );
+
+    const notes = await app.inject({
+      method: "GET",
+      url: `/contacts/${contact.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(notes.statusCode).toBe(200);
+    expect(notes.json()).toEqual([
+      { ...note, createdAt: note.createdAt.toISOString() },
+    ]);
+    expect(database.listNotes).toHaveBeenCalledWith(workspaceId, {
+      contactId: contact.id,
+    });
+
+    const tasks = await app.inject({
+      method: "GET",
+      url: `/contacts/${contact.id}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(tasks.statusCode).toBe(200);
+    expect(tasks.json()).toEqual([
+      { ...task, createdAt: task.createdAt.toISOString() },
+    ]);
+    expect(database.listTasks).toHaveBeenCalledWith(workspaceId, {
+      contactId: contact.id,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("members create notes and tasks on a contact with themselves as author/assignee", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const contactId = randomUUID();
+  const database = createDatabaseStub();
+  database.createNote.mockResolvedValue({
+    id: randomUUID(),
+    contactId,
+    companyId: null,
+    dealId: null,
+    authorId: userId,
+    body: "Nota",
+    createdAt: new Date(),
+  });
+  database.createTask.mockResolvedValue({
+    id: randomUUID(),
+    contactId,
+    companyId: null,
+    dealId: null,
+    assigneeId: userId,
+    title: "Tarefa",
+    dueAt: new Date("2026-10-01T12:00:00Z"),
+    doneAt: null,
+    createdAt: new Date(),
+  });
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const note = await app.inject({
+      method: "POST",
+      url: `/contacts/${contactId}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "Nota" },
+    });
+    expect(note.statusCode).toBe(201);
+    expect(database.createNote).toHaveBeenCalledWith(workspaceId, {
+      body: "Nota",
+      contactId,
+      authorId: userId,
+    });
+
+    const task = await app.inject({
+      method: "POST",
+      url: `/contacts/${contactId}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { title: "Tarefa", dueAt: "2026-10-01T12:00:00Z" },
+    });
+    expect(task.statusCode).toBe(201);
+    expect(database.createTask).toHaveBeenCalledWith(workspaceId, {
+      title: "Tarefa",
+      contactId,
+      assigneeId: userId,
+      dueAt: new Date("2026-10-01T12:00:00Z"),
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("notes and tasks map missing contacts and rejected refs to 404", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const contactId = randomUUID();
+  const database = createDatabaseStub();
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/contacts/${contactId}/notes?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(database.listNotes).not.toHaveBeenCalled();
+
+    // createNote returns undefined when the contact does not exist in scope
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/contacts/${contactId}/notes?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { body: "Nota" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/contacts/${contactId}/tasks?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { title: "Tarefa" },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    // PATCH on a missing task maps to 404
+    database.updateTask.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/tasks/${randomUUID()}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { done: true },
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("task completion toggles through PATCH and deletes require admin", async () => {
+  const workspaceId = randomUUID();
+  const taskId = randomUUID();
+  const noteId = randomUUID();
+  const doneAt = new Date();
+  const database = createDatabaseStub();
+  database.updateTask.mockResolvedValue({
+    id: taskId,
+    contactId: null,
+    companyId: null,
+    dealId: null,
+    assigneeId: null,
+    title: "Tarefa",
+    dueAt: null,
+    doneAt,
+    createdAt: new Date(),
+  });
+  database.deleteTask.mockResolvedValue(true);
+  database.deleteNote.mockResolvedValue(true);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId: token === "admin-token" ? "admin-id" : "member-id",
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === "admin-id" ? "admin" : "member",
+    }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const done = await app.inject({
+      method: "PATCH",
+      url: `/tasks/${taskId}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer member-token" },
+      payload: { done: true },
+    });
+    expect(done.statusCode).toBe(200);
+    expect(done.json().doneAt).toBe(doneAt.toISOString());
+    expect(database.updateTask).toHaveBeenCalledWith(workspaceId, taskId, {
+      done: true,
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/tasks/${taskId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer member-token" },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(database.deleteTask).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/notes/${noteId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer member-token" },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(database.deleteNote).not.toHaveBeenCalled();
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/tasks/${taskId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer admin-token" },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/notes/${noteId}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer admin-token" },
+        })
+      ).statusCode,
+    ).toBe(204);
   } finally {
     await app.close();
   }
@@ -1179,20 +1513,35 @@ test("inbox routes forward the authorized workspace to the database", async () =
   database.getConversation.mockResolvedValue(conversation);
   database.listMessages.mockResolvedValue([message]);
   const auth = createAuthStub({
-    verifySession: async () => ({
-      userId: randomUUID(),
+    verifySession: async (token?: string) => ({
+      userId: token === "admin-token" ? "admin-id" : "member-id",
       email: "user@example.com",
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === "admin-id" ? "admin" : "member",
+    }),
   });
   const app = buildApp({ database, auth });
   try {
+    const denied = await app.inject({
+      method: "POST",
+      url: `/channel-instances?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer member-token" },
+      payload: {
+        provider: "waha",
+        providerInstanceId: "session-1",
+        webhookSecret: "secret",
+      },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(database.createChannelInstance).not.toHaveBeenCalled();
+
     const created = await app.inject({
       method: "POST",
       url: `/channel-instances?workspaceId=${workspaceId}`,
-      headers: { authorization: "Bearer token" },
+      headers: { authorization: "Bearer admin-token" },
       payload: {
         provider: "waha",
         providerInstanceId: "session-1",

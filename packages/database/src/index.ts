@@ -10,10 +10,14 @@ import {
   deals,
   dispatchAttempts,
   dispatchIntents,
+  memberships,
   messages,
+  notes,
   organizations,
   pipelines,
   stages,
+  tasks,
+  users,
   webhookEvents,
   workspaces,
 } from "./schema.ts";
@@ -192,6 +196,68 @@ export function createDatabase(pool: Pool) {
     }
     return true;
   };
+
+  const dealRefValid = async (tx: DrizzleTx, dealId: string) => {
+    const deal = await tx
+      .select({ id: deals.id })
+      .from(deals)
+      .where(and(eq(deals.id, dealId), notDeleted(deals.deletedAt)))
+      .limit(1);
+    return Boolean(deal[0]);
+  };
+
+  const entityRefsValid = async (
+    tx: DrizzleTx,
+    input: {
+      contactId?: string | null | undefined;
+      companyId?: string | null | undefined;
+      dealId?: string | null | undefined;
+    },
+  ) => {
+    if (input.dealId && !(await dealRefValid(tx, input.dealId))) return false;
+    return contactCompanyRefsValid(tx, input);
+  };
+
+  const noteColumns = {
+    id: notes.id,
+    contactId: notes.contactId,
+    companyId: notes.companyId,
+    dealId: notes.dealId,
+    authorId: notes.authorId,
+    body: notes.body,
+    createdAt: notes.createdAt,
+  };
+
+  const taskColumns = {
+    id: tasks.id,
+    contactId: tasks.contactId,
+    companyId: tasks.companyId,
+    dealId: tasks.dealId,
+    assigneeId: tasks.assigneeId,
+    title: tasks.title,
+    dueAt: tasks.dueAt,
+    doneAt: tasks.doneAt,
+    createdAt: tasks.createdAt,
+  };
+
+  type EntityFilter = {
+    contactId?: string | undefined;
+    companyId?: string | undefined;
+    dealId?: string | undefined;
+  };
+
+  const entityFilterClauses = (
+    table: {
+      contactId: SQLWrapper;
+      companyId: SQLWrapper;
+      dealId: SQLWrapper;
+    },
+    filter: EntityFilter,
+  ) => [
+    filter.contactId ? eq(table.contactId, filter.contactId) : undefined,
+    filter.companyId ? eq(table.companyId, filter.companyId) : undefined,
+    filter.dealId ? eq(table.dealId, filter.dealId) : undefined,
+  ];
 
   return {
     close: () => pool.end(),
@@ -632,6 +698,161 @@ export function createDatabase(pool: Pool) {
           .set({ deletedAt: new Date() })
           .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
           .returning({ id: deals.id });
+        return rows.length > 0;
+      }),
+    listDealsForContact: (workspaceId: string, contactId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({
+            ...dealColumns,
+            stageName: stages.name,
+            pipelineName: pipelines.name,
+          })
+          .from(deals)
+          .innerJoin(stages, eq(deals.stageId, stages.id))
+          .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+          .where(
+            and(eq(deals.contactId, contactId), notDeleted(deals.deletedAt)),
+          )
+          .orderBy(desc(deals.createdAt), deals.id),
+      ),
+    listNotes: (workspaceId: string, filter: EntityFilter = {}) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({ ...noteColumns, authorName: users.name })
+          .from(notes)
+          .leftJoin(users, eq(notes.authorId, users.id))
+          .where(
+            and(
+              notDeleted(notes.deletedAt),
+              ...entityFilterClauses(notes, filter),
+            ),
+          )
+          .orderBy(desc(notes.createdAt), notes.id),
+      ),
+    createNote: (
+      workspaceId: string,
+      input: {
+        body: string;
+        authorId?: string | null;
+        contactId?: string | null;
+        companyId?: string | null;
+        dealId?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const refsValid = await entityRefsValid(tx, input);
+        if (!refsValid) return undefined;
+        const rows = await tx
+          .insert(notes)
+          .values({
+            workspaceId,
+            body: input.body,
+            authorId: input.authorId ?? null,
+            contactId: input.contactId ?? null,
+            companyId: input.companyId ?? null,
+            dealId: input.dealId ?? null,
+          })
+          .returning(noteColumns);
+        return rows[0];
+      }),
+    deleteNote: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(notes)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(notes.id, id), notDeleted(notes.deletedAt)))
+          .returning({ id: notes.id });
+        return rows.length > 0;
+      }),
+    listTasks: (workspaceId: string, filter: EntityFilter = {}) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({ ...taskColumns, assigneeName: users.name })
+          .from(tasks)
+          .leftJoin(users, eq(tasks.assigneeId, users.id))
+          .where(
+            and(
+              notDeleted(tasks.deletedAt),
+              ...entityFilterClauses(tasks, filter),
+            ),
+          )
+          .orderBy(tasks.doneAt, tasks.dueAt, tasks.createdAt, tasks.id),
+      ),
+    createTask: (
+      workspaceId: string,
+      input: {
+        title: string;
+        assigneeId?: string | null;
+        dueAt?: Date | null;
+        contactId?: string | null;
+        companyId?: string | null;
+        dealId?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const refsValid = await entityRefsValid(tx, input);
+        if (!refsValid) return undefined;
+        if (input.assigneeId) {
+          const member = await tx
+            .select({ id: memberships.id })
+            .from(memberships)
+            .where(
+              and(
+                eq(memberships.userId, input.assigneeId),
+                eq(memberships.workspaceId, workspaceId),
+              ),
+            )
+            .limit(1);
+          if (!member[0]) return undefined;
+        }
+        const rows = await tx
+          .insert(tasks)
+          .values({
+            workspaceId,
+            title: input.title,
+            assigneeId: input.assigneeId ?? null,
+            dueAt: input.dueAt ?? null,
+            contactId: input.contactId ?? null,
+            companyId: input.companyId ?? null,
+            dealId: input.dealId ?? null,
+          })
+          .returning(taskColumns);
+        return rows[0];
+      }),
+    updateTask: (
+      workspaceId: string,
+      id: string,
+      input: {
+        title?: string;
+        dueAt?: Date | null;
+        done?: boolean;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const set: {
+          title?: string;
+          dueAt?: Date | null;
+          doneAt?: Date | null;
+        } = {};
+        if (input.title !== undefined) set.title = input.title;
+        if (input.dueAt !== undefined) set.dueAt = input.dueAt;
+        if (input.done !== undefined)
+          set.doneAt = input.done ? new Date() : null;
+        const rows = await tx
+          .update(tasks)
+          .set(set)
+          .where(and(eq(tasks.id, id), notDeleted(tasks.deletedAt)))
+          .returning(taskColumns);
+        return rows[0];
+      }),
+    deleteTask: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(tasks)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(tasks.id, id), notDeleted(tasks.deletedAt)))
+          .returning({ id: tasks.id });
         return rows.length > 0;
       }),
     createChannelInstance: (

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.ts";
 import { useWorkspace } from "../lib/workspace.tsx";
@@ -164,7 +165,15 @@ export function ContactsPage() {
             ) : (
               contacts.map((contact) => (
                 <tr key={contact.id}>
-                  <td className="px-4 py-3 font-medium">{contact.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link
+                      to="/contacts/$contactId"
+                      params={{ contactId: contact.id }}
+                      className="hover:underline"
+                    >
+                      {contact.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {contact.email ?? "—"}
                   </td>
