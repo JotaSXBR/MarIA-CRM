@@ -66,3 +66,15 @@ Rejected alternatives: synchronous waits inside `POST /conversations/:id/message
 (corrupts identity and breaks contact matching); content-based inbound filtering
 such as dropping bot-style attribution prefixes (message text is user data —
 filtering by body shape would silently drop legitimate conversations).
+
+## Amendment (2026-09-17) — timing profile follows official WAHA guidance
+
+The initial timing profile was ported from a reference n8n workflow; review
+against WAHA's own guidance corrected it. WAHA "How to Avoid Blocking"
+prescribes exactly: **seen → typing → random wait proportional to message size
+→ stop-typing (`paused`) → send**, and maintainer/community practice adds
+`offline` **once at the end of a batch** (not per message). Implemented
+accordingly: the n8n-specific pre-seen and seen→typing waits were removed (not
+prescribed), `paused → send` keeps a short 0.2–0.6 s beat, and the inter-send
+gap widened to 1–3 s. The explicit `online` at burst start is retained because
+compose sets `WAHA_PRESENCE_AUTO_ONLINE=false`, making presence fully manual.

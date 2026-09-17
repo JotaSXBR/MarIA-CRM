@@ -2017,18 +2017,16 @@ export function buildApp(dependencies?: AppDependencies) {
         if (!authorized) return;
         const { id } = request.params as { id: string };
         const { body } = request.body as { body: string };
-        // Commit message + intent in one transaction, then claim/send/settle
-        // synchronously so the response carries the final status (ADR 0010).
+        // Commit message + intent in one transaction, then hand the send to
+        // the dispatcher: claim → presence choreography → send → settle runs
+        // off the request path (ADR 0010/0013), so the response carries the
+        // `pending` message and status advances asynchronously.
         const created = await database.createOutboundIntent(
           authorized.workspaceId,
           { conversationId: id, body },
         );
         if (created.kind === "missing") return reply.code(404).send();
-        await dispatcher.dispatchIntent(
-          authorized.workspaceId,
-          created.intentId,
-        );
-        void dispatcher.maintainWorkspace(authorized.workspaceId);
+        void dispatcher.dispatchPending(authorized.workspaceId);
         const messages = await database.listMessages(
           authorized.workspaceId,
           id,
