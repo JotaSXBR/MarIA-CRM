@@ -77,6 +77,15 @@ test("normalizeEvent ignores our own messages (fromMe)", () => {
   expect(provider.normalizeEvent(own).kind).toBe("unknown");
 });
 
+test("normalizeEvent drops status@broadcast pseudo-chats", () => {
+  const provider = createWahaProvider();
+  const status = JSON.parse(sampleMessageBody()) as {
+    payload: { from: string };
+  };
+  status.payload.from = "status@broadcast";
+  expect(provider.normalizeEvent(status).kind).toBe("unknown");
+});
+
 test("normalizeEvent maps message.ack ackName to status", () => {
   const provider = createWahaProvider();
   const result = provider.normalizeEvent({

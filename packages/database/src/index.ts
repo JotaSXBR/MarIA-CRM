@@ -658,6 +658,8 @@ export function createDatabase(pool: Pool) {
             providerInstanceId: channelInstances.providerInstanceId,
             webhookSecret: channelInstances.webhookSecret,
             isActive: channelInstances.isActive,
+            createdAt: channelInstances.createdAt,
+            updatedAt: channelInstances.updatedAt,
           });
         return rows[0];
       }),

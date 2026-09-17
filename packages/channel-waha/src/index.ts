@@ -179,6 +179,11 @@ function normalizeEvent(raw: unknown): InboundEvent {
     // `fromMe: true` (e.g. `source: "api"` for our own sends on message.any).
     // Our own messages must never become inbound conversations.
     if (payload.fromMe === true) return { kind: "unknown" };
+    // WhatsApp Status/Stories arrive as `message` events from a pseudo-chat
+    // shared by every contact — inbox noise, not a real conversation. The
+    // session-level `ignore.status` filter is the primary gate; this stays as
+    // adapter-level defense so misconfigured sessions still can't pollute it.
+    if (from === "status@broadcast") return { kind: "unknown" };
     const text = typeof payload.body === "string" ? payload.body : "";
     const media = isRecord(payload.media) ? payload.media : undefined;
     const type =
