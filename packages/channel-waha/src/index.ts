@@ -35,7 +35,10 @@ export function createWahaProvider(
 ): MessagingProvider {
   const fetchImpl = config.fetchImpl ?? fetch;
   const timeoutMs = config.timeoutMs ?? 15_000;
-  const baseUrl = config.baseUrl?.replace(/\/+$/, "");
+  // Trim trailing slashes without a regex — CodeQL flags `\/+$` on
+  // uncontrolled input as a potential polynomial backtracking risk.
+  let baseUrl = config.baseUrl;
+  while (baseUrl?.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
 
   async function send(input: SendInput): Promise<SendResult> {
     if (!baseUrl) {
