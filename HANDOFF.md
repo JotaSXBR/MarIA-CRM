@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-16
+Updated: 2026-09-17
 
 ## Verify first
 
@@ -12,20 +12,23 @@ gh pr status
 
 ## Current work
 
-Branch `feat/messaging-inbox` (from `main`): workspace API for channel instances
-and inbox read, stacked after the merged inbound messaging slice.
+Branch `feat/inbox-ui` (from `main`): agent-facing inbox UI plus backend join
+that returns the linked contact name for each conversation.
 
-- `packages/database` adds `listChannelInstances`, `listConversations`,
-  `getConversation` and `listMessages` under workspace-scoped RLS.
-- `apps/api` adds authenticated workspace routes:
-  - `GET /channel-instances` and `POST /channel-instances`
-  - `GET /conversations`
-  - `GET /conversations/:id/messages`
-- `apps/api/test/auth.integration.test.ts` and
-  `packages/database/test/messaging.integration.test.ts` cover auth denial,
-  workspace forwarding and cross-tenant read isolation.
-- PR #35 is open: https://github.com/JotaSXBR/MarIA-CRM/pull/35
-- `main` already contains the inbound slice (PR #34 merged).
+- `packages/database/src/index.ts` now returns `contactName` from `listConversations`
+  and `getConversation` via a `LEFT JOIN` to `contacts` under the workspace scope.
+- `apps/api/src/app.ts` adds `contactName: ["string", "null"]` to the conversation
+  response schema and type contract.
+- `apps/web/src/routes/inbox.tsx` adds the `/inbox` page:
+  - left panel lists conversations by contact name (or phone when null);
+  - right panel shows the selected thread with inbound/outbound message bubbles;
+  - uses TanStack Query and the existing `api` / `useWorkspace` helpers.
+- `apps/web/src/router.tsx` and `apps/web/src/routes/shell.tsx` register the
+  `/inbox` route and navigation link.
+- `apps/web/vite.config.ts` proxies `/conversations`, `/channel-instances` and
+  `/webhooks` to the API dev server.
+- `apps/api/test/auth.integration.test.ts` was updated so the inbox stub
+  conversation includes `contactName`.
 
 ## Environment
 
@@ -43,10 +46,9 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 
 ## Next actions
 
-1. Review/merge PR #35.
-2. Link incoming conversations to contacts by phone (or create contacts on
-   first inbound message) and add an agent-facing inbox UI.
-3. Outbound messaging remains blocked until ADR 0010 dispatch/idempotency
-   contract is validated.
+1. Review/merge this PR.
+2. Implement outbound messaging after ADR 0010 is certified (intent/attempt
+   ledger, ambiguous-result blocking, provider reconciliation).
+3. Consider the Meta WhatsApp Cloud API adapter as a parallel channel option.
 
 Update this file in place as status changes. Replace stale facts; do not add transcript, secrets, or normative policy already covered by [`AGENTS.md`](AGENTS.md).
