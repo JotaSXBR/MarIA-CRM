@@ -94,7 +94,13 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
    network, the per-session webhook can target the API service name directly.
    The Coolify compose/resource wiring is a later deploy slice, deliberately
    separate from the dev compose.
-3. Delivery-status state machine from `message.ack` events (out-of-order safe).
+3. Delivery-status state machine landed on this branch:
+   `recordDeliveryStatus` consumes `message.ack` webhooks
+   (SERVER→sent, DEVICE→delivered, READ/PLAYED→read, ERROR→failed),
+   deduped via `webhook_events`, correlated by
+   `(channel_instance_id, provider_message_id, direction=outbound)` and
+   monotonic — out-of-order/replayed acks never regress `read`, and a late
+   authoritative ack reconciles `unknown`/`failed` dispatches (ADR 0010).
 4. Meta WhatsApp Cloud API adapter as the second provider.
 5. Agent runtime (Control/Execution planes, durable `AgentRun`, epoch takeover).
 

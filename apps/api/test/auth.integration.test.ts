@@ -63,6 +63,7 @@ function createDatabaseStub() {
     claimDispatchIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
     settleDispatch: vi.fn().mockResolvedValue({ kind: "settled" }),
     reapExpiredDispatches: vi.fn().mockResolvedValue({ reaped: 0 }),
+    recordDeliveryStatus: vi.fn().mockResolvedValue({ kind: "recorded" }),
     listPendingIntents: vi.fn().mockResolvedValue([]),
   };
 }
@@ -1341,6 +1342,93 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
         error: "timeout",
       }),
     );
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /webhooks/waha routes message.ack to recordDeliveryStatus", async () => {
+  const workspaceId = randomUUID();
+  const channelInstanceId = randomUUID();
+  const database = createDatabaseStub();
+  database.getChannelInstance.mockResolvedValue({
+    id: channelInstanceId,
+    workspaceId,
+    provider: "waha",
+    providerInstanceId: "session-1",
+    webhookSecret: "secret",
+    isActive: true,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+  });
+  const auth = createAuthStub();
+  const normalizeEvent = vi.fn(() => ({
+    kind: "status" as const,
+    providerThreadId: "55119999@c.us",
+    providerMessageId: "waha-msg-1",
+    providerEventId: "evt-ack-1",
+    providerEventKind: "ack.READ",
+    status: "READ",
+  }));
+  const app = buildApp({
+    database,
+    auth,
+    messaging: {
+      waha: {
+        name: "waha",
+        capabilities: {
+          sendIdempotency: "none",
+          reconciliation: "webhook",
+        },
+        verifyWebhook: () => true,
+        normalizeEvent,
+        send: async () => ({ kind: "blocked" as const, reason: "unused" }),
+      },
+    },
+  });
+  try {
+    database.recordDeliveryStatus.mockResolvedValue({
+      kind: "applied",
+      messageId: randomUUID(),
+      status: "read",
+    });
+    const applied = await app.inject({
+      method: "POST",
+      url: `/webhooks/waha/${workspaceId}/${channelInstanceId}`,
+      payload: { event: "message.ack", session: "session-1" },
+    });
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toEqual({ received: true });
+    expect(database.recordDeliveryStatus).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({
+        channelInstanceId,
+        providerMessageId: "waha-msg-1",
+        providerEventId: "evt-ack-1",
+        providerEventKind: "ack.READ",
+        status: "READ",
+        signatureVerified: true,
+      }),
+    );
+    expect(database.receiveInboundMessage).not.toHaveBeenCalled();
+
+    database.recordDeliveryStatus.mockResolvedValue({ kind: "recorded" });
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/webhooks/waha/${workspaceId}/${channelInstanceId}`,
+      payload: { event: "message.ack", session: "session-1" },
+    });
+    expect(recorded.statusCode).toBe(200);
+    expect(recorded.json()).toEqual({ received: false });
+
+    // Events from another WAHA session are dropped before normalization.
+    const otherSession = await app.inject({
+      method: "POST",
+      url: `/webhooks/waha/${workspaceId}/${channelInstanceId}`,
+      payload: { event: "message.ack", session: "someone-else" },
+    });
+    expect(otherSession.statusCode).toBe(200);
+    expect(database.recordDeliveryStatus).toHaveBeenCalledTimes(2);
   } finally {
     await app.close();
   }

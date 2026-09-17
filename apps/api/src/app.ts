@@ -318,6 +318,23 @@ type AppDependencies = {
       },
     ) => Promise<{ kind: "missing" } | { kind: "stale" } | { kind: "settled" }>;
     reapExpiredDispatches: (workspaceId: string) => Promise<{ reaped: number }>;
+    recordDeliveryStatus: (
+      workspaceId: string,
+      input: {
+        channelInstanceId: string;
+        providerMessageId: string;
+        providerEventId: string;
+        providerEventKind: string;
+        status: string;
+        rawPayload: unknown;
+        signatureVerified: boolean;
+      },
+    ) => Promise<
+      | { kind: "duplicate" }
+      | { kind: "missing" }
+      | { kind: "recorded" }
+      | { kind: "applied"; messageId: string; status: string }
+    >;
     listPendingIntents: (
       workspaceId: string,
       limit?: number,
@@ -2128,24 +2145,38 @@ export function buildApp(dependencies?: AppDependencies) {
           return reply.code(200).send({ received: true });
         }
         const event = waha.normalizeEvent(parsed);
-        if (event.kind === "unknown" || event.kind !== "message") {
-          return reply.code(200).send({ received: true });
+        if (event.kind === "message") {
+          const result = await database.receiveInboundMessage(workspaceId, {
+            channelInstanceId,
+            providerThreadId: event.providerThreadId,
+            providerMessageId: event.providerMessageId,
+            providerEventId: event.providerEventId,
+            providerEventKind: event.providerEventKind,
+            senderPhone: event.sender.phone ?? null,
+            contentType: event.content.type,
+            body: event.content.text,
+            rawPayload: parsed,
+            signatureVerified: true,
+          });
+          return reply.code(200).send({
+            received: result.kind === "received",
+          });
         }
-        const result = await database.receiveInboundMessage(workspaceId, {
-          channelInstanceId,
-          providerThreadId: event.providerThreadId,
-          providerMessageId: event.providerMessageId,
-          providerEventId: event.providerEventId,
-          providerEventKind: event.providerEventKind,
-          senderPhone: event.sender.phone ?? null,
-          contentType: event.content.type,
-          body: event.content.text,
-          rawPayload: parsed,
-          signatureVerified: true,
-        });
-        return reply.code(200).send({
-          received: result.kind === "received",
-        });
+        if (event.kind === "status") {
+          const result = await database.recordDeliveryStatus(workspaceId, {
+            channelInstanceId,
+            providerMessageId: event.providerMessageId,
+            providerEventId: event.providerEventId,
+            providerEventKind: event.providerEventKind,
+            status: event.status,
+            rawPayload: parsed,
+            signatureVerified: true,
+          });
+          return reply.code(200).send({
+            received: result.kind === "applied",
+          });
+        }
+        return reply.code(200).send({ received: true });
       },
     );
   }

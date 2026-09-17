@@ -21,6 +21,28 @@ import {
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// WAHA `message.ack` names → message status (ADR 0010 reconciliation).
+const ACK_STATUS_TARGETS: Record<string, string> = {
+  SERVER: "sent",
+  DEVICE: "delivered",
+  READ: "read",
+  PLAYED: "read",
+  ERROR: "failed",
+};
+
+// Monotonic delivery ranks: an ack only moves a message forward. `unknown`,
+// `failed` and `cancelled` rank below `sent` so a later authoritative ack can
+// still reconcile them; `read` is the ceiling and never regresses.
+const DELIVERY_RANK: Record<string, number> = {
+  pending: 0,
+  unknown: 1,
+  failed: 1,
+  cancelled: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+};
+
 export function createDatabase(pool: Pool) {
   const db = drizzle({ client: pool });
   type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -1112,6 +1134,83 @@ export function createDatabase(pool: Pool) {
           .orderBy(dispatchIntents.createdAt, dispatchIntents.id)
           .limit(limit),
       ),
+    // Delivery reconciliation: authenticated `message.ack` webhooks are the
+    // authoritative signal (ADR 0010). Acks arrive out of order, so a status
+    // only moves forward and `read` never regresses; an ack is also what
+    // resolves a `unknown` dispatch (the provider did accept the send).
+    recordDeliveryStatus: (
+      workspaceId: string,
+      input: {
+        channelInstanceId: string;
+        providerMessageId: string;
+        providerEventId: string;
+        providerEventKind: string;
+        status: string;
+        rawPayload: unknown;
+        signatureVerified: boolean;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const webhookRows = await tx
+          .insert(webhookEvents)
+          .values({
+            workspaceId,
+            channelInstanceId: input.channelInstanceId,
+            providerEventId: input.providerEventId,
+            providerEventKind: input.providerEventKind,
+            payload: input.rawPayload as Record<string, unknown>,
+            signatureVerified: input.signatureVerified,
+            processedAt: new Date(),
+          })
+          .onConflictDoNothing({
+            target: [
+              webhookEvents.channelInstanceId,
+              webhookEvents.providerEventId,
+              webhookEvents.providerEventKind,
+            ],
+          })
+          .returning({ id: webhookEvents.id });
+        if (webhookRows.length === 0) {
+          return { kind: "duplicate" as const };
+        }
+        const target = ACK_STATUS_TARGETS[input.status];
+        if (!target) return { kind: "recorded" as const };
+        const rows = await tx
+          .select({ id: messages.id, status: messages.status })
+          .from(messages)
+          .innerJoin(
+            conversations,
+            eq(messages.conversationId, conversations.id),
+          )
+          .where(
+            and(
+              eq(conversations.channelInstanceId, input.channelInstanceId),
+              eq(messages.providerMessageId, input.providerMessageId),
+              eq(messages.direction, "outbound"),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        const message = rows[0];
+        if (!message) return { kind: "missing" as const };
+        const currentRank = DELIVERY_RANK[message.status] ?? 0;
+        const targetRank = DELIVERY_RANK[target] ?? 0;
+        const applicable =
+          target === "failed"
+            ? currentRank < (DELIVERY_RANK.read ?? 4) &&
+              message.status !== "failed"
+            : targetRank > currentRank;
+        if (!applicable) return { kind: "recorded" as const };
+        await tx
+          .update(messages)
+          .set({ status: target })
+          .where(eq(messages.id, message.id));
+        return {
+          kind: "applied" as const,
+          messageId: message.id,
+          status: target,
+        };
+      }),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
     // Same contract for user-scoped reads (e.g. own memberships via app.user_id).
