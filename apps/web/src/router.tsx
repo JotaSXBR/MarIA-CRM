@@ -11,6 +11,7 @@ import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
 import { CompaniesPage } from "./routes/companies.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
+import { InboxPage } from "./routes/inbox.tsx";
 import { AdminPage } from "./routes/admin.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
@@ -56,6 +57,12 @@ const companiesRoute = createRoute({
   component: CompaniesPage,
 });
 
+const inboxRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/inbox",
+  component: InboxPage,
+});
+
 const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/admin",
@@ -69,6 +76,7 @@ export const routeTree = rootRoute.addChildren([
     pipelinesRoute,
     contactsRoute,
     companiesRoute,
+    inboxRoute,
     adminRoute,
   ]),
 ]);

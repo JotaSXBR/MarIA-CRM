@@ -1038,6 +1038,7 @@ test("inbox routes forward the authorized workspace to the database", async () =
     workspaceId,
     channelInstanceId: channel.id,
     contactId: null,
+    contactName: "55119999",
     providerThreadId: "55119999@c.us",
     epoch: 1,
     createdAt: now,

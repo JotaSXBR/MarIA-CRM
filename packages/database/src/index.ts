@@ -759,12 +759,14 @@ export function createDatabase(pool: Pool) {
             workspaceId: conversations.workspaceId,
             channelInstanceId: conversations.channelInstanceId,
             contactId: conversations.contactId,
+            contactName: contacts.name,
             providerThreadId: conversations.providerThreadId,
             epoch: conversations.epoch,
             createdAt: conversations.createdAt,
             updatedAt: conversations.updatedAt,
           })
           .from(conversations)
+          .leftJoin(contacts, eq(conversations.contactId, contacts.id))
           .orderBy(conversations.updatedAt, conversations.id),
       ),
     getConversation: (workspaceId: string, id: string) =>
@@ -775,12 +777,14 @@ export function createDatabase(pool: Pool) {
             workspaceId: conversations.workspaceId,
             channelInstanceId: conversations.channelInstanceId,
             contactId: conversations.contactId,
+            contactName: contacts.name,
             providerThreadId: conversations.providerThreadId,
             epoch: conversations.epoch,
             createdAt: conversations.createdAt,
             updatedAt: conversations.updatedAt,
           })
           .from(conversations)
+          .leftJoin(contacts, eq(conversations.contactId, contacts.id))
           .where(eq(conversations.id, id))
           .limit(1);
         return rows[0];
