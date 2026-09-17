@@ -12,6 +12,7 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     createUser: vi.fn().mockResolvedValue(undefined),
     listUsers: vi.fn().mockResolvedValue([]),
     updateUser: vi.fn().mockResolvedValue("not-found"),
+    changePassword: vi.fn().mockResolvedValue("not-found"),
     listMembers: vi.fn().mockResolvedValue([]),
     addMembership: vi.fn().mockResolvedValue("not-found"),
     updateMembershipRole: vi.fn().mockResolvedValue("not-found"),
@@ -999,6 +1000,111 @@ test("GET /me returns the session identity and 401s without a token", async () =
       name: "Admin",
       isAdmin: true,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test("PATCH /me updates the profile and changes the password", async () => {
+  const userId = randomUUID();
+  const auth = createAuthStub({
+    verifySession: vi.fn().mockResolvedValue({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    updateUser: vi.fn().mockResolvedValue("updated"),
+    changePassword: vi.fn().mockResolvedValue("updated"),
+  });
+  const app = buildApp({ database: createDatabaseStub(), auth });
+  try {
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/me",
+          payload: { name: "Novo Nome" },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/me",
+          headers: { authorization: "Bearer token" },
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/me",
+          headers: { authorization: "Bearer token" },
+          payload: { newPassword: "nova-senha-123" },
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    const nameResponse = await app.inject({
+      method: "PATCH",
+      url: "/me",
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Novo Nome" },
+    });
+    expect(nameResponse.statusCode).toBe(200);
+    expect(auth.updateUser).toHaveBeenCalledWith(userId, {
+      name: "Novo Nome",
+    });
+
+    const passwordResponse = await app.inject({
+      method: "PATCH",
+      url: "/me",
+      headers: { authorization: "Bearer token" },
+      payload: {
+        currentPassword: "senha-atual",
+        newPassword: "nova-senha-123",
+      },
+    });
+    expect(passwordResponse.statusCode).toBe(200);
+    expect(auth.changePassword).toHaveBeenCalledWith(userId, {
+      currentPassword: "senha-atual",
+      newPassword: "nova-senha-123",
+      exceptToken: "token",
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("PATCH /me maps an incorrect current password to 403", async () => {
+  const userId = randomUUID();
+  const auth = createAuthStub({
+    verifySession: vi.fn().mockResolvedValue({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    changePassword: vi.fn().mockResolvedValue("invalid-password"),
+  });
+  const app = buildApp({ database: createDatabaseStub(), auth });
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/me",
+      headers: { authorization: "Bearer token" },
+      payload: {
+        currentPassword: "errada",
+        newPassword: "nova-senha-123",
+      },
+    });
+    expect(response.statusCode).toBe(403);
   } finally {
     await app.close();
   }

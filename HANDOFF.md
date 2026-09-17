@@ -12,12 +12,13 @@ gh pr status
 
 ## Current objective
 
-- Branch: `feat/app-shell` on `main` (`007b581`), open as PR #57.
-- Scope: app shell redesign — vendored shadcn/Base UI primitives, sidebar with
-  workspace switcher + main nav + user footer, inbox-first landing.
-- Direction set with the operator: next product slices are CRM surface, not agents —
-  settings/user area (`/me` is read-only today), channel-management UI, then
-  tasks/notes and detail pages.
+- Branch: `feat/settings-area` on `main` (`3c8d114`, PR #57 merged).
+- Scope: settings/user area — `PATCH /me` (name + password change revoking other
+  sessions), `/settings` route with sub-nav (Perfil, Canais), profile form,
+  channel-instances list/create UI, Configurações entry in the shell footer.
+- Direction confirmed with the operator: Companies stays — B2B model where multiple
+  contacts belong to one company (detail pages will give it substance).
+- Next after this: tasks/notes domain, then contact/company/deal detail pages.
 
 ## Memory model
 
@@ -30,31 +31,31 @@ gh pr status
 
 ## Verified state
 
-- `main` at `007b581` (PR #56 squash-merged: docs drift + UI skills); PR #57 open
-  with the app-shell slice.
-- `feat/app-shell`: shadcn init done in `apps/web` (Base UI registry, `components.json`,
-  `@/*` alias in tsconfig + vite + vitest). Vendored: button, sidebar, dropdown-menu,
-  avatar, input, separator, sheet, skeleton, tooltip + `use-mobile` hook.
-- New `src/components/app-sidebar.tsx`; `shell.tsx` rewritten on `SidebarProvider` +
-  `SidebarInset`; `/` and login now land on `/inbox`.
-- Deps added: `@base-ui/react`, `class-variance-authority`, `cn` (MIT), `lucide-react`,
-  `tw-animate-css`, `@fontsource-variable/geist`; `shadcn` pinned as devDependency.
-- Checks on this branch: `pnpm typecheck` clean, `pnpm test` 5/5, `pnpm build` ok,
-  `pnpm fmt:check` ok, `pnpm lint` 0 errors (9 pre-existing warnings in app.test.tsx).
-- Local smoke: API + Vite running; workspace "Operacao" seeded for admin@example.test.
+- `main` at `3c8d114` (PR #57 merged: app shell + vendored primitives).
+- `feat/settings-area`: `auth.changePassword` (verifies current password, updates
+  hash, deletes other sessions except the caller's token); `PATCH /me` route;
+  settings UI (profile + channels) under `/settings`; new vendored `card`/`label`.
+- Checks: `pnpm fmt`, `pnpm lint` (0 errors, 9 pre-existing warnings),
+  `pnpm typecheck` all packages, `pnpm test` web 6/6, api integration 31/31,
+  auth integration 5/5 (incl. new changePassword test), `pnpm build` all.
+- Local smoke: PATCH /me verified end-to-end against the dev DB; preview up.
+- Dev DB note: local `maria_runtime` password is `local-runtime-change-me`;
+  workspace "Operacao" seeded for admin@example.test.
 
 ## Blockers and risks
 
-- None blocking. `feat/media-messages` merged; `chore/docs-drift-fixes` awaits PR #56 merge.
-- `components.json` reports `"style": "base-nova"` (generated value; CLI presets list
-  differed) — works, but revisit if the CLI complains on future `add` runs.
+- None blocking.
+- API gap noted: `POST /channel-instances` accepts any workspace member; the UI
+  only shows the create form to workspace admins (visibility ≠ authorization).
+  Consider tightening server-side if channel config should be admin-only.
+- `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
+  complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
-- CRM domain gaps remain open work: no tasks/notes/tags/custom attributes, `/me` is
-  GET-only, `channel-instances` has no UI, no detail pages, no global search.
+- CRM domain gaps remain open work: no tasks/notes/tags/custom attributes,
+  no detail pages, no global search.
 
 ## Next actions
 
-1. Wait for PR #57 checks and merge.
-2. Slice 2: settings/user area — `PATCH /me` in `@maria/auth`, profile and channel
-   management UI over the existing `channel-instances` API.
-3. Slice 3: tasks/notes domain (RLS tables + API + UI), then contact/deal detail pages.
+1. Commit `feat/settings-area`, push, open PR, wait for checks and merge.
+2. Slice 3: tasks/notes domain (RLS tables + API + UI), then contact/company/deal
+   detail pages (which give Companies its substance: contacts grouped per company).

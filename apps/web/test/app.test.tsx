@@ -43,6 +43,65 @@ test("redirects unauthenticated visitors to the login page", async () => {
   expect(await screen.findByRole("heading", { name: "Entrar" })).toBeDefined();
 });
 
+test("settings profile updates the user name via PATCH /me", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const patched: unknown[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "admin" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me") && init?.method === "PATCH") {
+        patched.push(JSON.parse(init.body as string));
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "user@example.com",
+            name: "Novo Nome",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/settings/profile");
+  const user = userEvent.setup();
+  const nameInput = (await screen.findByLabelText("Nome")) as HTMLInputElement;
+  await waitFor(() => expect(nameInput.value).toBe("User"));
+  await user.clear(nameInput);
+  await user.type(nameInput, "Novo Nome");
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+  await waitFor(() => expect(patched).toEqual([{ name: "Novo Nome" }]));
+});
+
 test("login stores the session token and lands on the inbox", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
