@@ -12,14 +12,12 @@ gh pr status
 
 ## Current objective
 
-- Branch: `chore/docs-drift-fixes` off `main` (`b4f2b11`).
-- Scope: correct documentation drift found in the ADR audit, fix the `/messages` Vite
-  proxy omission (ADR 0003 footgun recurrence), and vendor the two UI agent skills
-  (`maria-shadcn` from shadcn-ui/ui MIT, `maria-frontend-design` from
-  anthropics/skills Apache-2.0) that govern the upcoming frontend slices.
+- Branch: `feat/app-shell` on `main` (`007b581`), open as PR #57.
+- Scope: app shell redesign — vendored shadcn/Base UI primitives, sidebar with
+  workspace switcher + main nav + user footer, inbox-first landing.
 - Direction set with the operator: next product slices are CRM surface, not agents —
-  app shell + vendored shadcn primitives, settings/user area (`/me` is read-only today),
-  channel-management UI, then tasks/notes and detail pages.
+  settings/user area (`/me` is read-only today), channel-management UI, then
+  tasks/notes and detail pages.
 
 ## Memory model
 
@@ -32,25 +30,31 @@ gh pr status
 
 ## Verified state
 
-- `main` at `b4f2b11`: media messages merged via PR #54 with all checks green.
-- Full ADR audit (0001–0013) on 2026-09-17: no architectural deviation; drift items were
-  stale implementation statuses (ADRs 0010, 0013), the stale `ARCHITECTURE.md` inventory,
-  and the missing `/messages` dev-proxy entry — all corrected on this branch.
-- UX research pass (`maria-pattern-research`): Twenty and Chatwoot classified UX-only
-  (mixed licenses), atomic-crm and shadcn/ui classified adapt (MIT); Refine CRM rejected.
+- `main` at `007b581` (PR #56 squash-merged: docs drift + UI skills); PR #57 open
+  with the app-shell slice.
+- `feat/app-shell`: shadcn init done in `apps/web` (Base UI registry, `components.json`,
+  `@/*` alias in tsconfig + vite + vitest). Vendored: button, sidebar, dropdown-menu,
+  avatar, input, separator, sheet, skeleton, tooltip + `use-mobile` hook.
+- New `src/components/app-sidebar.tsx`; `shell.tsx` rewritten on `SidebarProvider` +
+  `SidebarInset`; `/` and login now land on `/inbox`.
+- Deps added: `@base-ui/react`, `class-variance-authority`, `cn` (MIT), `lucide-react`,
+  `tw-animate-css`, `@fontsource-variable/geist`; `shadcn` pinned as devDependency.
+- Checks on this branch: `pnpm typecheck` clean, `pnpm test` 5/5, `pnpm build` ok,
+  `pnpm fmt:check` ok, `pnpm lint` 0 errors (9 pre-existing warnings in app.test.tsx).
+- Local smoke: API + Vite running; workspace "Operacao" seeded for admin@example.test.
 
 ## Blockers and risks
 
-- None blocking. Local branch `feat/media-messages` is merged and can be deleted.
-- CRM domain gaps remain open work, not regressions: no tasks/notes/tags/custom
-  attributes, `/me` is GET-only (no profile/password endpoints), `channel-instances`
-  has no UI, no detail pages, no global search.
+- None blocking. `feat/media-messages` merged; `chore/docs-drift-fixes` awaits PR #56 merge.
+- `components.json` reports `"style": "base-nova"` (generated value; CLI presets list
+  differed) — works, but revisit if the CLI complains on future `add` runs.
+- Old route pages still use raw `slate-*` classes; token migration is incremental.
+- CRM domain gaps remain open work: no tasks/notes/tags/custom attributes, `/me` is
+  GET-only, `channel-instances` has no UI, no detail pages, no global search.
 
 ## Next actions
 
-1. Run `pnpm fmt` + `pnpm lint`, commit and push this branch, open the PR.
-2. Slice 1 (next feature branch): app shell restructure + vendored shadcn/ui sidebar,
-   dropdown and dialog primitives.
-3. Slice 2: settings/user area — `PATCH /me` in `@maria/auth`, profile and channel
+1. Wait for PR #57 checks and merge.
+2. Slice 2: settings/user area — `PATCH /me` in `@maria/auth`, profile and channel
    management UI over the existing `channel-instances` API.
-4. Slice 3: tasks/notes domain (RLS tables + API + UI), then contact/deal detail pages.
+3. Slice 3: tasks/notes domain (RLS tables + API + UI), then contact/deal detail pages.

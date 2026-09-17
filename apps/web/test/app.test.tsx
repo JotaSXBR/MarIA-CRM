@@ -43,7 +43,7 @@ test("redirects unauthenticated visitors to the login page", async () => {
   expect(await screen.findByRole("heading", { name: "Entrar" })).toBeDefined();
 });
 
-test("login stores the session token and lands on contacts", async () => {
+test("login stores the session token and lands on the inbox", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -60,7 +60,7 @@ test("login stores the session token and lands on contacts", async () => {
         { status: 200 },
       );
     }
-    if (url.includes("/pipelines")) {
+    if (url.includes("/conversations")) {
       return new Response(JSON.stringify([]), { status: 200 });
     }
     if (url.includes("/contacts")) {
@@ -89,7 +89,7 @@ test("login stores the session token and lands on contacts", async () => {
 
   expect(localStorage.getItem("maria.token")).toBe("session-token");
   expect(
-    await screen.findByRole("heading", { name: "Pipelines" }),
+    await screen.findByRole("heading", { name: "Caixa de entrada" }),
   ).toBeDefined();
 });
 
