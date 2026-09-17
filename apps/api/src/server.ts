@@ -17,18 +17,23 @@ const auth = createLocalAuth(pool, database, {
 });
 await auth.seedAdmin();
 const app = buildApp({ database, auth });
+const shutdown = async () => {
+  try {
+    await app.close();
+    await database.close();
+  } catch (error) {
+    app.log.error(error);
+    process.exitCode = 1;
+  }
+};
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    app.close().catch((error: unknown) => {
-      app.log.error(error);
-      process.exitCode = 1;
-    });
+    void shutdown();
   });
 }
 try {
   await app.listen(listenOptions(process.env));
 } catch (error) {
   app.log.error(error);
-  await app.close();
-  process.exitCode = 1;
+  await shutdown();
 }
