@@ -62,6 +62,13 @@ function ShellLayout() {
           >
             Empresas
           </Link>
+          <Link
+            to="/inbox"
+            className="block rounded-lg px-3 py-2 hover:bg-slate-100"
+            activeProps={{ className: "bg-indigo-50 text-indigo-700" }}
+          >
+            Caixa de entrada
+          </Link>
           {session?.isAdmin ? (
             <Link
               to="/admin"

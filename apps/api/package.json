@@ -21,6 +21,7 @@
     "@maria/auth": "workspace:*",
     "@maria/channel-waha": "workspace:*",
     "@maria/database": "workspace:*",
+    "@maria/messaging": "workspace:*",
     "fastify": "5.12.3",
     "pg": "8.16.3"
   },
