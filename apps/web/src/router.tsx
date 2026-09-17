@@ -35,7 +35,7 @@ const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/pipelines" });
+    throw redirect({ to: "/inbox" });
   },
 });
 

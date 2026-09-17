@@ -19,7 +19,7 @@ export function LoginPage() {
         body: { email, password },
       });
       setToken(token);
-      await navigate({ to: "/pipelines" });
+      await navigate({ to: "/inbox" });
     } catch {
       setError("Email ou senha inválidos.");
     } finally {
