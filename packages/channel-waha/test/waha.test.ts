@@ -355,7 +355,7 @@ test("send without a provider message id is unknown, not sent", async () => {
   expect(result.kind).toBe("unknown");
 });
 
-test("setPresence posts chat and global presence (ADR 0012)", async () => {
+test("setPresence posts chat and global presence (ADR 0013)", async () => {
   const calls: { url: string; body: unknown }[] = [];
   const provider = createWahaProvider({
     baseUrl: "http://waha:3000",

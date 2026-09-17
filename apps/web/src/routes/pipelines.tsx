@@ -15,53 +15,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api.ts";
-import { useWorkspace } from "../lib/workspace.tsx";
-
-type Pipeline = {
-  id: string;
-  name: string;
-  position: string;
-  createdAt: string;
-};
-
-type Stage = {
-  id: string;
-  pipelineId: string;
-  name: string;
-  position: string;
-  createdAt: string;
-};
-
-type Deal = {
-  id: string;
-  pipelineId: string;
-  stageId: string;
-  title: string;
-  valueCents: number | null;
-  contactId: string | null;
-  companyId: string | null;
-  position: string;
-  createdAt: string;
-};
-
-type Contact = {
-  id: string;
-  name: string;
-};
-
-type Company = {
-  id: string;
-  name: string;
-};
-
-const formatValue = (valueCents: number | null) =>
-  valueCents == null
-    ? null
-    : (valueCents / 100).toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      });
+import { api } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
+import type { Company, Contact, Deal, Pipeline, Stage } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace";
 
 function DealCard({
   deal,
@@ -72,7 +29,7 @@ function DealCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: deal.id });
-  const value = formatValue(deal.valueCents);
+  const value = formatCurrency(deal.valueCents);
   return (
     <li
       ref={setNodeRef}

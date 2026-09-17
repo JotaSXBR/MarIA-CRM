@@ -314,11 +314,14 @@ export const channelInstances = pgTable(
   },
   (table) => [
     index("channel_instances_workspace_id_idx").on(table.workspaceId),
-    uniqueIndex("channel_instances_provider_key_idx").on(
-      table.workspaceId,
-      table.provider,
-      table.providerInstanceId,
-    ),
+    // Postgres treats NULLs as distinct in unique indexes, so a single index
+    // would allow duplicate default (NULL) instances per workspace+provider.
+    uniqueIndex("channel_instances_provider_key_idx")
+      .on(table.workspaceId, table.provider, table.providerInstanceId)
+      .where(sql`${table.providerInstanceId} is not null`),
+    uniqueIndex("channel_instances_default_provider_key_idx")
+      .on(table.workspaceId, table.provider)
+      .where(sql`${table.providerInstanceId} is null`),
   ],
 );
 

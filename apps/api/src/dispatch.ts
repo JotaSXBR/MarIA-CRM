@@ -1,3 +1,4 @@
+import type { Database } from "@maria/database";
 import type { MessagingProvider, SendContent } from "@maria/messaging";
 
 export const DISPATCH_LEASE_MS = 60_000;
@@ -21,45 +22,10 @@ export const CHOREOGRAPHY = {
   betweenSends: { min: 1000, max: 3000 },
 } as const;
 
-type DispatchDatabase = {
-  claimDispatchIntent(
-    workspaceId: string,
-    intentId: string,
-    options: { leaseMs: number },
-  ): Promise<
-    | { kind: "missing" }
-    | { kind: "notPending"; status: string }
-    | { kind: "stale" }
-    | { kind: "failed"; reason: string }
-    | {
-        kind: "claimed";
-        attemptId: string;
-        fencingToken: string;
-        messageId: string;
-        body: string;
-        contentType: string;
-        media: { key: string; mime: string; filename: string | null } | null;
-        to: string;
-        session: string;
-      }
-  >;
-  settleDispatch(
-    workspaceId: string,
-    input: {
-      intentId: string;
-      attemptId: string;
-      fencingToken: string;
-      outcome: "succeeded" | "unknown" | "failed";
-      providerMessageId?: string;
-      error?: string;
-    },
-  ): Promise<{ kind: "missing" } | { kind: "stale" } | { kind: "settled" }>;
-  reapExpiredDispatches(workspaceId: string): Promise<{ reaped: number }>;
-  listPendingIntents(
-    workspaceId: string,
-    limit?: number,
-  ): Promise<{ id: string }[]>;
-};
+type DispatchDatabase = Pick<
+  Database,
+  "claimDispatchIntent" | "settleDispatch" | "listPendingIntents"
+>;
 
 export type Dispatcher = {
   /**
@@ -74,12 +40,6 @@ export type Dispatcher = {
    * the already-running drain instead of racing it.
    */
   dispatchPending(workspaceId: string): Promise<void>;
-  /**
-   * Workspace-scoped maintenance: expired leases become `unknown` and any
-   * still-pending intents are claimed and sent. Safe to call lazily from
-   * request handlers; never retries `unknown`/`dispatching` work.
-   */
-  maintainWorkspace(workspaceId: string): Promise<void>;
 };
 
 const MAX_DRAIN_ROUNDS = 10;
@@ -324,12 +284,5 @@ export function createDispatcher(deps: {
     }
   }
 
-  return {
-    dispatchIntent,
-    dispatchPending,
-    async maintainWorkspace(workspaceId: string) {
-      await deps.database.reapExpiredDispatches(workspaceId).catch(report);
-      await dispatchPending(workspaceId);
-    },
-  };
+  return { dispatchIntent, dispatchPending };
 }

@@ -17,7 +17,7 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     addMembership: vi.fn().mockResolvedValue("not-found"),
     updateMembershipRole: vi.fn().mockResolvedValue("not-found"),
     removeMembership: vi.fn().mockResolvedValue("not-found"),
-    ensureAdmin: vi.fn().mockResolvedValue(false),
+
     seedAdmin: vi.fn().mockResolvedValue(undefined),
   };
   return Object.assign(stub, overrides);
@@ -1381,6 +1381,18 @@ test("PATCH /me updates the profile and changes the password", async () => {
           url: "/me",
           headers: { authorization: "Bearer token" },
           payload: { newPassword: "nova-senha-123" },
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    // `currentPassword` without `newPassword` must not silently no-op.
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/me",
+          headers: { authorization: "Bearer token" },
+          payload: { currentPassword: "senha-atual" },
         })
       ).statusCode,
     ).toBe(400);

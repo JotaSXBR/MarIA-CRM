@@ -580,6 +580,17 @@ test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async (
 
   const done = await database.updateTask(workspaceA, task!.id, { done: true });
   expect(done!.doneAt).not.toBeNull();
+
+  // Open tasks (doneAt NULL) sort before completed ones.
+  const openTask = await database.createTask(workspaceA, {
+    title: "Aberta",
+    contactId: contactA.id,
+  });
+  const ordered = await database.listTasks(workspaceA, {
+    contactId: contactA.id,
+  });
+  expect(ordered.map((row) => row.id)).toEqual([openTask!.id, task!.id]);
+
   const undone = await database.updateTask(workspaceA, task!.id, {
     done: false,
     title: "Retomar",
@@ -624,6 +635,7 @@ test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async (
 
   expect(await database.deleteTask(workspaceB, task!.id)).toBe(false);
   expect(await database.deleteTask(workspaceA, task!.id)).toBe(true);
+  expect(await database.deleteTask(workspaceA, openTask!.id)).toBe(true);
   expect(
     await database.listTasks(workspaceA, { contactId: contactA.id }),
   ).toEqual([]);

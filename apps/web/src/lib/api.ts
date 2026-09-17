@@ -12,14 +12,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(
+async function request(
   path: string,
   init: {
     method?: string;
     body?: unknown;
     workspaceId?: string | undefined;
   } = {},
-): Promise<T> {
+): Promise<Response> {
   const url = new URL(path, window.location.origin);
   if (init.workspaceId) url.searchParams.set("workspaceId", init.workspaceId);
   const token = getToken();
@@ -37,8 +37,20 @@ export async function api<T>(
     setToken(null);
     throw new ApiError(401);
   }
-  if (response.status === 204) return undefined as T;
   if (!response.ok) throw new ApiError(response.status);
+  return response;
+}
+
+export async function api<T>(
+  path: string,
+  init: {
+    method?: string;
+    body?: unknown;
+    workspaceId?: string | undefined;
+  } = {},
+): Promise<T> {
+  const response = await request(path, init);
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -48,16 +60,6 @@ export async function apiBlob(
   path: string,
   init: { workspaceId?: string | undefined } = {},
 ): Promise<Blob> {
-  const url = new URL(path, window.location.origin);
-  if (init.workspaceId) url.searchParams.set("workspaceId", init.workspaceId);
-  const token = getToken();
-  const response = await fetch(url, {
-    headers: token ? { authorization: `Bearer ${token}` } : {},
-  });
-  if (response.status === 401) {
-    setToken(null);
-    throw new ApiError(401);
-  }
-  if (!response.ok) throw new ApiError(response.status);
+  const response = await request(path, init);
   return response.blob();
 }

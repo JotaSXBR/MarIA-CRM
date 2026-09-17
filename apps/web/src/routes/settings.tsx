@@ -1,5 +1,4 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
+import { Link, Outlet } from "@tanstack/react-router";
 
 const SETTINGS_NAV = [
   { to: "/settings/profile", label: "Perfil" },
@@ -7,10 +6,6 @@ const SETTINGS_NAV = [
 ] as const;
 
 export function SettingsLayout() {
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  });
-
   return (
     <div className="mx-auto flex max-w-5xl gap-8">
       <aside className="w-44 shrink-0">
@@ -20,11 +15,10 @@ export function SettingsLayout() {
             <Link
               key={item.to}
               to={item.to}
-              className={cn(
-                "rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-hidden transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2",
-                pathname.startsWith(item.to) &&
-                  "bg-accent font-medium text-accent-foreground",
-              )}
+              className="rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-hidden transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2"
+              activeProps={{
+                className: "bg-accent font-medium text-accent-foreground",
+              }}
             >
               {item.label}
             </Link>

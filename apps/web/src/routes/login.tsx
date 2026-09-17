@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { api, setToken } from "../lib/api.ts";
+import { api, setToken } from "@/lib/api";
 
 export function LoginPage() {
   const navigate = useNavigate();

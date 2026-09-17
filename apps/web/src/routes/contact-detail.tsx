@@ -3,6 +3,13 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, TrashIcon } from "lucide-react";
 import { api } from "@/lib/api";
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  initials,
+} from "@/lib/format";
+import type { Contact, ContactDeal, Note, Task } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,60 +26,6 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-
-type Contact = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  createdAt: string;
-};
-
-type ContactDeal = {
-  id: string;
-  title: string;
-  valueCents: number | null;
-  stageName: string;
-  pipelineName: string;
-  createdAt: string;
-};
-
-type Note = {
-  id: string;
-  body: string;
-  authorName: string | null;
-  createdAt: string;
-};
-
-type Task = {
-  id: string;
-  title: string;
-  dueAt: string | null;
-  doneAt: string | null;
-  assigneeName: string | null;
-  createdAt: string;
-};
-
-const currency = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
-
-const dateTime = new Intl.DateTimeFormat("pt-BR", {
-  dateStyle: "short",
-  timeStyle: "short",
-});
-
-const dateOnly = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
 
 export function ContactDetailPage() {
   const { contactId } = useParams({ strict: false }) as { contactId: string };
@@ -283,7 +236,7 @@ export function ContactDetailPage() {
                   <div className="flex shrink-0 items-center gap-3">
                     {deal.valueCents !== null ? (
                       <span className="text-sm font-medium">
-                        {currency.format(deal.valueCents / 100)}
+                        {formatCurrency(deal.valueCents)}
                       </span>
                     ) : null}
                     <Badge variant="secondary">{deal.stageName}</Badge>
@@ -363,9 +316,7 @@ export function ContactDetailPage() {
                     <p className="text-xs text-muted-foreground">
                       {[
                         task.assigneeName,
-                        task.dueAt
-                          ? `Prazo ${dateOnly.format(new Date(task.dueAt))}`
-                          : null,
+                        task.dueAt ? `Prazo ${formatDate(task.dueAt)}` : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -434,7 +385,7 @@ export function ContactDetailPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {[
                         note.authorName ?? "Alguém",
-                        dateTime.format(new Date(note.createdAt)),
+                        formatDateTime(note.createdAt),
                       ].join(" · ")}
                     </p>
                   </div>

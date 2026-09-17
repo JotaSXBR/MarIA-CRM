@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../lib/api.ts";
-import { useWorkspace } from "../lib/workspace.tsx";
+import { api, ApiError } from "@/lib/api";
+import { useWorkspace } from "@/lib/workspace";
 
 type AdminUser = {
   id: string;

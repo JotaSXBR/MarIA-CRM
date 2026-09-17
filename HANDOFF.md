@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-17
+Updated: 2026-10-16
 
 ## Verify first
 
@@ -13,16 +13,10 @@ gh pr status
 ## Current objective
 
 - Branch: `feat/notes-tasks-contact-detail` on `main` (`300fef9`, PR #58 merged).
-- Scope: notes/tasks domain + first detail page — `notes`/`tasks` tables with
-  forced RLS (migration `0012_notes_tasks.sql`), scoped persistence with
-  cross-workspace ref validation, API routes nested under contacts plus
-  item-level `PATCH /tasks/:id`, `DELETE /tasks/:id`, `DELETE /notes/:id`,
-  and `/contacts/$contactId` UI (deals, tasks with completion toggle, notes
-  timeline) linked from the contacts list.
-- Also fixed: `POST /channel-instances` now requires workspace admin
-  (previously any member; UI already hid the form).
-- Direction confirmed: Companies stays — B2B model where multiple contacts
-  belong to one company (detail pages will give it substance).
+- HEAD `ed97d77` (notes/tasks domain + contact detail page — already committed).
+- Working tree holds an uncommitted `code-simplifier` repository-wide pass
+  (see below) plus a pre-existing unrelated edit to
+  `.devin/skills/code-simplifier/SKILL.md` (do not mix into the PR).
 - Next after this: `contacts.companyId` link, company/deal detail pages,
   then tags/custom attributes and global search.
 
@@ -37,16 +31,62 @@ gh pr status
 
 ## Verified state
 
-- `main` at `300fef9` (PR #58 merged: settings/profile/channel management).
-- Slice implemented: schema + migration `0012` (notes/tasks, indexes, forced
-  RLS, `GRANT SELECT, INSERT, UPDATE` to `maria_runtime`), database methods
-  (`listDealsForContact`, `listNotes`/`createNote`/`deleteNote`,
-  `listTasks`/`createTask`/`updateTask`/`deleteTask`), API routes, contact
-  detail page, vendored `field`/`textarea`/`checkbox`/`badge`/`empty`.
-- Checks: `pnpm fmt:check`, `pnpm lint` (0 errors, 9 pre-existing warnings),
-  `pnpm typecheck` all packages, `pnpm test` web 7/7,
-  `pnpm test:integration` api 35/35, database 19/19 (incl. new notes/tasks
-  RLS test), auth 5/5, `pnpm build` all.
+- `main` at `300fef9` (PR #58 merged); branch HEAD `ed97d77` (notes/tasks +
+  contact detail, committed).
+- Simplification pass applied in the working tree (2026-10-16):
+  - `apps/api/src/app.ts`: `AppDependencies.database` now derives from
+    `Database` (`Omit<Database, "close"|"withWorkspace"|"withUser">`) instead
+    of ~310 lines of hand-duplicated signatures; shared `meResponseSchema`;
+    dropped `400` response entries that no handler emits (notes/tasks POST,
+    tasks PATCH, message retry/resolve).
+  - `apps/api/src/dispatch.ts`: `DispatchDatabase` is now
+    `Pick<Database, …>` of the four methods it uses; dead `maintainWorkspace` removed (no callers;
+    `GET /conversations` does reap+dispatch inline on purpose — the handler
+    must not await the full drain).
+  - `packages/database/src/index.ts`: extracted `channelInstanceColumns`,
+    `conversationColumns`, `messageColumns` (same convention as existing
+    `*Columns` maps); `recordWebhookEvent` helper for the dedup insert shared
+    by `receiveInboundMessage`/`recordDeliveryStatus`; `updateDeal`/`updateTask`
+    pass patch input to `.set()` directly (Drizzle skips `undefined`);
+    `lastPosition` takes an optional parent filter (used by createStage/
+    createDeal/createPipeline).
+  - `packages/messaging`, `packages/channel-waha`: comment/test references to
+    "ADR 0012" for presence choreography corrected to ADR 0013.
+  - `apps/web`: new `lib/format.ts` (initials, pt-BR date/time, BRL currency)
+    and `lib/types.ts` (API response shapes) replace per-page duplicates in
+    inbox/contacts/companies/pipelines/contact-detail/settings-channels/
+    app-sidebar; `lib/api.ts` gained a shared `request()` used by `api()` and
+    `apiBlob()`; `settings.tsx` uses `Link` `activeProps` instead of manual
+    `pathname.startsWith`; relative `../lib/*.ts` imports standardized on `@/`.
+- Second pass — deferred corrections landed in the same dirty tree:
+  - `apps/api/src/app.ts` split into `src/routes/{session,admin,contacts,
+companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
+    `RouteDatabase`, shared schemas). `buildApp` is now ~85 lines of wiring;
+    `/health` stays inline. Route registration order and schemas unchanged.
+  - Webhook `rawBody` buffering moved from a global `preParsing` hook to the
+    WAHA webhook route options — other routes (incl. 40MB message uploads)
+    no longer double-buffer.
+  - Ordering fixes: `listTasks` now returns open tasks first
+    (`desc(doneAt)` → NULLS FIRST); `listConversations` orders
+    `updatedAt DESC` (inbox recency).
+  - `receiveInboundMessage` upsert backfills `conversations.contact_id`
+    (`coalesce(existing, excluded)`) when a later event resolves the sender.
+  - `channel_instances` uniqueness: migration `0013_channel_instance_null_key.sql`
+    splits the unique index into two partial indexes so a default
+    (`provider_instance_id IS NULL`) instance is unique per
+    workspace+provider; schema.ts updated accordingly.
+  - `PATCH /me` now 400s on `currentPassword` without `newPassword`
+    (previously a silent no-op).
+  - `AuthPort.ensureAdmin` removed — `verifySession` already reads
+    `users.isAdmin`/`active` fresh per request, so the method duplicated it
+    with no callers. `Dispatcher.dispatchIntent` kept: documented
+    single-send primitive a future worker will need.
+- Checks (revision `ed97d77` + dirty tree above, 2026-10-16, Windows/pnpm):
+  `pnpm fmt:check` clean; `pnpm lint` 0 errors, 9 pre-existing warnings;
+  `pnpm typecheck` 6/6 packages; `pnpm test` api 26/26, web 7/7, database 1/1,
+  messaging 1/1, channel-waha 24/24; `pnpm test:integration` api 35/35,
+  database 20/20 (incl. new null-unique + contactId-backfill + ordering
+  assertions), auth 5/5.
 - Dev DB note: local `maria_runtime` password is `local-runtime-change-me`;
   workspace "Operacao" seeded for admin@example.test (password `maria123`).
 
@@ -62,9 +102,16 @@ gh pr status
 - CRM domain gaps remain open work: no `contacts.companyId`, no company/deal
   detail pages, no tags/custom attributes, no global search.
 
+## Deferred from the code-simplifier review
+
+- **mime→kind mapping exists twice**: `attachmentContentType`
+  (`routes/messaging.ts`) vs `mediaKindFromMime` (`channel-waha`). Opposite
+  directions (outbound classify vs inbound normalize); consolidate in
+  `@maria/messaging` only when a third use or shared direction appears.
+
 ## Next actions
 
-1. Commit `feat/notes-tasks-contact-detail`, push, open PR, wait for checks
-   and merge.
+1. Review the simplification diff, then commit (excluding the unrelated
+   `SKILL.md` edit), push, open PR, wait for checks and merge.
 2. Slice 4: `contacts.companyId` + company detail page (contacts, deals,
    notes aggregated), then deal detail page.
