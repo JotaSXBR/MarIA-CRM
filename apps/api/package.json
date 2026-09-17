@@ -22,7 +22,7 @@
     "@maria/channel-waha": "workspace:*",
     "@maria/database": "workspace:*",
     "@maria/messaging": "workspace:*",
-    "fastify": "5.12.3",
+    "fastify": "5.12.4",
     "pg": "8.16.3"
   },
   "devDependencies": {
