@@ -43,6 +43,7 @@ Thumbs.db
 
 # Local infrastructure state
 .docker-data/
+data/
 .local/
 tmp/
 temp/

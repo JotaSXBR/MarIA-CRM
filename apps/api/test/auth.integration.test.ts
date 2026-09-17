@@ -1061,6 +1061,9 @@ test("inbox routes forward the authorized workspace to the database", async () =
     status: "received",
     contentType: "text",
     body: "hello",
+    mediaKey: null,
+    mediaMime: null,
+    mediaFilename: null,
     createdAt: now,
   };
   const database = createDatabaseStub();
@@ -1156,6 +1159,9 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     status: "sent",
     contentType: "text",
     body: "hi there",
+    mediaKey: null,
+    mediaMime: null,
+    mediaFilename: null,
     createdAt: now,
   };
   const database = createDatabaseStub();
@@ -1170,6 +1176,8 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     fencingToken: randomUUID(),
     messageId,
     body: "hi there",
+    contentType: "text",
+    media: null,
     to: "55119999@c.us",
     session: "sales",
   });
@@ -1180,6 +1188,7 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     .mockResolvedValue([]);
   database.settleDispatch.mockResolvedValue({ kind: "settled" });
   database.listMessages.mockResolvedValue([sentMessage]);
+  database.getMessage.mockResolvedValue(sentMessage);
   const auth = createAuthStub({
     verifySession: async () => ({
       userId: randomUUID(),
@@ -1237,6 +1246,8 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
       conversationId,
       body: "hi there",
+      contentType: "text",
+      media: null,
     });
     // The send now runs in the background dispatcher (ADR 0013) — wait for
     // the asynchronous claim → send → settle cycle to complete.
@@ -1326,6 +1337,8 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
       fencingToken,
       messageId,
       body: "hello",
+      contentType: "text",
+      media: null,
       to: "5511@c.us",
       session: "s",
     });
@@ -1342,9 +1355,26 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
         status: "unknown",
         contentType: "text",
         body: "hello",
+        mediaKey: null,
+        mediaMime: null,
+        mediaFilename: null,
         createdAt: new Date("2026-01-01T00:00:00Z"),
       },
     ]);
+    database.getMessage.mockResolvedValue({
+      id: messageId,
+      workspaceId,
+      conversationId,
+      providerMessageId: null,
+      direction: "outbound",
+      status: "unknown",
+      contentType: "text",
+      body: "hello",
+      mediaKey: null,
+      mediaMime: null,
+      mediaFilename: null,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
     const response = await app.inject({
       method: "POST",
       url: `/conversations/${conversationId}/messages?workspaceId=${workspaceId}`,
@@ -1385,6 +1415,9 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
     status: "failed",
     contentType: "text",
     body: "retry me",
+    mediaKey: null,
+    mediaMime: null,
+    mediaFilename: null,
     createdAt: now,
   };
   const retriedMessage = {
@@ -1437,6 +1470,8 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
     expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
       conversationId,
       body: "retry me",
+      contentType: "text",
+      media: null,
     });
     // The dispatcher drains in the background.
     expect(database.listPendingIntents).toHaveBeenCalled();
@@ -1477,6 +1512,9 @@ test("POST /messages/:id/resolve confirms the outcome of unknown sends", async (
     status: "sent",
     contentType: "text",
     body: "hello",
+    mediaKey: null,
+    mediaMime: null,
+    mediaFilename: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
   };
   const database = createDatabaseStub();

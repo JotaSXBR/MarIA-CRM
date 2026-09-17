@@ -712,6 +712,7 @@ export function createDatabase(pool: Pool) {
         senderPhone?: string | null;
         contentType: string;
         body: string;
+        media?: { key: string; mime: string; filename?: string | null } | null;
         rawPayload: unknown;
         signatureVerified: boolean;
       },
@@ -795,6 +796,9 @@ export function createDatabase(pool: Pool) {
             direction: "inbound",
             contentType: input.contentType,
             body: input.body,
+            mediaKey: input.media?.key ?? null,
+            mediaMime: input.media?.mime ?? null,
+            mediaFilename: input.media?.filename ?? null,
           })
           .onConflictDoNothing({
             target: [messages.conversationId, messages.providerMessageId],
@@ -868,6 +872,9 @@ export function createDatabase(pool: Pool) {
             status: messages.status,
             contentType: messages.contentType,
             body: messages.body,
+            mediaKey: messages.mediaKey,
+            mediaMime: messages.mediaMime,
+            mediaFilename: messages.mediaFilename,
             createdAt: messages.createdAt,
           })
           .from(messages)
@@ -886,6 +893,9 @@ export function createDatabase(pool: Pool) {
             status: messages.status,
             contentType: messages.contentType,
             body: messages.body,
+            mediaKey: messages.mediaKey,
+            mediaMime: messages.mediaMime,
+            mediaFilename: messages.mediaFilename,
             createdAt: messages.createdAt,
           })
           .from(messages)
@@ -937,7 +947,12 @@ export function createDatabase(pool: Pool) {
     // effect identity; epoch is captured for stale-intent cancellation.
     createOutboundIntent: (
       workspaceId: string,
-      input: { conversationId: string; body: string },
+      input: {
+        conversationId: string;
+        body?: string | null;
+        contentType?: string;
+        media?: { key: string; mime: string; filename?: string | null } | null;
+      },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
         const rows = await tx
@@ -959,8 +974,11 @@ export function createDatabase(pool: Pool) {
             conversationId: conversation.id,
             direction: "outbound",
             status: "pending",
-            contentType: "text",
-            body: input.body,
+            contentType: input.contentType ?? "text",
+            body: input.body ?? null,
+            mediaKey: input.media?.key ?? null,
+            mediaMime: input.media?.mime ?? null,
+            mediaFilename: input.media?.filename ?? null,
           })
           .returning();
         if (!message) return { kind: "missing" } as const;
@@ -1000,6 +1018,10 @@ export function createDatabase(pool: Pool) {
             channelActive: channelInstances.isActive,
             providerInstanceId: channelInstances.providerInstanceId,
             messageBody: messages.body,
+            messageContentType: messages.contentType,
+            messageMediaKey: messages.mediaKey,
+            messageMediaMime: messages.mediaMime,
+            messageMediaFilename: messages.mediaFilename,
           })
           .from(dispatchIntents)
           .innerJoin(
@@ -1067,6 +1089,14 @@ export function createDatabase(pool: Pool) {
           fencingToken: attempt!.fencingToken,
           messageId: row.intentMessageId,
           body: row.messageBody ?? "",
+          contentType: row.messageContentType,
+          media: row.messageMediaKey
+            ? {
+                key: row.messageMediaKey,
+                mime: row.messageMediaMime ?? "application/octet-stream",
+                filename: row.messageMediaFilename,
+              }
+            : null,
           to: row.providerThreadId,
           session: row.providerInstanceId,
         } as const;

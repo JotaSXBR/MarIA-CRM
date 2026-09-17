@@ -1,3 +1,25 @@
+/**
+ * Media attachment metadata carried on inbound messages. `url` is the
+ * provider's download location — resolve bytes through
+ * `MessagingProvider.downloadMedia`, never expose it to clients.
+ */
+export type InboundMedia = {
+  url: string;
+  mimetype?: string;
+  filename?: string;
+};
+
+export type MediaContentType = "image" | "video" | "audio" | "document";
+
+export type InboundContent =
+  | { type: "text"; text: string }
+  | {
+      type: MediaContentType;
+      /** Message text/caption accompanying the media. */
+      caption: string;
+      media: InboundMedia;
+    };
+
 export type InboundMessage = {
   kind: "message";
   providerThreadId: string;
@@ -14,10 +36,7 @@ export type InboundMessage = {
      */
     lid?: string;
   };
-  content: {
-    type: "text";
-    text: string;
-  };
+  content: InboundContent;
 };
 
 export type InboundStatus = {
@@ -49,12 +68,30 @@ export type WebhookVerification = {
   secret: string;
 };
 
+/** Outbound content. Media variants carry base64 `data` read from storage at
+ * dispatch time — the ledger persists the storage key, not the bytes. */
+export type SendContent =
+  | { type: "text"; text: string }
+  | {
+      type: MediaContentType;
+      /** Base64-encoded file bytes. */
+      data: string;
+      mimetype: string;
+      filename?: string;
+      caption?: string;
+    }
+  | {
+      type: "contact";
+      /** vCard 3.0 payloads; providers with structured contact APIs map fields. */
+      contacts: { vcard: string }[];
+    };
+
 export type SendInput = {
   /** Provider session/instance identifier (e.g. WAHA session name). */
   session: string;
   /** Provider thread/chat identifier (e.g. `5511...@c.us`). */
   to: string;
-  content: { type: "text"; text: string };
+  content: SendContent;
 };
 
 /**
@@ -128,4 +165,12 @@ export interface MessagingProvider {
    * (`@c.us`), or null when unknown — used for contact phone linking.
    */
   resolveLid?(session: string, lid: string): Promise<string | null>;
+  /**
+   * Download a media payload referenced by an inbound message. `url` may be
+   * provider-relative or absolute; implementations authenticate with the
+   * provider credentials. Returns null when the media is unavailable.
+   */
+  downloadMedia?(
+    url: string,
+  ): Promise<{ data: Uint8Array; mimetype?: string } | null>;
 }

@@ -1,4 +1,4 @@
-import type { MessagingProvider } from "@maria/messaging";
+import type { MessagingProvider, SendContent } from "@maria/messaging";
 
 export const DISPATCH_LEASE_MS = 60_000;
 
@@ -37,6 +37,8 @@ type DispatchDatabase = {
         fencingToken: string;
         messageId: string;
         body: string;
+        contentType: string;
+        media: { key: string; mime: string; filename: string | null } | null;
         to: string;
         session: string;
       }
@@ -85,6 +87,10 @@ const MAX_DRAIN_ROUNDS = 10;
 export function createDispatcher(deps: {
   database: DispatchDatabase;
   provider: MessagingProvider;
+  /** Attachment byte store — required for media/contact sends. */
+  media?: {
+    read(workspaceId: string, key: string): Promise<Uint8Array | null>;
+  };
   leaseMs?: number;
   /** Injectable delay — tests pass a no-op to keep choreography instant. */
   sleep?: (ms: number) => Promise<void>;
@@ -161,9 +167,55 @@ export function createDispatcher(deps: {
   }
 
   /**
+   * Rebuild the provider SendContent from the claimed intent. Media/contact
+   * messages carry their bytes in the attachment store — a missing key or
+   * store makes the send fail (never silently downgrade to text).
+   */
+  async function buildContent(
+    workspaceId: string,
+    c: Claimed,
+  ): Promise<SendContent | null> {
+    switch (c.contentType) {
+      case "text":
+        return { type: "text", text: c.body };
+      case "image":
+      case "video":
+      case "audio":
+      case "document": {
+        if (!c.media || !deps.media) return null;
+        const bytes = await deps.media
+          .read(workspaceId, c.media.key)
+          .catch(() => null);
+        if (!bytes) return null;
+        return {
+          type: c.contentType,
+          data: Buffer.from(bytes).toString("base64"),
+          mimetype: c.media.mime,
+          ...(c.media.filename ? { filename: c.media.filename } : {}),
+          ...(c.body ? { caption: c.body } : {}),
+        };
+      }
+      case "contact": {
+        if (!c.media || !deps.media) return null;
+        const bytes = await deps.media
+          .read(workspaceId, c.media.key)
+          .catch(() => null);
+        if (!bytes) return null;
+        return {
+          type: "contact",
+          contacts: [{ vcard: Buffer.from(bytes).toString("utf8") }],
+        };
+      }
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Chat-scoped choreography around the send (ADR 0013): seen → typing for a
-   * duration proportional to the text → paused → send → settle. Global
-   * online/offline belongs to the burst caller.
+   * duration proportional to the text → paused → send → settle. Voice notes
+   * show `recording` instead of `typing`. Global online/offline belongs to
+   * the burst caller.
    */
   async function sendClaimed(
     workspaceId: string,
@@ -173,17 +225,35 @@ export function createDispatcher(deps: {
     const humanize = deps.provider.capabilities.presenceSignals;
     if (humanize) {
       await sendSeen(c.session, c.to);
-      await presence(c.session, "typing", c.to);
+      await presence(
+        c.session,
+        c.contentType === "audio" ? "recording" : "typing",
+        c.to,
+      );
       await sleep(typingDurationMs(c.body));
       await presence(c.session, "paused", c.to);
       await sleep(jitter(CHOREOGRAPHY.pausedToSend));
+    }
+
+    const content = await buildContent(workspaceId, c);
+    if (!content) {
+      await deps.database
+        .settleDispatch(workspaceId, {
+          intentId,
+          attemptId: c.attemptId,
+          fencingToken: c.fencingToken,
+          outcome: "failed",
+          error: "attachment bytes unavailable",
+        })
+        .catch(report);
+      return;
     }
 
     const result = await deps.provider
       .send({
         session: c.session,
         to: c.to,
-        content: { type: "text", text: c.body },
+        content,
       })
       .catch((error: unknown) => ({
         kind: "unknown" as const,

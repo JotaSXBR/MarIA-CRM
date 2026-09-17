@@ -12,7 +12,34 @@ gh pr status
 
 ## Current work
 
-All dependency and messaging PRs are merged; `main` is green with no open PRs.
+Media messaging slice on `feat/media-messages` (gates green locally): WhatsApp-style
+attachments end to end — composer `+` menu (Fotos e vídeos / Documento / Contato),
+outbound image/video/document/voice + vCard contact sends, inbound media download
+and persistence, authenticated media retrieval and inbox rendering.
+
+- `packages/messaging`: `SendContent` union (text/image/video/document/audio/contact)
+  + `InboundMedia` on normalized events + optional `downloadMedia` capability.
+- `packages/channel-waha`: endpoint-per-type sends (`sendImage`/`sendVideo`/
+  `sendFile`/`sendVoice`/`sendContactVcard`), `downloadMedia` against payload
+  media URLs, media normalization preserving caption/filename/mimetype.
+- `packages/database`: migration `0011_message_media.sql` adds
+  `media_key`/`media_mime`/`media_filename` to `messages`; outbound intents carry
+  the media reference through claim.
+- `apps/api`: `media-store.ts` filesystem `MediaStore` (server-side keys
+  `{workspaceId}/{uuid}.ext`, prefix+`..` guard — StoragePort seam for S3 later);
+  `POST /conversations/:id/messages` accepts `{body}` OR `{attachment:{data b64,
+  mimetype,filename?}}` OR `{contact:{vcard}}`; `GET /messages/:id/media` streams
+  bytes under workspace auth (RLS + key-prefix double check); webhook downloads
+  inbound media before persisting. `MEDIA_DIR` env (default `data/media`),
+  compose volume `maria-media`.
+- `apps/api/src/dispatch.ts`: claimed intents carry `contentType`+media ref;
+  `buildContent` rebuilds `SendContent` from the store (missing bytes →
+  `failed`, never text downgrade); audio uses `recording` presence.
+- `apps/web` inbox: `+` attachment menu, file→base64 upload, media bubbles via
+  authenticated `fetch → blob → objectURL` (img/video/audio/download link,
+  contact card), existing retry actions preserved.
+- Retry of a media message reuses the same stored `media_key` (the attachment
+  is durable; only the send effect is re-issued under a new intent identity).
 
 - Outbound WAHA messaging (ADR 0010 effect-recovery contract) landed via #44:
   `dispatch_intents`/`dispatch_attempts` ledger (effect identity, fencing +
@@ -68,9 +95,13 @@ Windows, Node 24.21.0, pnpm 11.26.0, Docker 29.7.2.
 
 ## Verification for this slice
 
-- `pnpm verify` ✓ — fmt:check, oxlint (0 errors, 9 pre-existing `apps/web`
-  warnings), typecheck, unit tests, integration (database 15, auth 4, api 22),
-  built API HTTP E2E, build.
+- `pnpm verify` ✓ — fmt:check, oxlint (0 errors, pre-existing `apps/web`
+  warnings only), typecheck, unit tests, integration (database 18, auth 4,
+  api 29 incl. media), built API HTTP E2E, build.
+- Media coverage: adapter send-per-endpoint + download + normalization (24
+  tests), API attachment/contact send, webhook media download+store, GET media
+  auth + cross-tenant 404 + missing-media 404, DB media persistence round-trip
+  under the runtime role.
 - Integration evidence covers: exclusive concurrent claim on independent
   connections, stale-fencing no-op settle, expired lease → `unknown`,
   epoch-mismatch cancellation, inactive-channel fast fail, cross-tenant

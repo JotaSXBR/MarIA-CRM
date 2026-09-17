@@ -68,9 +68,17 @@ existing volume's credentials. ADMIN_EMAIL/ADMIN_PASSWORD seed a missing user, n
 WhatsApp messaging uses **WAHA_BASE_URL** (e.g. `http://localhost:3001`) and, when the WAHA
 server requires it, **WAHA_API_KEY**. Without a base URL, inbound webhooks still work but every
 outbound send resolves to `blocked`/`failed` — the dispatch ledger never silently retries an
-ambiguous outcome (ADR 0010). `POST /conversations/:id/messages` sends synchronously through
-`POST {WAHA_BASE_URL}/api/sendText`; expired leases and provider timeouts surface as `unknown`
-on the message until reconciled by an authenticated `message.ack` webhook or operator review.
+ambiguous outcome (ADR 0010). `POST /conversations/:id/messages` commits message+intent and the
+background dispatcher sends through `POST {WAHA_BASE_URL}/api/send*` (text, image, video, file,
+voice, contact vCard) with the ADR 0013 presence choreography; expired leases and provider
+timeouts surface as `unknown` on the message until reconciled by an authenticated `message.ack`
+webhook or operator review.
+
+Message attachments are stored server-side under **MEDIA_DIR** (default `data/media`, keys
+`{workspaceId}/{uuid}`) via the `MediaStore` seam — an S3-compatible implementation can replace
+the filesystem store without touching routes. Attachments must live on our side: WAHA's local
+media storage expires (`WHATSAPP_FILES_LIFETIME`, 24h in the dev compose), so inbound media is
+downloaded at webhook time and outbound bytes are persisted before the intent commits.
 
 ### Local WAHA + Redis
 

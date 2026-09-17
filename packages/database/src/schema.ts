@@ -302,6 +302,10 @@ export const messages = pgTable(
     status: text().notNull().default("received"),
     contentType: text("content_type").notNull().default("text"),
     body: text(),
+    /** Object-store key of the attachment bytes (MediaStore), when present. */
+    mediaKey: text("media_key"),
+    mediaMime: text("media_mime"),
+    mediaFilename: text("media_filename"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

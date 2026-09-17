@@ -81,12 +81,77 @@ export function createWahaProvider(
     }
   }
 
+  // WAHA routes each content kind to a dedicated endpoint (docs:
+  // /docs/how-to/send-messages — all supported on GOWS).
+  function sendRequest(input: SendInput): {
+    path: string;
+    body: Record<string, unknown>;
+  } {
+    const base = { session: input.session, chatId: input.to };
+    const content = input.content;
+    switch (content.type) {
+      case "text":
+        return { path: "/api/sendText", body: { ...base, text: content.text } };
+      case "image":
+        return {
+          path: "/api/sendImage",
+          body: mediaBody(base, content),
+        };
+      case "video":
+        return {
+          path: "/api/sendVideo",
+          body: mediaBody(base, content),
+        };
+      case "audio":
+        // Voice notes: no caption field on the endpoint.
+        return {
+          path: "/api/sendVoice",
+          body: { ...base, file: mediaFile(content) },
+        };
+      case "document":
+        return {
+          path: "/api/sendFile",
+          body: mediaBody(base, content),
+        };
+      case "contact":
+        return {
+          path: "/api/sendContactVcard",
+          body: { ...base, contacts: content.contacts },
+        };
+    }
+  }
+
+  function mediaFile(content: {
+    data: string;
+    mimetype: string;
+    filename?: string;
+  }) {
+    return {
+      mimetype: content.mimetype,
+      data: content.data,
+      ...(content.filename ? { filename: content.filename } : {}),
+    };
+  }
+
+  function mediaBody(
+    base: { session: string; chatId: string },
+    content: {
+      data: string;
+      mimetype: string;
+      filename?: string;
+      caption?: string;
+    },
+  ) {
+    return {
+      ...base,
+      file: mediaFile(content),
+      ...(content.caption ? { caption: content.caption } : {}),
+    };
+  }
+
   async function send(input: SendInput): Promise<SendResult> {
-    const result = await request("POST", "/api/sendText", {
-      session: input.session,
-      chatId: input.to,
-      text: input.content.text,
-    });
+    const { path, body } = sendRequest(input);
+    const result = await request("POST", path, body);
     if (result.outcome === "unconfigured") {
       return { kind: "blocked", reason: "waha base url not configured" };
     }
@@ -157,6 +222,41 @@ export function createWahaProvider(
     return isRecord(body) && typeof body.pn === "string" ? body.pn : null;
   }
 
+  // WAHA media urls can be absolute (pointing at the container's own address)
+  // or relative paths; both resolve against the configured baseUrl — the path
+  // is what identifies the file.
+  async function downloadMedia(
+    url: string,
+  ): Promise<{ data: Uint8Array; mimetype?: string } | null> {
+    if (!baseUrl) return null;
+    let path = url;
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        const parsed = new URL(url);
+        path = parsed.pathname + parsed.search;
+      } catch {
+        return null;
+      }
+    } else if (!url.startsWith("/")) {
+      return null;
+    }
+    try {
+      const response = await fetchImpl(`${baseUrl}${path}`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) return null;
+      const mimetype = response.headers.get("content-type") ?? undefined;
+      return {
+        data: new Uint8Array(await response.arrayBuffer()),
+        ...(mimetype ? { mimetype } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   return {
     name: wahaProviderName,
     capabilities: wahaCapabilities,
@@ -166,6 +266,7 @@ export function createWahaProvider(
     setPresence,
     sendSeen,
     resolveLid,
+    downloadMedia,
   };
 }
 
@@ -222,6 +323,16 @@ function ackStatus(payload: Record<string, unknown>): string {
 
 function chatIdToPhone(chatId: string): string {
   return chatId.split("@")[0] ?? chatId;
+}
+
+function mediaKindFromMime(
+  mimetype: string | undefined,
+): "image" | "video" | "audio" | "document" | undefined {
+  if (!mimetype) return undefined;
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("video/")) return "video";
+  if (mimetype.startsWith("audio/")) return "audio";
+  return "document";
 }
 
 /**
@@ -285,12 +396,25 @@ function normalizeEvent(raw: unknown): InboundEvent {
     if (from === "status@broadcast") return { kind: "unknown" };
     const text = typeof payload.body === "string" ? payload.body : "";
     const media = isRecord(payload.media) ? payload.media : undefined;
-    const type =
+    const mediaUrl =
+      typeof media?.url === "string"
+        ? media.url
+        : typeof payload.mediaUrl === "string"
+          ? payload.mediaUrl
+          : undefined;
+    const mimetype =
       typeof media?.mimetype === "string"
         ? media.mimetype
-        : payload.hasMedia === true
-          ? "media"
-          : "text";
+        : typeof payload.mimetype === "string"
+          ? payload.mimetype
+          : undefined;
+    const filename =
+      typeof media?.filename === "string"
+        ? media.filename
+        : typeof payload.filename === "string"
+          ? payload.filename
+          : undefined;
+    const mediaType = mediaKindFromMime(mimetype);
     if (!messageId || !from) return { kind: "unknown" };
     const isLid = from.endsWith("@lid");
     // For LID threads the digits in `from` are a privacy identifier, not a
@@ -309,9 +433,21 @@ function normalizeEvent(raw: unknown): InboundEvent {
         ...(isLid ? { lid: from } : {}),
       },
       content:
-        type === "text"
-          ? { type: "text", text }
-          : { type: "text", text: `[${type}] ${text}` },
+        mediaUrl && mediaType
+          ? {
+              type: mediaType,
+              caption: text,
+              media: {
+                url: mediaUrl,
+                ...(mimetype ? { mimetype } : {}),
+                ...(filename ? { filename } : {}),
+              },
+            }
+          : // Media without a downloadable url still records the marker so
+            // the thread shows something arrived.
+            mimetype || payload.hasMedia === true
+            ? { type: "text", text: `[${mimetype ?? "media"}] ${text}` }
+            : { type: "text", text },
     };
   }
 

@@ -4,6 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import { createWahaProvider } from "@maria/channel-waha";
 import type { MessagingProvider } from "@maria/messaging";
 import { createDispatcher } from "./dispatch.ts";
+import { createFsMediaStore, type MediaStore } from "./media-store.ts";
 import type { AuthPort } from "@maria/auth";
 
 type Contact = {
@@ -67,7 +68,23 @@ type Deal = {
   createdAt: Date;
 };
 
+type Message = {
+  id: string;
+  workspaceId: string;
+  conversationId: string;
+  providerMessageId: string | null;
+  direction: string;
+  status: string;
+  contentType: string;
+  body: string | null;
+  mediaKey: string | null;
+  mediaMime: string | null;
+  mediaFilename: string | null;
+  createdAt: Date;
+};
+
 type AppDependencies = {
+  media?: MediaStore;
   database: {
     listContacts: (workspaceId: string) => Promise<Contact[]>;
     getContact: (
@@ -227,6 +244,7 @@ type AppDependencies = {
         senderPhone?: string | null;
         contentType: string;
         body: string;
+        media?: { key: string; mime: string; filename?: string | null } | null;
         rawPayload: unknown;
         signatureVerified: boolean;
       },
@@ -267,22 +285,15 @@ type AppDependencies = {
     listMessages: (
       workspaceId: string,
       conversationId: string,
-    ) => Promise<
-      {
-        id: string;
-        workspaceId: string;
-        conversationId: string;
-        providerMessageId: string | null;
-        direction: string;
-        status: string;
-        contentType: string;
-        body: string | null;
-        createdAt: Date;
-      }[]
-    >;
+    ) => Promise<Message[]>;
     createOutboundIntent: (
       workspaceId: string,
-      input: { conversationId: string; body: string },
+      input: {
+        conversationId: string;
+        body?: string | null;
+        contentType?: string;
+        media?: { key: string; mime: string; filename?: string | null } | null;
+      },
     ) => Promise<
       | { kind: "missing" }
       | { kind: "created"; intentId: string; messageId: string }
@@ -290,20 +301,7 @@ type AppDependencies = {
     getMessage: (
       workspaceId: string,
       messageId: string,
-    ) => Promise<
-      | {
-          id: string;
-          workspaceId: string;
-          conversationId: string;
-          providerMessageId: string | null;
-          direction: string;
-          status: string;
-          contentType: string;
-          body: string | null;
-          createdAt: Date;
-        }
-      | undefined
-    >;
+    ) => Promise<Message | undefined>;
     resolveUnknownMessage: (
       workspaceId: string,
       input: { messageId: string; resolution: "sent" | "not_sent" },
@@ -327,6 +325,8 @@ type AppDependencies = {
           fencingToken: string;
           messageId: string;
           body: string;
+          contentType: string;
+          media: { key: string; mime: string; filename: string | null } | null;
           to: string;
           session: string;
         }
@@ -416,6 +416,58 @@ const workspaceQuerySchema = {
   },
 } as const;
 
+/** Decoded attachment cap (~24 MiB covers WhatsApp media limits for v1). */
+const MAX_ATTACHMENT_BYTES = 24 * 1024 * 1024;
+/** Base64 inflates ~33%; allow headroom over the decoded cap. */
+const MESSAGE_BODY_LIMIT = 40 * 1024 * 1024;
+
+function attachmentContentType(mimetype: string): string {
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("video/")) return "video";
+  if (mimetype.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+function mediaExtension(
+  filename: string | undefined,
+  mimetype: string,
+): string | undefined {
+  const fromName = filename?.split(".").pop();
+  if (fromName && /^[a-z0-9]{1,10}$/i.test(fromName)) return fromName;
+  const subtype = mimetype.split("/")[1]?.split(";")[0];
+  return subtype && /^[a-z0-9]{1,10}$/i.test(subtype) ? subtype : undefined;
+}
+
+function escapeVcard(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function buildVcard(contact: {
+  fullName: string;
+  phoneNumber: string;
+  organization?: string;
+}): string {
+  const digits = contact.phoneNumber.replace(/\D/g, "");
+  return [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${escapeVcard(contact.fullName)}`,
+    ...(contact.organization
+      ? [`ORG:${escapeVcard(contact.organization)};`]
+      : []),
+    `TEL;type=CELL;type=VOICE;waid=${digits}:${contact.phoneNumber}`,
+    "END:VCARD",
+  ].join("\n");
+}
+
+function safeDownloadName(filename: string | null): string {
+  return (filename ?? "attachment").replace(/[^\w. -]/g, "_");
+}
+
 export function buildApp(dependencies?: AppDependencies) {
   const app = Fastify({ logger: true });
   const waha =
@@ -468,9 +520,13 @@ export function buildApp(dependencies?: AppDependencies) {
 
   if (dependencies) {
     const { auth, database } = dependencies;
+    const mediaStore =
+      dependencies.media ??
+      createFsMediaStore(process.env.MEDIA_DIR ?? "data/media");
     const dispatcher = createDispatcher({
       database,
       provider: waha,
+      media: mediaStore,
       onError: (error) => app.log.error(error),
     });
 
@@ -1916,6 +1972,9 @@ export function buildApp(dependencies?: AppDependencies) {
         "status",
         "contentType",
         "body",
+        "hasMedia",
+        "mediaMime",
+        "mediaFilename",
         "createdAt",
       ],
       properties: {
@@ -1927,9 +1986,29 @@ export function buildApp(dependencies?: AppDependencies) {
         status: { type: "string" },
         contentType: { type: "string" },
         body: { type: ["string", "null"] },
+        hasMedia: { type: "boolean" },
+        mediaMime: { type: ["string", "null"] },
+        mediaFilename: { type: ["string", "null"] },
         createdAt: { type: "string", format: "date-time" },
       },
     } as const;
+
+    // Responses expose `hasMedia` instead of the internal storage key; bytes
+    // are served by GET /messages/:id/media under workspace auth.
+    const messageJson = (message: Message) => ({
+      id: message.id,
+      workspaceId: message.workspaceId,
+      conversationId: message.conversationId,
+      providerMessageId: message.providerMessageId,
+      direction: message.direction,
+      status: message.status,
+      contentType: message.contentType,
+      body: message.body,
+      hasMedia: message.mediaKey !== null,
+      mediaMime: message.mediaMime,
+      mediaFilename: message.mediaFilename,
+      createdAt: message.createdAt,
+    });
 
     app.get(
       "/channel-instances",
@@ -2018,6 +2097,8 @@ export function buildApp(dependencies?: AppDependencies) {
     app.post(
       "/conversations/:id/messages",
       {
+        // Attachment payloads arrive base64-encoded inside JSON.
+        bodyLimit: MESSAGE_BODY_LIMIT,
         config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
         schema: {
           params: idParamsSchema,
@@ -2025,13 +2106,139 @@ export function buildApp(dependencies?: AppDependencies) {
           body: {
             type: "object",
             additionalProperties: false,
-            required: ["body"],
+            anyOf: [
+              { required: ["body"] },
+              { required: ["attachment"] },
+              { required: ["contact"] },
+            ],
             properties: {
-              body: { type: "string", minLength: 1, maxLength: 4096 },
+              body: { type: "string", maxLength: 4096 },
+              attachment: {
+                type: "object",
+                additionalProperties: false,
+                required: ["data", "mimetype"],
+                properties: {
+                  data: { type: "string" },
+                  mimetype: {
+                    type: "string",
+                    minLength: 3,
+                    maxLength: 255,
+                  },
+                  filename: { type: "string", maxLength: 255 },
+                },
+              },
+              contact: {
+                type: "object",
+                additionalProperties: false,
+                required: ["fullName", "phoneNumber"],
+                properties: {
+                  fullName: { type: "string", minLength: 1, maxLength: 200 },
+                  phoneNumber: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 40,
+                  },
+                  organization: { type: "string", maxLength: 200 },
+                },
+              },
             },
           },
           response: {
             201: messageSchema,
+            401: { type: "null" },
+            404: { type: "null" },
+            413: { type: "null" },
+          },
+        },
+      },
+      async (request, reply) => {
+        const authorized = await authorizeWorkspaceRequest(request, reply);
+        if (!authorized) return;
+        const { id } = request.params as { id: string };
+        const { body, attachment, contact } = request.body as {
+          body?: string;
+          attachment?: {
+            data: string;
+            mimetype: string;
+            filename?: string;
+          };
+          contact?: {
+            fullName: string;
+            phoneNumber: string;
+            organization?: string;
+          };
+        };
+        // Persist attachment bytes before committing the intent — the ledger
+        // stores the storage key, and dispatch reads bytes off the request
+        // path so `pending` survives restarts (ADR 0010).
+        let contentType = "text";
+        let media: {
+          key: string;
+          mime: string;
+          filename?: string | null;
+        } | null = null;
+        let messageBody = body ?? null;
+        if (attachment) {
+          const bytes = Buffer.from(attachment.data, "base64");
+          if (bytes.length === 0 || bytes.length > MAX_ATTACHMENT_BYTES) {
+            return reply.code(413).send();
+          }
+          contentType = attachmentContentType(attachment.mimetype);
+          const key = await mediaStore.put(
+            authorized.workspaceId,
+            bytes,
+            mediaExtension(attachment.filename, attachment.mimetype),
+          );
+          media = {
+            key,
+            mime: attachment.mimetype,
+            filename: attachment.filename ?? null,
+          };
+        } else if (contact) {
+          // Contact cards travel as stored vCard 3.0 payloads — the dispatcher
+          // hands them to sendContactVcard verbatim.
+          const key = await mediaStore.put(
+            authorized.workspaceId,
+            Buffer.from(buildVcard(contact), "utf8"),
+            "vcf",
+          );
+          media = {
+            key,
+            mime: "text/vcard",
+            filename: `${contact.fullName}.vcf`,
+          };
+          contentType = "contact";
+          messageBody = body ?? `${contact.fullName} · ${contact.phoneNumber}`;
+        }
+        // Commit message + intent in one transaction, then hand the send to
+        // the dispatcher: claim → presence choreography → send → settle runs
+        // off the request path (ADR 0010/0013), so the response carries the
+        // `pending` message and status advances asynchronously.
+        const created = await database.createOutboundIntent(
+          authorized.workspaceId,
+          { conversationId: id, body: messageBody, contentType, media },
+        );
+        if (created.kind === "missing") return reply.code(404).send();
+        void dispatcher.dispatchPending(authorized.workspaceId);
+        const message = await database.getMessage(
+          authorized.workspaceId,
+          created.messageId,
+        );
+        if (!message) return reply.code(404).send();
+        return reply.code(201).send(messageJson(message));
+      },
+    );
+
+    // Attachment bytes are served workspace-scoped — the internal storage key
+    // is never exposed to clients.
+    app.get(
+      "/messages/:id/media",
+      {
+        config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
+        schema: {
+          params: idParamsSchema,
+          querystring: workspaceQuerySchema,
+          response: {
             401: { type: "null" },
             404: { type: "null" },
           },
@@ -2041,24 +2248,20 @@ export function buildApp(dependencies?: AppDependencies) {
         const authorized = await authorizeWorkspaceRequest(request, reply);
         if (!authorized) return;
         const { id } = request.params as { id: string };
-        const { body } = request.body as { body: string };
-        // Commit message + intent in one transaction, then hand the send to
-        // the dispatcher: claim → presence choreography → send → settle runs
-        // off the request path (ADR 0010/0013), so the response carries the
-        // `pending` message and status advances asynchronously.
-        const created = await database.createOutboundIntent(
+        const message = await database.getMessage(authorized.workspaceId, id);
+        if (!message?.mediaKey) return reply.code(404).send();
+        const data = await mediaStore.read(
           authorized.workspaceId,
-          { conversationId: id, body },
+          message.mediaKey,
         );
-        if (created.kind === "missing") return reply.code(404).send();
-        void dispatcher.dispatchPending(authorized.workspaceId);
-        const messages = await database.listMessages(
-          authorized.workspaceId,
-          id,
-        );
-        const message = messages.find((row) => row.id === created.messageId);
-        if (!message) return reply.code(404).send();
-        return reply.code(201).send(message);
+        if (!data) return reply.code(404).send();
+        return reply
+          .type(message.mediaMime ?? "application/octet-stream")
+          .header(
+            "content-disposition",
+            `inline; filename="${safeDownloadName(message.mediaFilename)}"`,
+          )
+          .send(Buffer.from(data));
       },
     );
 
@@ -2088,15 +2291,31 @@ export function buildApp(dependencies?: AppDependencies) {
         const { id } = request.params as { id: string };
         const original = await database.getMessage(authorized.workspaceId, id);
         if (!original) return reply.code(404).send();
-        if (original.direction !== "outbound" || !original.body) {
+        if (
+          original.direction !== "outbound" ||
+          (!original.body && !original.mediaKey)
+        ) {
           return reply.code(409).send();
         }
         if (!["failed", "cancelled"].includes(original.status)) {
           return reply.code(409).send();
         }
+        // The retry reuses the same stored attachment — the media key is
+        // immutable, so both messages can safely share the bytes.
         const created = await database.createOutboundIntent(
           authorized.workspaceId,
-          { conversationId: original.conversationId, body: original.body },
+          {
+            conversationId: original.conversationId,
+            body: original.body,
+            contentType: original.contentType,
+            media: original.mediaKey
+              ? {
+                  key: original.mediaKey,
+                  mime: original.mediaMime ?? "application/octet-stream",
+                  filename: original.mediaFilename,
+                }
+              : null,
+          },
         );
         if (created.kind === "missing") return reply.code(404).send();
         void dispatcher.dispatchPending(authorized.workspaceId);
@@ -2105,7 +2324,7 @@ export function buildApp(dependencies?: AppDependencies) {
           created.messageId,
         );
         if (!message) return reply.code(404).send();
-        return reply.code(201).send(message);
+        return reply.code(201).send(messageJson(message));
       },
     );
 
@@ -2151,7 +2370,7 @@ export function buildApp(dependencies?: AppDependencies) {
         if (result.kind === "invalidState") return reply.code(409).send();
         const message = await database.getMessage(authorized.workspaceId, id);
         if (!message) return reply.code(404).send();
-        return reply.code(200).send(message);
+        return reply.code(200).send(messageJson(message));
       },
     );
 
@@ -2178,7 +2397,11 @@ export function buildApp(dependencies?: AppDependencies) {
           id,
         );
         if (!conversation) return reply.code(404).send();
-        return database.listMessages(authorized.workspaceId, id);
+        const messages = await database.listMessages(
+          authorized.workspaceId,
+          id,
+        );
+        return messages.map(messageJson);
       },
     );
 
@@ -2278,6 +2501,40 @@ export function buildApp(dependencies?: AppDependencies) {
               .catch(() => null);
             senderPhone = resolved?.split("@")[0] ?? null;
           }
+          // Media attachments are fetched from the provider and stored under
+          // our own keys — the message keeps the caption and the storage
+          // reference, never the provider URL. Download is best-effort: the
+          // message is still recorded if bytes are unavailable.
+          let media: {
+            key: string;
+            mime: string;
+            filename?: string | null;
+          } | null = null;
+          if (event.content.type !== "text" && waha.downloadMedia) {
+            const downloaded = await waha
+              .downloadMedia(event.content.media.url)
+              .catch(() => null);
+            if (downloaded && downloaded.data.length <= MAX_ATTACHMENT_BYTES) {
+              const key = await mediaStore.put(
+                workspaceId,
+                downloaded.data,
+                mediaExtension(
+                  event.content.media.filename,
+                  downloaded.mimetype ??
+                    event.content.media.mimetype ??
+                    "application/octet-stream",
+                ),
+              );
+              media = {
+                key,
+                mime:
+                  downloaded.mimetype ??
+                  event.content.media.mimetype ??
+                  "application/octet-stream",
+                filename: event.content.media.filename ?? null,
+              };
+            }
+          }
           const result = await database.receiveInboundMessage(workspaceId, {
             channelInstanceId,
             providerThreadId: event.providerThreadId,
@@ -2286,7 +2543,11 @@ export function buildApp(dependencies?: AppDependencies) {
             providerEventKind: event.providerEventKind,
             senderPhone,
             contentType: event.content.type,
-            body: event.content.text,
+            body:
+              event.content.type === "text"
+                ? event.content.text
+                : event.content.caption,
+            media,
             rawPayload: parsed,
             signatureVerified: true,
           });
