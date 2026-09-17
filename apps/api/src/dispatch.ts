@@ -3,24 +3,22 @@ import type { MessagingProvider } from "@maria/messaging";
 export const DISPATCH_LEASE_MS = 60_000;
 
 /**
- * ADR 0013 humanization windows (ms), ported from the reference n8n flow.
- * Each value is drawn from U(min, max); `rng` is injectable for tests.
+ * ADR 0013 humanization windows (ms), aligned to WAHA's official "How to
+ * Avoid Blocking" sequence: seen → typing (random wait proportional to the
+ * message) → stop-typing (`paused`) → send, with `offline` once at the end
+ * of the burst. Each value is drawn from U(min, max); `rng` is injectable.
  */
 export const CHOREOGRAPHY = {
-  /** Pause before marking the chat seen — "reading" the inbound message. */
-  preSeen: { min: 800, max: 3500 },
-  /** Pause between seen and typing — composing the reply. */
-  seenToTyping: { min: 1000, max: 2900 },
   /** Typing duration per character, clamped to [min,max] ms. */
   typingPerCharMs: 70,
   typingMinMs: 1500,
   typingMaxMs: 8000,
   /** Jitter applied to the computed typing duration. */
   typingJitter: { min: 0.9, max: 1.1 },
-  /** Pause after `paused` before the send — mirrors WhatsApp Web. */
+  /** Beat between `paused` and the send, mirroring real client latency. */
   pausedToSend: { min: 200, max: 600 },
   /** Gap between consecutive sends in a burst. */
-  betweenSends: { min: 400, max: 1200 },
+  betweenSends: { min: 1000, max: 3000 },
 } as const;
 
 type DispatchDatabase = {
@@ -174,9 +172,7 @@ export function createDispatcher(deps: {
   ) {
     const humanize = deps.provider.capabilities.presenceSignals;
     if (humanize) {
-      await sleep(jitter(CHOREOGRAPHY.preSeen));
       await sendSeen(c.session, c.to);
-      await sleep(jitter(CHOREOGRAPHY.seenToTyping));
       await presence(c.session, "typing", c.to);
       await sleep(typingDurationMs(c.body));
       await presence(c.session, "paused", c.to);

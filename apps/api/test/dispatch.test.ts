@@ -112,9 +112,9 @@ describe("dispatch choreography (ADR 0013)", () => {
     });
     // 100 chars → 7000ms base, jitter 1.0 → 7000.
     await dispatcher.dispatchIntent(workspaceId, "i");
-    // delays: preSeen, seenToTyping, typing, pausedToSend
-    expect(delays).toHaveLength(4);
-    expect(delays[2]).toBe(7000);
+    // delays: typing duration, pausedToSend
+    expect(delays).toHaveLength(2);
+    expect(delays[0]).toBe(7000);
 
     // Short text clamps to the minimum.
     delays.length = 0;
@@ -127,7 +127,7 @@ describe("dispatch choreography (ADR 0013)", () => {
       rng: () => 0.5,
     });
     await short.dispatchIntent(workspaceId, "i");
-    expect(delays[2]).toBe(CHOREOGRAPHY.typingMinMs);
+    expect(delays[0]).toBe(CHOREOGRAPHY.typingMinMs);
 
     // Very long text clamps to the maximum.
     delays.length = 0;
@@ -140,7 +140,7 @@ describe("dispatch choreography (ADR 0013)", () => {
       rng: () => 0.5,
     });
     await long.dispatchIntent(workspaceId, "i");
-    expect(delays[2]).toBe(CHOREOGRAPHY.typingMaxMs);
+    expect(delays[0]).toBe(CHOREOGRAPHY.typingMaxMs);
   });
 
   test("dispatchPending wraps a burst in online → … → offline per session", async () => {

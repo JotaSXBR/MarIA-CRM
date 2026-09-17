@@ -111,9 +111,11 @@ message+intent and kicks `dispatcher.dispatchPending` in the background — the
 response is the `pending` message and status advances asynchronously.
 `dispatchPending` drains the workspace queue as one presence burst:
 `online` once per session → per intent `seen → typing clamp(len*70ms,
-1.5s, 8s)±10% → paused → send → settle` → `offline` at the end. Waits are
-in `dispatch.ts` (`CHOREOGRAPHY`), ported from the n8n reference; `sleep`/`rng`
-are injectable. Presence/seen are capability-gated and best-effort — failures
+1.5s, 8s)±10% → paused → send → settle` → `offline` once at the end. The
+sequence follows WAHA's official "How to Avoid Blocking" guidance (seen →
+typing → random wait ∝ size → stop-typing → send; offline once per batch),
+not the earlier n8n-derived padding (ADR 0013 amendment). Waits live in
+`dispatch.ts` (`CHOREOGRAPHY`); `sleep`/`rng` are injectable. Presence/seen are capability-gated and best-effort — failures
 never block the send. Concurrent drains for a workspace join the running one
 (drain re-lists until empty). Crash-during-wait inherits ADR 0010 semantics:
 lease expiry → `unknown` (the ledger cannot distinguish pre-send from
