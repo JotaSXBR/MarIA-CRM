@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql, type SQLWrapper } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql, type SQLWrapper } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Pool } from "pg";
@@ -8,6 +8,8 @@ import {
   contacts,
   conversations,
   deals,
+  dispatchAttempts,
+  dispatchIntents,
   messages,
   organizations,
   pipelines,
@@ -848,6 +850,268 @@ export function createDatabase(pool: Pool) {
           .where(eq(messages.conversationId, conversationId))
           .orderBy(messages.createdAt, messages.id);
       }),
+    // ADR 0010: outbound send commits the message and its dispatch intent in one
+    // transaction. The (channel_instance_id, message_id) unique is the stable
+    // effect identity; epoch is captured for stale-intent cancellation.
+    createOutboundIntent: (
+      workspaceId: string,
+      input: { conversationId: string; body: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: conversations.id,
+            channelInstanceId: conversations.channelInstanceId,
+            providerThreadId: conversations.providerThreadId,
+            epoch: conversations.epoch,
+          })
+          .from(conversations)
+          .where(eq(conversations.id, input.conversationId))
+          .limit(1);
+        const conversation = rows[0];
+        if (!conversation) return { kind: "missing" } as const;
+        const [message] = await tx
+          .insert(messages)
+          .values({
+            workspaceId,
+            conversationId: conversation.id,
+            direction: "outbound",
+            status: "pending",
+            contentType: "text",
+            body: input.body,
+          })
+          .returning();
+        if (!message) return { kind: "missing" } as const;
+        const [intent] = await tx
+          .insert(dispatchIntents)
+          .values({
+            workspaceId,
+            conversationId: conversation.id,
+            channelInstanceId: conversation.channelInstanceId,
+            messageId: message.id,
+            epoch: conversation.epoch,
+            status: "pending",
+          })
+          .returning({ id: dispatchIntents.id });
+        return {
+          kind: "created",
+          intentId: intent!.id,
+          messageId: message.id,
+        } as const;
+      }),
+    // Atomic claim: only a pending intent whose conversation epoch still matches
+    // can move to dispatching, and the claim writes a fencing token + lease.
+    claimDispatchIntent: (
+      workspaceId: string,
+      intentId: string,
+      options: { leaseMs: number },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            intentId: dispatchIntents.id,
+            intentStatus: dispatchIntents.status,
+            intentEpoch: dispatchIntents.epoch,
+            intentMessageId: dispatchIntents.messageId,
+            conversationEpoch: conversations.epoch,
+            providerThreadId: conversations.providerThreadId,
+            channelActive: channelInstances.isActive,
+            providerInstanceId: channelInstances.providerInstanceId,
+            messageBody: messages.body,
+          })
+          .from(dispatchIntents)
+          .innerJoin(
+            conversations,
+            eq(dispatchIntents.conversationId, conversations.id),
+          )
+          .innerJoin(
+            channelInstances,
+            eq(dispatchIntents.channelInstanceId, channelInstances.id),
+          )
+          .innerJoin(messages, eq(dispatchIntents.messageId, messages.id))
+          .where(eq(dispatchIntents.id, intentId))
+          .for("update")
+          .limit(1);
+        const row = rows[0];
+        if (!row) return { kind: "missing" } as const;
+        if (row.intentStatus !== "pending") {
+          return { kind: "notPending", status: row.intentStatus } as const;
+        }
+        if (row.conversationEpoch !== row.intentEpoch) {
+          const now = new Date();
+          await tx
+            .update(dispatchIntents)
+            .set({ status: "cancelled", updatedAt: now })
+            .where(eq(dispatchIntents.id, intentId));
+          await tx
+            .update(messages)
+            .set({ status: "cancelled" })
+            .where(eq(messages.id, row.intentMessageId));
+          return { kind: "stale" } as const;
+        }
+        if (!row.channelActive || !row.providerInstanceId) {
+          const now = new Date();
+          await tx
+            .update(dispatchIntents)
+            .set({ status: "failed", updatedAt: now })
+            .where(eq(dispatchIntents.id, intentId));
+          await tx
+            .update(messages)
+            .set({ status: "failed" })
+            .where(eq(messages.id, row.intentMessageId));
+          return {
+            kind: "failed",
+            reason: "channel instance inactive",
+          } as const;
+        }
+        const [attempt] = await tx
+          .insert(dispatchAttempts)
+          .values({
+            workspaceId,
+            intentId,
+            leaseExpiresAt: new Date(Date.now() + options.leaseMs),
+          })
+          .returning({
+            id: dispatchAttempts.id,
+            fencingToken: dispatchAttempts.fencingToken,
+          });
+        await tx
+          .update(dispatchIntents)
+          .set({ status: "dispatching", updatedAt: new Date() })
+          .where(eq(dispatchIntents.id, intentId));
+        return {
+          kind: "claimed",
+          attemptId: attempt!.id,
+          fencingToken: attempt!.fencingToken,
+          messageId: row.intentMessageId,
+          body: row.messageBody ?? "",
+          to: row.providerThreadId,
+          session: row.providerInstanceId,
+        } as const;
+      }),
+    // Completion must match the live attempt (fencing token + not completed);
+    // anything else is a stale claimer and must not mutate state (ADR 0010 §2-3).
+    settleDispatch: (
+      workspaceId: string,
+      input: {
+        intentId: string;
+        attemptId: string;
+        fencingToken: string;
+        outcome: "succeeded" | "unknown" | "failed";
+        providerMessageId?: string;
+        error?: string;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const intentRows = await tx
+          .select({
+            id: dispatchIntents.id,
+            status: dispatchIntents.status,
+            messageId: dispatchIntents.messageId,
+          })
+          .from(dispatchIntents)
+          .where(eq(dispatchIntents.id, input.intentId))
+          .for("update")
+          .limit(1);
+        const intent = intentRows[0];
+        if (!intent) return { kind: "missing" } as const;
+        const attemptRows = await tx
+          .select({
+            id: dispatchAttempts.id,
+            fencingToken: dispatchAttempts.fencingToken,
+          })
+          .from(dispatchAttempts)
+          .where(
+            and(
+              eq(dispatchAttempts.intentId, input.intentId),
+              isNull(dispatchAttempts.completedAt),
+            ),
+          )
+          .limit(1);
+        const attempt = attemptRows[0];
+        if (
+          !attempt ||
+          attempt.id !== input.attemptId ||
+          attempt.fencingToken !== input.fencingToken ||
+          intent.status !== "dispatching"
+        ) {
+          return { kind: "stale" } as const;
+        }
+        const now = new Date();
+        await tx
+          .update(dispatchAttempts)
+          .set({
+            status: input.outcome,
+            completedAt: now,
+            error: input.error ?? null,
+          })
+          .where(eq(dispatchAttempts.id, attempt.id));
+        await tx
+          .update(dispatchIntents)
+          .set({ status: input.outcome, updatedAt: now })
+          .where(eq(dispatchIntents.id, intent.id));
+        await tx
+          .update(messages)
+          .set({
+            status: input.outcome === "succeeded" ? "sent" : input.outcome,
+            ...(input.providerMessageId
+              ? { providerMessageId: input.providerMessageId }
+              : {}),
+          })
+          .where(eq(messages.id, intent.messageId));
+        return { kind: "settled" } as const;
+      }),
+    // Expired leases are ambiguous: the provider may have accepted. They become
+    // `unknown` (blocked for reconciliation), never silently retried (ADR 0010 §4).
+    reapExpiredDispatches: (workspaceId: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const now = new Date();
+        const expired = await tx
+          .select({
+            attemptId: dispatchAttempts.id,
+            intentId: dispatchIntents.id,
+            messageId: dispatchIntents.messageId,
+          })
+          .from(dispatchAttempts)
+          .innerJoin(
+            dispatchIntents,
+            eq(dispatchAttempts.intentId, dispatchIntents.id),
+          )
+          .where(
+            and(
+              isNull(dispatchAttempts.completedAt),
+              lt(dispatchAttempts.leaseExpiresAt, sql`now()`),
+            ),
+          );
+        for (const row of expired) {
+          await tx
+            .update(dispatchAttempts)
+            .set({
+              status: "unknown",
+              completedAt: now,
+              error: "dispatch lease expired",
+            })
+            .where(eq(dispatchAttempts.id, row.attemptId));
+          await tx
+            .update(dispatchIntents)
+            .set({ status: "unknown", updatedAt: now })
+            .where(eq(dispatchIntents.id, row.intentId));
+          await tx
+            .update(messages)
+            .set({ status: "unknown" })
+            .where(eq(messages.id, row.messageId));
+        }
+        return { reaped: expired.length } as const;
+      }),
+    listPendingIntents: (workspaceId: string, limit = 25) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select({ id: dispatchIntents.id })
+          .from(dispatchIntents)
+          .where(eq(dispatchIntents.status, "pending"))
+          .orderBy(dispatchIntents.createdAt, dispatchIntents.id)
+          .limit(limit),
+      ),
     // Callers must already authorize this workspace. This scopes a transaction; it is not auth.
     withWorkspace,
     // Same contract for user-scoped reads (e.g. own memberships via app.user_id).

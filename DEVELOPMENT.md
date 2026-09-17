@@ -65,6 +65,13 @@ bypass this build orchestration. Stop with Ctrl+C; `docker compose -f docker/com
 stops the local DB without deleting its volume. Changing POSTGRES_PASSWORD does not rotate an
 existing volume's credentials. ADMIN_EMAIL/ADMIN_PASSWORD seed a missing user, not reset a password.
 
+WhatsApp messaging uses **WAHA_BASE_URL** (e.g. `http://localhost:3001`) and, when the WAHA
+server requires it, **WAHA_API_KEY**. Without a base URL, inbound webhooks still work but every
+outbound send resolves to `blocked`/`failed` — the dispatch ledger never silently retries an
+ambiguous outcome (ADR 0010). `POST /conversations/:id/messages` sends synchronously through
+`POST {WAHA_BASE_URL}/api/sendText`; expired leases and provider timeouts surface as `unknown`
+on the message until reconciled by an authenticated `message.ack` webhook or operator review.
+
 ## Migrations and runtime credentials
 
 `pnpm db:migrate` invokes the shared runner using **MIGRATION_DATABASE_URL**, never DATABASE_URL.

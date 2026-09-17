@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.ts";
 import { useWorkspace } from "../lib/workspace.tsx";
 
@@ -39,7 +39,10 @@ function formatTime(iso: string) {
 export function InboxPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const { data: conversations = [], isLoading: loadingConversations } =
     useQuery({
@@ -56,6 +59,30 @@ export function InboxPage() {
   });
 
   const selected = conversations.find((c) => c.id === selectedId);
+
+  const sendMessage = useMutation({
+    mutationFn: (body: string) =>
+      api<Message>(`/conversations/${selectedId}/messages`, {
+        method: "POST",
+        workspaceId,
+        body: { body },
+      }),
+    onSuccess: async () => {
+      setDraft("");
+      setSendError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", workspaceId, selectedId],
+      });
+    },
+    onError: () => setSendError("Não foi possível enviar a mensagem."),
+  });
+
+  const onSend = (event: FormEvent) => {
+    event.preventDefault();
+    const body = draft.trim();
+    if (!body || !selectedId) return;
+    sendMessage.mutate(body);
+  };
 
   if (!workspaceId) return <p>Selecione um workspace.</p>;
 
@@ -143,12 +170,38 @@ export function InboxPage() {
                         }`}
                       >
                         {formatTime(message.createdAt)}
+                        {message.direction === "outbound"
+                          ? ` · ${message.status}`
+                          : ""}
                       </p>
                     </div>
                   </div>
                 ))
               )}
             </div>
+            <form
+              onSubmit={onSend}
+              className="flex items-center gap-2 border-t border-slate-200 p-3"
+            >
+              <input
+                type="text"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Escreva uma mensagem…"
+                aria-label="Mensagem"
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={sendMessage.isPending || !draft.trim()}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Enviar
+              </button>
+            </form>
+            {sendError ? (
+              <p className="px-3 pb-3 text-xs text-red-600">{sendError}</p>
+            ) : null}
           </>
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-slate-500">

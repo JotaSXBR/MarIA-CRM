@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   InboundEvent,
   MessagingProvider,
+  ProviderCapabilities,
   SendInput,
   SendResult,
   WebhookVerification,
@@ -10,9 +11,88 @@ import type {
 
 export const wahaProviderName = "waha";
 
-export function createWahaProvider(): MessagingProvider {
+export type WahaProviderConfig = {
+  /** Base URL of the WAHA HTTP server, e.g. `http://waha:3000`. */
+  baseUrl?: string;
+  /** Optional `X-Api-Key` credential for the WAHA HTTP API. */
+  apiKey?: string;
+  /** Timeout for provider calls in milliseconds (default 15s). */
+  timeoutMs?: number;
+  /** Injectable fetch for tests. */
+  fetchImpl?: typeof fetch;
+};
+
+const wahaCapabilities: ProviderCapabilities = {
+  // WAHA does not deduplicate sends by a caller key: a timed-out send is
+  // ambiguous and must stay `unknown` until reconciled (ADR 0010 §4-5).
+  sendIdempotency: "none",
+  // Delivery state reconciles through authenticated `message.ack` webhooks.
+  reconciliation: "webhook",
+};
+
+export function createWahaProvider(
+  config: WahaProviderConfig = {},
+): MessagingProvider {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const timeoutMs = config.timeoutMs ?? 15_000;
+  const baseUrl = config.baseUrl?.replace(/\/+$/, "");
+
+  async function send(input: SendInput): Promise<SendResult> {
+    if (!baseUrl) {
+      return { kind: "blocked", reason: "waha base url not configured" };
+    }
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}/api/sendText`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          ...(config.apiKey ? { "x-api-key": config.apiKey } : {}),
+        },
+        body: JSON.stringify({
+          session: input.session,
+          chatId: input.to,
+          text: input.content.text,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      // Network failure, abort or timeout: the provider may have accepted.
+      return {
+        kind: "unknown",
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (response.ok) {
+      const body = (await response.json().catch(() => null)) as unknown;
+      const providerMessageId = extractMessageId(
+        isRecord(body) ? body.id : undefined,
+      );
+      return providerMessageId
+        ? { kind: "sent", providerMessageId }
+        : {
+            kind: "unknown",
+            reason: "waha returned 2xx without a message id",
+          };
+    }
+    // 4xx rejects before acceptance; ambiguous 5xx stays unknown (ADR 0010).
+    const detail = await response.text().catch(() => "");
+    if (response.status >= 500) {
+      return {
+        kind: "unknown",
+        reason: `waha ${response.status}: ${detail.slice(0, 200)}`,
+      };
+    }
+    return {
+      kind: "rejected",
+      reason: `waha ${response.status}: ${detail.slice(0, 200)}`,
+    };
+  }
+
   return {
     name: wahaProviderName,
+    capabilities: wahaCapabilities,
     verifyWebhook,
     normalizeEvent,
     send,
@@ -101,8 +181,4 @@ function normalizeEvent(raw: unknown): InboundEvent {
   }
 
   return { kind: "unknown" };
-}
-
-async function send(_input: SendInput): Promise<SendResult> {
-  return { kind: "blocked", reason: "WAHA outbound not certified" };
 }
