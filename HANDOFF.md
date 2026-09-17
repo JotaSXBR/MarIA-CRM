@@ -50,6 +50,11 @@ ADR 0010 effect-recovery contract.
 - Known limitation: queue maintenance is request-driven (lazy per workspace);
   a dedicated dispatcher worker remains future work. Human-takeover epoch
   increments land with the agent runtime; intents already carry the epoch check.
+- Known gap: outbound replies reuse the inbound `providerThreadId` (already a
+  valid WhatsApp chatId). Starting a conversation with a CRM contact needs
+  Brazilian phone normalization (9th digit) in the adapter — the previous
+  WAHA setup delegated this to the Brazilian Phone Numbers app, which MarIA
+  does not use.
 
 ## Environment
 
