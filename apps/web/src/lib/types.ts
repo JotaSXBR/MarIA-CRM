@@ -49,8 +49,12 @@ export type EntityDeal = {
   valueCents: number | null;
   stageName: string;
   pipelineName: string;
+  contactName: string | null;
+  companyName: string | null;
   createdAt: string;
 };
+
+export type DealDetail = Deal & EntityDeal;
 
 export type Note = {
   id: string;

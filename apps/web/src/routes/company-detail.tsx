@@ -2,16 +2,11 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
 import { api } from "@/lib/api";
-import {
-  formatCurrency,
-  formatDate,
-  formatDateTime,
-  initials,
-} from "@/lib/format";
+import { formatDate, formatDateTime, initials } from "@/lib/format";
 import type { Company, Contact, EntityDeal, Note } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
+import { EntityDealList } from "@/components/entity-deal-list";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -164,35 +159,7 @@ export function CompanyDetailPage() {
           <CardTitle>Negócios</CardTitle>
         </CardHeader>
         <CardContent>
-          {deals.data?.length ? (
-            <ul className="flex flex-col divide-y">
-              {deals.data.map((deal) => (
-                <li
-                  key={deal.id}
-                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{deal.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {deal.pipelineName}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    {deal.valueCents !== null ? (
-                      <span className="text-sm font-medium">
-                        {formatCurrency(deal.valueCents)}
-                      </span>
-                    ) : null}
-                    <Badge variant="secondary">{deal.stageName}</Badge>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Nenhum negócio vinculado.
-            </p>
-          )}
+          <EntityDealList deals={deals.data} />
         </CardContent>
       </Card>
 

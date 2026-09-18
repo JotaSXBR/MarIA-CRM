@@ -12,11 +12,18 @@ gh pr status
 
 ## Current objective
 
-- `main` — PR #66 merged (contact↔company link + company detail page).
-- Branch `chore/pnpm-12` — pnpm 11.26.0 → **12.4.2** upgrade, PR #67 open.
-  Global install must NOT pass `--ignore-scripts` (see below); `ci.yml` and
-  `api.Dockerfile` updated accordingly. Merge #67 before PR #68.
-- Next after this: deal detail page, tags/custom attributes, global search.
+- `main` — PRs #61–#67 merged (skill audit, lint → 0 warnings,
+  NULL-distinct comments, code-simplifier per-slice, PR label rule,
+  contact↔company link + company detail page, pnpm 12.4.2 upgrade).
+- Branch `feat/deal-detail` (PR #68) — Slice 5 implemented and verified:
+  `GET /deals/:id` returns pipeline/stage/contact/company names; aggregate
+  routes `GET|POST /deals/:id/{notes,tasks}` with parent 404; deal detail
+  page `/deals/$dealId` (header, edit via `DealEditor`, tasks/notes CRUD);
+  kanban card click navigates to the detail page. `DealEditor` moved to
+  `components/deal-editor.tsx`; shared `EntityDealList` for contact/company
+  deal cards.
+- Next after this: tags/custom attributes, global search; company detail
+  write paths (`POST /companies/:id/{notes,tasks}`) for parity if wanted.
 
 ## Memory model
 
@@ -29,10 +36,9 @@ gh pr status
 
 ## Verified state
 
-- `main` at `000bfab` (2026-09-17): PRs #61–#65 merged, incl. #65 (every PR
-  must carry repository labels). Lint baseline is
-  **0 warnings / 0 errors** — keep it clean.
-- pnpm 12.4.2 on `chore/pnpm-12` (2026-09-18, Windows): all pins moved
+- `main` (2026-09-18): PRs #61–#67 merged; PR #68 (deal detail) open.
+  Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- pnpm 12.4.2 merged via PR #67 (`chore/pnpm-12`): all pins moved
   (`package.json#packageManager`, `ci.yml`, `api.Dockerfile`,
   `AGENTS.md` baseline). pnpm 12 writes a two-document `pnpm-lock.yaml`:
   doc 1 pins the package-manager itself (`packageManagerDependencies` for
@@ -58,6 +64,30 @@ gh pr status
   `pnpm test:integration` api 37/37, database 22/22, auth 5/5;
   `pnpm build` 6/6; `pnpm --filter @maria/api deploy --prod` green;
   `pnpm audit --prod` clean.
+- Slice 5 on `feat/deal-detail` (2026-09-18, Windows/pnpm):
+  - `dealsWithNames` gained `contactName`/`companyName` leftJoins;
+    `getDeal` now resolves through it (named deal for the detail view).
+    `entityDealSchema` requires the two new nullable name fields — the
+    same payload serves `GET /deals/:id`, `/contacts/:id/deals` and
+    `/companies/:id/deals`.
+  - New routes in `routes/pipelines.ts`: `GET /deals/:id/{notes,tasks}`
+    (parent-checked 404) and `POST /deals/:id/{notes,tasks}` (author/
+    assignee = session user, deal ref validated in the scoped
+    transaction). `PATCH /tasks/:id`, `DELETE /tasks|notes/:id` already
+    existed and are shared.
+  - Web: `/deals/$dealId` page (`routes/deal-detail.tsx`) — header with
+    stage badge, value, entity links, edit modal; tasks card (create,
+    toggle, admin delete) and notes card (create, admin delete) mirroring
+    the contact-detail conventions. Kanban card click navigates to the
+    detail page; `DealEditor` moved to `components/deal-editor.tsx`;
+    `EntityDealList` extracted for the identical deal cards in
+    contact/company detail.
+- Checks (`feat/deal-detail` dirty tree, 2026-09-18, Windows/pnpm):
+  `pnpm fmt:check` clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6;
+  `pnpm test` api 26/26, web 9/9 (new deal-detail test + updated
+  card→detail→editor flow); `pnpm test:integration` api 38/38 (new deal
+  routes test), database 22/22 (dealId filters + getDeal names), auth
+  5/5; `pnpm build` 6/6.
 - Slice 4 merged via PR #66 (branch `feat/contact-company-link`):
   - `packages/database/src/schema.ts` + migration
     `0014_contact_company_link.sql`: nullable `contacts.company_id` FK →
@@ -193,7 +223,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Commit `chore/pnpm-12`; push + PR (label `chore`) on request — watch
-   the CI Docker build, which exercises `deploy --prod` inside the image.
-2. Deal detail page (contacts, notes, tasks aggregated under a deal).
-3. Tags/custom attributes, then global search.
+1. Merge PR #68 (`feat/deal-detail`) once checks pass.
+2. Tags/custom attributes, then global search.
+3. Company detail write paths (`POST /companies/:id/{notes,tasks}`) if parity
+   with the deal detail hub is wanted.
