@@ -9,6 +9,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityAttributeRoutes } from "./attributes.ts";
 import { registerEntityTagRoutes } from "./tags.ts";
 
 export function registerPipelineRoutes(
@@ -498,6 +499,16 @@ export function registerPipelineRoutes(
       listTags: (workspaceId, id) => database.listDealTags(workspaceId, id),
       setTags: (workspaceId, id, tagIds) =>
         database.setDealTags(workspaceId, id, tagIds),
+    },
+  );
+
+  registerEntityAttributeRoutes(
+    app,
+    { database, authorizeWorkspaceRequest },
+    {
+      path: "deals",
+      entityType: "deal",
+      getParent: (workspaceId, id) => database.getDeal(workspaceId, id),
     },
   );
 

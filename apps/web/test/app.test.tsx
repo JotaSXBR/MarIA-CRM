@@ -707,6 +707,125 @@ test("contact detail shows assigned tags and updates assignments", async () => {
   );
 });
 
+test("contact detail edits custom attributes via PUT", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const contactId = "123e4567-e89b-12d3-a456-426614174040";
+  const segment = {
+    id: "123e4567-e89b-12d3-a456-426614174070",
+    entityType: "contact",
+    key: "segmento",
+    label: "Segmento",
+    type: "select",
+    options: ["SMB", "Enterprise"],
+    value: "SMB",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const score = {
+    id: "123e4567-e89b-12d3-a456-426614174071",
+    entityType: "contact",
+    key: "score",
+    label: "Score",
+    type: "number",
+    options: null,
+    value: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const puts: unknown[] = [];
+  setToken("session-token");
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "member" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174041",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/attributes`)) {
+        if (init?.method === "PUT") {
+          puts.push(JSON.parse(init.body as string));
+          return new Response(
+            JSON.stringify([
+              { ...segment, value: "Enterprise" },
+              { ...score, value: 42 },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify([segment, score]), {
+          status: 200,
+        });
+      }
+      if (url.includes(`/contacts/${contactId}/`)) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/tags")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes(`/contacts/${contactId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: contactId,
+            name: "Maria Silva",
+            email: null,
+            phone: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(`/contacts/${contactId}`);
+
+  expect(
+    await screen.findByRole("heading", { name: "Maria Silva" }),
+  ).toBeDefined();
+  const segmentSelect = await screen.findByLabelText("Segmento");
+  expect((segmentSelect as HTMLSelectElement).value).toBe("SMB");
+  expect(screen.getByLabelText("Score")).toBeDefined();
+
+  // Nothing to save until a value actually changes.
+  expect(
+    screen.getByRole("button", { name: "Salvar atributos" }),
+  ).toHaveProperty("disabled", true);
+
+  const user = userEvent.setup();
+  await user.selectOptions(segmentSelect, "Enterprise");
+  await user.type(screen.getByLabelText("Score"), "42");
+  fireEvent.submit(
+    screen.getByRole("button", { name: "Salvar atributos" }).closest("form")!,
+  );
+  await waitFor(() =>
+    expect(puts).toEqual([
+      {
+        values: [
+          { attributeId: segment.id, value: "Enterprise" },
+          { attributeId: score.id, value: 42 },
+        ],
+      },
+    ]),
+  );
+});
+
 test("company detail shows linked contacts, deals, tasks and notes", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const companyId = "123e4567-e89b-12d3-a456-426614174050";

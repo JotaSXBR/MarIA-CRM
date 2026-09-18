@@ -20,6 +20,7 @@ import { SettingsLayout } from "./routes/settings.tsx";
 import { SettingsProfilePage } from "./routes/settings-profile.tsx";
 import { SettingsChannelsPage } from "./routes/settings-channels.tsx";
 import { SettingsTagsPage } from "./routes/settings-tags.tsx";
+import { SettingsAttributesPage } from "./routes/settings-attributes.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -126,6 +127,12 @@ const settingsTagsRoute = createRoute({
   component: SettingsTagsPage,
 });
 
+const settingsAttributesRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/attributes",
+  component: SettingsAttributesPage,
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -143,6 +150,7 @@ export const routeTree = rootRoute.addChildren([
       settingsProfileRoute,
       settingsChannelsRoute,
       settingsTagsRoute,
+      settingsAttributesRoute,
     ]),
   ]),
 ]);

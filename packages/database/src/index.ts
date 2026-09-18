@@ -13,6 +13,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Pool } from "pg";
 import {
+  attributeDefinitions,
   channelInstances,
   companies,
   companyTags,
@@ -23,6 +24,7 @@ import {
   dealTags,
   dispatchAttempts,
   dispatchIntents,
+  entityAttributeValues,
   memberships,
   messages,
   notes,
@@ -304,6 +306,147 @@ export function createDatabase(pool: Pool) {
     await tx.delete(joinTable).where(eq(entityColumn, entityId));
     if (uniqueTagIds.length > 0) await insertRows(uniqueTagIds);
     return tagsForEntity(tx, joinTable, entityColumn, entityId);
+  };
+
+  const attributeColumns = {
+    id: attributeDefinitions.id,
+    entityType: attributeDefinitions.entityType,
+    key: attributeDefinitions.key,
+    label: attributeDefinitions.label,
+    type: attributeDefinitions.type,
+    options: attributeDefinitions.options,
+    createdAt: attributeDefinitions.createdAt,
+    updatedAt: attributeDefinitions.updatedAt,
+  };
+
+  type AttributeEntityType = "contact" | "company" | "deal";
+  type AttributeValue = string | number | boolean | null;
+
+  const entityExists = (
+    tx: DrizzleTx,
+    entityType: AttributeEntityType,
+    entityId: string,
+  ) =>
+    entityType === "deal"
+      ? dealRefValid(tx, entityId)
+      : contactCompanyRefsValid(
+          tx,
+          entityType === "contact"
+            ? { contactId: entityId }
+            : { companyId: entityId },
+        );
+
+  const attributesForEntity = (
+    tx: DrizzleTx,
+    entityType: AttributeEntityType,
+    entityId: string,
+  ) =>
+    tx
+      .select({ ...attributeColumns, value: entityAttributeValues.value })
+      .from(attributeDefinitions)
+      .leftJoin(
+        entityAttributeValues,
+        and(
+          eq(entityAttributeValues.attributeId, attributeDefinitions.id),
+          eq(entityAttributeValues.entityId, entityId),
+        ),
+      )
+      .where(
+        and(
+          eq(attributeDefinitions.entityType, entityType),
+          notDeleted(attributeDefinitions.deletedAt),
+        ),
+      )
+      .orderBy(attributeDefinitions.label, attributeDefinitions.id);
+
+  const attributeValueMatches = (
+    value: AttributeValue,
+    definition: {
+      type: "text" | "number" | "date" | "boolean" | "select";
+      options: string[] | null;
+    },
+  ) => {
+    switch (definition.type) {
+      case "text":
+        return typeof value === "string";
+      case "number":
+        return typeof value === "number" && Number.isFinite(value);
+      case "date":
+        return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+      case "boolean":
+        return typeof value === "boolean";
+      case "select":
+        return (
+          typeof value === "string" &&
+          Array.isArray(definition.options) &&
+          definition.options.includes(value)
+        );
+    }
+  };
+
+  const slugifyKey = (label: string) =>
+    label
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "field";
+
+  // Wipe-and-rewrite: every supplied attribute must be an active definition
+  // of this workspace and entity type, and each value must match the
+  // definition type — FKs cannot prove tenant or type equality.
+  const setEntityAttributeValues = async (
+    tx: DrizzleTx,
+    workspaceId: string,
+    entityType: AttributeEntityType,
+    entityId: string,
+    values: { attributeId: string; value: AttributeValue }[],
+  ) => {
+    const byAttribute = new Map(
+      values.map((entry) => [entry.attributeId, entry.value]),
+    );
+    const attributeIds = [...byAttribute.keys()];
+    if (attributeIds.length > 0) {
+      const definitions = await tx
+        .select({
+          id: attributeDefinitions.id,
+          type: attributeDefinitions.type,
+          options: attributeDefinitions.options,
+        })
+        .from(attributeDefinitions)
+        .where(
+          and(
+            inArray(attributeDefinitions.id, attributeIds),
+            eq(attributeDefinitions.entityType, entityType),
+            notDeleted(attributeDefinitions.deletedAt),
+          ),
+        );
+      if (definitions.length !== attributeIds.length) return undefined;
+      for (const definition of definitions) {
+        const value = byAttribute.get(definition.id);
+        if (value === null || value === undefined) continue;
+        if (!attributeValueMatches(value, definition)) return undefined;
+      }
+    }
+    await tx
+      .delete(entityAttributeValues)
+      .where(
+        and(
+          eq(entityAttributeValues.entityId, entityId),
+          eq(entityAttributeValues.entityType, entityType),
+        ),
+      );
+    const rows = attributeIds
+      .map((attributeId) => ({
+        workspaceId,
+        attributeId,
+        entityType,
+        entityId,
+        value: byAttribute.get(attributeId) ?? null,
+      }))
+      .filter((row) => row.value !== null);
+    if (rows.length > 0) await tx.insert(entityAttributeValues).values(rows);
+    return attributesForEntity(tx, entityType, entityId);
   };
 
   const channelInstanceColumns = {
@@ -1162,6 +1305,140 @@ export function createDatabase(pool: Pool) {
                 dealId,
               })),
             ),
+        );
+      }),
+    listAttributes: (
+      workspaceId: string,
+      entityType?: "contact" | "company" | "deal",
+    ) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(attributeColumns)
+          .from(attributeDefinitions)
+          .where(
+            and(
+              entityType
+                ? eq(attributeDefinitions.entityType, entityType)
+                : undefined,
+              notDeleted(attributeDefinitions.deletedAt),
+            ),
+          )
+          .orderBy(attributeDefinitions.label, attributeDefinitions.id),
+      ),
+    getAttribute: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(attributeColumns)
+          .from(attributeDefinitions)
+          .where(
+            and(
+              eq(attributeDefinitions.id, id),
+              notDeleted(attributeDefinitions.deletedAt),
+            ),
+          )
+          .limit(1);
+        return rows[0];
+      }),
+    // undefined when an active definition already uses the key for this
+    // entity type (routes → 409).
+    createAttribute: (
+      workspaceId: string,
+      input: {
+        entityType: "contact" | "company" | "deal";
+        label: string;
+        type: "text" | "number" | "date" | "boolean" | "select";
+        options?: string[] | null;
+        key?: string;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const key = slugifyKey(input.key ?? input.label);
+        const existing = await tx
+          .select({ id: attributeDefinitions.id })
+          .from(attributeDefinitions)
+          .where(
+            and(
+              eq(attributeDefinitions.entityType, input.entityType),
+              eq(attributeDefinitions.key, key),
+              notDeleted(attributeDefinitions.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) return undefined;
+        const rows = await tx
+          .insert(attributeDefinitions)
+          .values({
+            workspaceId,
+            entityType: input.entityType,
+            key,
+            label: input.label,
+            type: input.type,
+            options: input.options ?? null,
+          })
+          .returning(attributeColumns);
+        const row = rows[0];
+        if (!row)
+          throw new Error("attribute definition insert returned no row");
+        return row;
+      }),
+    // entityType/key/type are immutable — label and options only.
+    updateAttribute: (
+      workspaceId: string,
+      id: string,
+      input: { label?: string; options?: string[] | null },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(attributeDefinitions)
+          .set({ ...input, updatedAt: new Date() })
+          .where(
+            and(
+              eq(attributeDefinitions.id, id),
+              notDeleted(attributeDefinitions.deletedAt),
+            ),
+          )
+          .returning(attributeColumns);
+        return rows[0];
+      }),
+    deleteAttribute: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(attributeDefinitions)
+          .set({ deletedAt: new Date() })
+          .where(
+            and(
+              eq(attributeDefinitions.id, id),
+              notDeleted(attributeDefinitions.deletedAt),
+            ),
+          )
+          .returning({ id: attributeDefinitions.id });
+        return rows.length > 0;
+      }),
+    listEntityAttributes: (
+      workspaceId: string,
+      entityType: "contact" | "company" | "deal",
+      entityId: string,
+    ) =>
+      withWorkspace(workspaceId, (tx) =>
+        attributesForEntity(tx, entityType, entityId),
+      ),
+    setEntityAttributes: (
+      workspaceId: string,
+      entityType: "contact" | "company" | "deal",
+      entityId: string,
+      values: {
+        attributeId: string;
+        value: string | number | boolean | null;
+      }[],
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (!(await entityExists(tx, entityType, entityId))) return undefined;
+        return setEntityAttributeValues(
+          tx,
+          workspaceId,
+          entityType,
+          entityId,
+          values,
         );
       }),
     createChannelInstance: (

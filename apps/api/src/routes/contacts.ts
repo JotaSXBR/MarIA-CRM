@@ -9,6 +9,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityAttributeRoutes } from "./attributes.ts";
 import { registerEntityTagRoutes } from "./tags.ts";
 
 export function registerContactRoutes(
@@ -359,6 +360,16 @@ export function registerContactRoutes(
       listTags: (workspaceId, id) => database.listContactTags(workspaceId, id),
       setTags: (workspaceId, id, tagIds) =>
         database.setContactTags(workspaceId, id, tagIds),
+    },
+  );
+
+  registerEntityAttributeRoutes(
+    app,
+    { database, authorizeWorkspaceRequest },
+    {
+      path: "contacts",
+      entityType: "contact",
+      getParent: (workspaceId, id) => database.getContact(workspaceId, id),
     },
   );
 

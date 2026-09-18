@@ -12,14 +12,13 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#69 merged (…pnpm 12.4.2, deal detail, workspace
-  tags on contacts/companies/deals).
-- Branch `feat/company-write-paths` — company detail write paths
-  implemented and verified: `GET|POST /companies/:id/tasks` +
-  `POST /companies/:id/notes`; notes/tasks cards extracted into shared
-  `EntityTasksCard`/`EntityNotesCard` used by all three detail pages.
-- Next after this: custom attributes (deferred — needs typed
-  definition/value model), then global search.
+- `main` — PRs #61–#70 merged (…pnpm 12.4.2, deal detail, workspace
+  tags, company detail write paths + shared entity activity cards).
+- Branch `feat/custom-attributes` — custom attributes implemented and
+  verified: typed `attribute_definitions` + EAV `entity_attribute_values`
+  (ADR 0014), CRUD + entity value replace + settings management +
+  attributes card on all three detail pages.
+- Next after this: global search.
 
 ## Memory model
 
@@ -32,8 +31,47 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#69 merged (#69 at `e036dcf`).
+- `main` (2026-09-18): PRs #61–#70 merged (#70 at `b9cd5d4`).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- Slice 8 on `feat/custom-attributes` (2026-09-18, Windows/pnpm):
+  - ADR 0014: typed `attribute_definitions` (`entity_type`, slug `key`,
+    `label`, `type` ∈ text|number|date|boolean|select, `options`, soft
+    delete, partial unique `(workspace_id, entity_type, key)`) + EAV
+    `entity_attribute_values` (row per `(attribute_id, entity_id)`,
+    denormalized `entity_type`, polymorphic `entity_id` validated
+    in-transaction per ADR/repo convention). Migration
+    `0016_custom_attributes.sql`; runtime has DELETE only on the values
+    table (wipe-and-rewrite).
+  - DB: `createAttribute` slugifies key from label (or optional `key`
+    input) → `undefined` on active-key conflict → 409; `entityType`/
+    `key`/`type` immutable via PATCH; `listEntityAttributes` LEFT JOINs
+    active definitions with current values; `setEntityAttributes`
+    dedupes by attribute, validates every id against active defs of the
+    entity type, validates value per definition type, then deletes +
+    inserts atomically → `undefined` → 404 for any invalid ref/value.
+  - API `routes/attributes.ts`: GET/POST `/attributes` (+`entityType`
+    filter), PATCH/DELETE `/attributes/:id` (delete admin-only);
+    `registerEntityAttributeRoutes` adds `GET|PUT
+/{contacts,companies,deals}/:id/attributes` next to each entity
+    module (mirrors `registerEntityTagRoutes`).
+  - Web: `EntityAttributesCard` renders all active definitions for the
+    entity type with type-matched inputs (text/number/date/checkbox/
+    native select), single save → PUT replace of the whole value set;
+    hidden when no definitions exist. `settings/attributes` groups
+    definitions by entity with create (entity+label+type+options) /
+    rename / options edit / admin delete; slug `key` shown read-only
+    for API/agent consumers.
+  - Tests: API 42/42 (definition CRUD 409/404/admin, entity GET/PUT
+    all three types, 404s); DB RLS 9/9 (privileges + FORCE lists,
+    scoping/refs/types/replace/isolation); web 11/11 (card render,
+    disabled save, PUT payload).
+  - Bug caught by tests: `EntityAttributesCard` called `.some` on a
+    non-array `data` before the empty-state early return — guarded
+    with `Array.isArray`.
+- Checks (`feat/custom-attributes` dirty tree, 2026-09-18):
+  `pnpm fmt:check` clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6;
+  `pnpm test` api 26 + web 11; `pnpm test:integration` api 42/42,
+  database 24 (RLS 9 + migrate 5 + messaging 10); `pnpm build` 6/6.
 - Slice 7 on `feat/company-write-paths` (2026-09-18, Windows/pnpm):
   - API `routes/companies.ts`: `POST /companies/:id/notes` +
     `GET|POST /companies/:id/tasks` mirroring the contact routes
@@ -261,8 +299,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
-- CRM domain gaps remain open work: no custom attributes (typed
-  definition/value model deferred), no global search.
+- CRM domain gaps remain open work: no global search.
 
 ## Deferred from the code-simplifier review
 

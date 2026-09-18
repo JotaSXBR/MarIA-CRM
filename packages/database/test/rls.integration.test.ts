@@ -80,6 +80,10 @@ async function queryRolePrivileges(client: Pool) {
     can_delete_tags: boolean;
     can_use_entity_tags: boolean;
     can_delete_entity_tags: boolean;
+    can_use_attribute_definitions: boolean;
+    can_delete_attribute_definitions: boolean;
+    can_use_entity_attribute_values: boolean;
+    can_delete_entity_attribute_values: boolean;
   }>(`
     select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
       rolbypassrls,
@@ -102,7 +106,11 @@ async function queryRolePrivileges(client: Pool) {
       has_table_privilege(current_user, 'tags', 'SELECT, INSERT, UPDATE') as can_use_tags,
       has_table_privilege(current_user, 'tags', 'DELETE') as can_delete_tags,
       has_table_privilege(current_user, 'contact_tags', 'SELECT, INSERT, UPDATE') as can_use_entity_tags,
-      has_table_privilege(current_user, 'contact_tags', 'DELETE') as can_delete_entity_tags
+      has_table_privilege(current_user, 'contact_tags', 'DELETE') as can_delete_entity_tags,
+      has_table_privilege(current_user, 'attribute_definitions', 'SELECT, INSERT, UPDATE') as can_use_attribute_definitions,
+      has_table_privilege(current_user, 'attribute_definitions', 'DELETE') as can_delete_attribute_definitions,
+      has_table_privilege(current_user, 'entity_attribute_values', 'SELECT, INSERT, UPDATE') as can_use_entity_attribute_values,
+      has_table_privilege(current_user, 'entity_attribute_values', 'DELETE') as can_delete_entity_attribute_values
     from pg_roles
     where rolname = current_user
   `);
@@ -138,6 +146,10 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       can_delete_tags: false,
       can_use_entity_tags: true,
       can_delete_entity_tags: true,
+      can_use_attribute_definitions: true,
+      can_delete_attribute_definitions: false,
+      can_use_entity_attribute_values: true,
+      can_delete_entity_attribute_values: true,
     },
   ]);
   expect(
@@ -146,18 +158,20 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
         select c.relname, r.rolsuper, r.rolbypassrls, c.relforcerowsecurity,
           c.relowner = r.oid as owns_table
         from pg_roles r cross join pg_class c
-        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals', 'notes', 'tasks', 'tags', 'contact_tags', 'company_tags', 'deal_tags')
+        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals', 'notes', 'tasks', 'tags', 'contact_tags', 'company_tags', 'deal_tags', 'attribute_definitions', 'entity_attribute_values')
         order by c.relname
       `)
     ).rows,
   ).toEqual(
     [
+      "attribute_definitions",
       "companies",
       "company_tags",
       "contact_tags",
       "contacts",
       "deal_tags",
       "deals",
+      "entity_attribute_values",
       "invitations",
       "memberships",
       "notes",
@@ -585,6 +599,172 @@ test("tags stay workspace-scoped, validate refs and replace assignments", async 
   expect(
     await database.createTag(workspaceA, { name: "Prioridade" }),
   ).toBeDefined();
+});
+
+test("custom attributes stay workspace-scoped, validate refs and replace values", async () => {
+  const segment = await database.createAttribute(workspaceA, {
+    entityType: "contact",
+    label: "Segmento",
+    type: "select",
+    options: ["SMB", "Enterprise"],
+  });
+  expect(segment).toMatchObject({
+    entityType: "contact",
+    key: "segmento",
+    type: "select",
+  });
+  // Key derived from the label; same key conflicts, foreign workspace does not.
+  expect(
+    await database.createAttribute(workspaceA, {
+      entityType: "contact",
+      label: "Segmento!",
+      type: "text",
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createAttribute(workspaceA, {
+      entityType: "company",
+      label: "Segmento",
+      type: "text",
+    }),
+  ).toBeDefined();
+  const foreign = await database.createAttribute(workspaceB, {
+    entityType: "contact",
+    label: "Segmento",
+    type: "text",
+  });
+  expect(foreign).toBeDefined();
+
+  const score = await database.createAttribute(workspaceA, {
+    entityType: "contact",
+    label: "Score",
+    type: "number",
+  });
+
+  // Listing filters by entity type and stays scoped to the workspace.
+  expect(
+    (await database.listAttributes(workspaceA, "contact")).map((a) => a.id),
+  ).toEqual([score!.id, segment!.id]);
+  expect(
+    (await database.listAttributes(workspaceB, "contact")).map((a) => a.id),
+  ).toEqual([foreign!.id]);
+
+  // Label/options are mutable; key, type and entity type are not inputs.
+  expect(
+    await database.updateAttribute(workspaceA, segment!.id, {
+      label: "Segmento novo",
+      options: ["SMB", "Mid", "Enterprise"],
+    }),
+  ).toMatchObject({ label: "Segmento novo", key: "segmento" });
+  expect(
+    await database.updateAttribute(workspaceA, randomUUID(), { label: "X" }),
+  ).toBeUndefined();
+
+  const contact = await database.createContact(workspaceA, {
+    name: "Attributed",
+  });
+  const company = await database.createCompany(workspaceA, {
+    name: "Attributed Co",
+  });
+
+  // Definitions come back with the current value; unset attributes are null.
+  expect(
+    await database.listEntityAttributes(workspaceA, "contact", contact!.id),
+  ).toMatchObject([
+    { id: score!.id, value: null },
+    { id: segment!.id, value: null },
+  ]);
+
+  // Wipe-and-rewrite sets values and returns definitions ordered by label.
+  const assigned = await database.setEntityAttributes(
+    workspaceA,
+    "contact",
+    contact!.id,
+    [
+      { attributeId: segment!.id, value: "Mid" },
+      { attributeId: score!.id, value: 42 },
+    ],
+  );
+  expect(assigned).toMatchObject([
+    { id: score!.id, value: 42 },
+    { id: segment!.id, value: "Mid" },
+  ]);
+
+  // Replace drops values omitted from the next write.
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", contact!.id, [
+      { attributeId: score!.id, value: 7 },
+    ]),
+  ).toMatchObject([
+    { id: score!.id, value: 7 },
+    { id: segment!.id, value: null },
+  ]);
+
+  // Wrong-typed values, foreign definitions and entity mismatches are rejected.
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", contact!.id, [
+      { attributeId: score!.id, value: "not-a-number" },
+    ]),
+  ).toBeUndefined();
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", contact!.id, [
+      { attributeId: segment!.id, value: "Unknown" },
+    ]),
+  ).toBeUndefined();
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", contact!.id, [
+      { attributeId: foreign!.id, value: "x" },
+    ]),
+  ).toBeUndefined();
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", company!.id, [
+      { attributeId: segment!.id, value: "SMB" },
+    ]),
+  ).toBeUndefined();
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", randomUUID(), [
+      { attributeId: segment!.id, value: "SMB" },
+    ]),
+  ).toBeUndefined();
+  expect(
+    await database.setEntityAttributes(workspaceB, "contact", contact!.id, [
+      { attributeId: segment!.id, value: "SMB" },
+    ]),
+  ).toBeUndefined();
+
+  // A company definition applies to companies, not contacts.
+  const industry = await database.createAttribute(workspaceA, {
+    entityType: "company",
+    label: "Indústria",
+    type: "text",
+  });
+  expect(
+    await database.setEntityAttributes(workspaceA, "company", company!.id, [
+      { attributeId: industry!.id, value: "SaaS" },
+    ]),
+  ).toMatchObject([
+    { id: industry!.id, value: "SaaS" },
+    { key: "segmento", value: null },
+  ]);
+  expect(
+    await database.setEntityAttributes(workspaceA, "contact", contact!.id, [
+      { attributeId: industry!.id, value: "SaaS" },
+    ]),
+  ).toBeUndefined();
+
+  // Soft-deleting a definition hides it and its values; the key is freed.
+  expect(await database.deleteAttribute(workspaceA, segment!.id)).toBe(true);
+  expect(
+    await database.listEntityAttributes(workspaceA, "contact", contact!.id),
+  ).toMatchObject([{ id: score!.id, value: 7 }]);
+  expect(
+    await database.createAttribute(workspaceA, {
+      entityType: "contact",
+      label: "Segmento",
+      type: "text",
+    }),
+  ).toBeDefined();
+  expect(await database.deleteAttribute(workspaceA, foreign!.id)).toBe(false);
 });
 
 test("company CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {

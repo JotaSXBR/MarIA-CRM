@@ -63,6 +63,27 @@ export type Tag = {
   createdAt: string;
 };
 
+export type AttributeEntityType = "contact" | "company" | "deal";
+
+export type AttributeType = "text" | "number" | "date" | "boolean" | "select";
+
+export type AttributeValue = string | number | boolean | null;
+
+export type AttributeDefinition = {
+  id: string;
+  entityType: AttributeEntityType;
+  key: string;
+  label: string;
+  type: AttributeType;
+  options: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EntityAttribute = AttributeDefinition & {
+  value: AttributeValue;
+};
+
 export type Note = {
   id: string;
   body: string;
