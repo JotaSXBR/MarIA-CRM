@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## Verify first
 
@@ -12,13 +12,10 @@ gh pr status
 
 ## Current objective
 
-- `main` at `000bfab` — PRs #61–#65 merged (skill audit, lint → 0 warnings,
-  NULL-distinct comments, code-simplifier per-slice, PR label rule).
-- Branch `feat/contact-company-link` — Slice 4 implemented and verified
-  locally: nullable `contacts.company_id`, contact create/update validates
-  the company inside the scoped transaction, company detail page
-  (`/companies/:id`) aggregates contacts/deals/notes, company picker in the
-  contact form. Ready to commit; push/PR not yet requested.
+- `main` — PR #66 merged (contact↔company link + company detail page).
+- Branch `chore/pnpm-12` — pnpm 11.26.0 → **12.4.2** upgrade, PR #67 open.
+  Global install must NOT pass `--ignore-scripts` (see below); `ci.yml` and
+  `api.Dockerfile` updated accordingly. Merge #67 before PR #68.
 - Next after this: deal detail page, tags/custom attributes, global search.
 
 ## Memory model
@@ -35,7 +32,33 @@ gh pr status
 - `main` at `000bfab` (2026-09-17): PRs #61–#65 merged, incl. #65 (every PR
   must carry repository labels). Lint baseline is
   **0 warnings / 0 errors** — keep it clean.
-- Slice 4 on `feat/contact-company-link` (2026-09-17, Windows/pnpm):
+- pnpm 12.4.2 on `chore/pnpm-12` (2026-09-18, Windows): all pins moved
+  (`package.json#packageManager`, `ci.yml`, `api.Dockerfile`,
+  `AGENTS.md` baseline). pnpm 12 writes a two-document `pnpm-lock.yaml`:
+  doc 1 pins the package-manager itself (`packageManagerDependencies` for
+  `pnpm@12.4.2` plus `@pnpm/exe.*` platform binaries with integrity), doc 2
+  is the unchanged project lockfile — expected, not corruption;
+  `--frozen-lockfile` accepts it and adds a "supply-chain policies"
+  verification step.
+  Global install note: pnpm 12 ships a shebang-less placeholder `pnpm` bin
+  that its `install.js` replaces with the native `@pnpm/exe` binary.
+  `npm i -g pnpm@12.4.2 --ignore-scripts` skips that step — the bin then
+  only works through a shell (bash ENOEXEC fallback) and any direct
+  `execvp` spawn (turbo tasks, `strace`) fails with
+  `Exec format error (os error 8)`. This broke PR #67 CI's `pnpm verify`
+  (turbo spawns `pnpm run typecheck` per package) until `--ignore-scripts`
+  was removed from the global-install lines in `ci.yml`/`api.Dockerfile`.
+  Keep `--ignore-scripts` on `pnpm install` itself (allowBuilds policy).
+  Verified via clean `node:24-bookworm-slim` clone:
+  `--ignore-scripts` reproduces the ENOEXEC, without it `/usr/local/bin/pnpm`
+  is ELF and `turbo run typecheck --force` passes 6/6 real spawns.
+- Checks (`chore/pnpm-12` dirty tree, 2026-09-18, Windows/pnpm 12.4.2):
+  `pnpm install --frozen-lockfile --ignore-scripts` green; `pnpm fmt:check`
+  clean; oxlint 0/0; `pnpm typecheck` 6/6; `pnpm test` all green;
+  `pnpm test:integration` api 37/37, database 22/22, auth 5/5;
+  `pnpm build` 6/6; `pnpm --filter @maria/api deploy --prod` green;
+  `pnpm audit --prod` clean.
+- Slice 4 merged via PR #66 (branch `feat/contact-company-link`):
   - `packages/database/src/schema.ts` + migration
     `0014_contact_company_link.sql`: nullable `contacts.company_id` FK →
     `companies.id` + partial `contacts_company_active_idx`
@@ -61,7 +84,7 @@ gh pr status
   - Per-slice `code-simplifier` pass applied: contactSchema deduplicated
     into shared.ts; aggregate routes gained parent-existence 404 for parity
     with contact detail routes; dead flex wrapper dropped.
-- Checks (dirty tree on `feat/contact-company-link`, 2026-09-17,
+- Checks (Slice 4, 2026-09-17,
   Windows/pnpm): `pnpm fmt:check` clean; oxlint direct
   (`pnpm exec oxlint --type-aware apps packages`) **0 warnings/0 errors**;
   `pnpm typecheck` 6/6; `pnpm test` api 26/26, web 8/8 (new company-detail
@@ -170,6 +193,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Commit `feat/contact-company-link` locally; push + PR (with a label) on request.
+1. Commit `chore/pnpm-12`; push + PR (label `chore`) on request — watch
+   the CI Docker build, which exercises `deploy --prod` inside the image.
 2. Deal detail page (contacts, notes, tasks aggregated under a deal).
 3. Tags/custom attributes, then global search.
