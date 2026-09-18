@@ -108,7 +108,7 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
           name: "E2E Member",
           password: "member-password",
           workspaceId: workspaceB,
-          role: "member",
+          role: "agent",
         }),
       });
       expect(createdUser.status).toBe(200);
@@ -139,7 +139,7 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
       });
       expect(myWorkspaces.status).toBe(200);
       expect(await myWorkspaces.json()).toEqual([
-        { workspaceId: workspaceB, workspaceName: "B", role: "member" },
+        { workspaceId: workspaceB, workspaceName: "B", role: "agent" },
       ]);
 
       const created = await fetch(

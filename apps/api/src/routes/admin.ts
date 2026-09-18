@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import type { AuthPort } from "@maria/auth";
+import type { AuthPort, WorkspaceRole } from "@maria/auth";
 import {
   idParamsSchema,
   workspaceQuerySchema,
+  workspaceRoleSchema,
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
@@ -35,7 +36,7 @@ export function registerAdminRoutes(
             name: { type: "string", minLength: 1 },
             password: { type: "string", minLength: 1 },
             workspaceId: { type: "string", format: "uuid" },
-            role: { type: "string", enum: ["admin", "member"] },
+            role: workspaceRoleSchema,
           },
         },
         response: {
@@ -60,7 +61,7 @@ export function registerAdminRoutes(
         name: string;
         password: string;
         workspaceId?: string;
-        role?: "admin" | "member";
+        role?: WorkspaceRole;
       };
       const result = await auth.createUser({
         email,
@@ -118,7 +119,7 @@ export function registerAdminRoutes(
     properties: {
       id: { type: "string", format: "uuid" },
       userId: { type: "string", format: "uuid" },
-      role: { type: "string", enum: ["admin", "member"] },
+      role: workspaceRoleSchema,
       email: { type: "string" },
       name: { type: "string" },
     },
@@ -318,7 +319,7 @@ export function registerAdminRoutes(
           properties: {
             userId: { type: "string", format: "uuid" },
             workspaceId: { type: "string", format: "uuid" },
-            role: { type: "string", enum: ["admin", "member"] },
+            role: workspaceRoleSchema,
           },
         },
         response: {
@@ -335,7 +336,7 @@ export function registerAdminRoutes(
       const { userId, workspaceId, role } = request.body as {
         userId: string;
         workspaceId: string;
-        role: "admin" | "member";
+        role: WorkspaceRole;
       };
       const result = await auth.addMembership({ userId, workspaceId, role });
       if (result === "not-found") return reply.code(404).send();
@@ -356,7 +357,7 @@ export function registerAdminRoutes(
           additionalProperties: false,
           required: ["role"],
           properties: {
-            role: { type: "string", enum: ["admin", "member"] },
+            role: workspaceRoleSchema,
           },
         },
         response: {
@@ -372,7 +373,7 @@ export function registerAdminRoutes(
       if (!session) return;
       const { id } = request.params as { id: string };
       const { workspaceId } = request.query as { workspaceId: string };
-      const { role } = request.body as { role: "admin" | "member" };
+      const { role } = request.body as { role: WorkspaceRole };
       const result = await auth.updateMembershipRole(workspaceId, id, role);
       if (result === "not-found") return reply.code(404).send();
       if (result === "last-admin") return reply.code(409).send();

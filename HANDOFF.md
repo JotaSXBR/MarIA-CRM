@@ -12,13 +12,20 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#73 merged (…workspace tags, company write paths,
-  custom attributes via ADR 0014, global search, accepted ADR 0015).
-- Product phases and the per-slice decision process are being recorded in
-  `ROADMAP.md` on branch `docs/development-phases` (documentation-only).
-- Next implementation target: **Phase 1.1 — central workspace RBAC**
-  (rank `viewer<agent<manager<admin>`, `member`→`agent`,
-  `ROLE_RANK`/`requireWorkspaceRole`) per accepted ADR 0015.
+- `main` — PRs #61–#74 merged (…global search, accepted ADR 0015,
+  phased product `ROADMAP.md`).
+- Product track: **onboarding + workspace roles** per `ROADMAP.md` and
+  ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
+  after each merge.
+- Branch `feat/workspace-rbac` — **Slice 1.1, centralized workspace RBAC**:
+  `WorkspaceRole` `viewer<agent<manager<admin>` + `ROLE_RANK` +
+  `hasWorkspaceRole` in `@maria/auth`; `requireWorkspaceRole(request,
+reply, min)` in `routes/shared.ts` (401 unauthenticated/non-member,
+  403 member below rank) replaces all inline role checks; migration
+  `0017_workspace_roles.sql` rewrites legacy `member`→`agent` in
+  memberships + invitations. Web gates UI by `hasWorkspaceRole`
+  (viewer read-only, agent edits, manager deletes/configures);
+  `session.isAdmin` stays the only platform-admin axis.
 
 ## Memory model
 
@@ -31,6 +38,27 @@ gh pr status
 
 ## Verified state
 
+- `feat/workspace-rbac` (2026-09-18, Windows/pnpm):
+  - Capability matrix: reads = `viewer`; CRM/inbox writes (POST/PATCH/PUT,
+    tag assignment, attribute values, message send/retry/resolve, deal
+    move) = `agent`; deletes + management (contact/company/deal/stage/
+    tag/attribute/channel-instance) = `manager`; `/admin/*` unchanged
+    (`session.isAdmin`). `registerEntityTagRoutes`/
+    `registerEntityAttributeRoutes` take `requireWorkspaceRole`.
+  - `createUser`/membership default role `agent`; `AuthPort` types use
+    `WorkspaceRole`; `workspaceRoleSchema` (4-role enum) shared by
+    `/me/workspaces` and admin role bodies.
+  - New tests: `packages/auth/test/roles.test.ts` (9, rank order),
+    `apps/api/test/workspace-roles.test.ts` (2 — matrix across
+    viewer/agent/manager + platform-admin-without-membership denied),
+    migrate test `0017 upgrades legacy member roles to agent on a
+prior-prefix database`.
+- Checks (`feat/workspace-rbac` dirty tree, 2026-09-18):
+  `pnpm fmt:check` clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6;
+  `pnpm test` all green (auth roles 9/9, web 12/12);
+  `pnpm test:integration` api 45/45, database 26/26 (incl. 0017 upgrade),
+  auth 5/5 (incl. concurrent last-admin); `pnpm test:e2e` 1/1;
+  `pnpm build` green.
 - `main` (2026-09-18): PRs #61–#72 merged (#72 at `33baf41` squash).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
 - Onboarding/roles research (2026-09-18, `docs/onboarding-roles`):

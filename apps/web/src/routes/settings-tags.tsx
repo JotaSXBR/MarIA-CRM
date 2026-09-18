@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TrashIcon } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Tag } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 import { TagChip } from "@/components/tag-picker";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,11 +20,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 function TagRow({
   tag,
   workspaceId,
-  isAdmin,
+  canManage,
 }: {
   tag: Tag;
   workspaceId: string | undefined;
-  isAdmin: boolean;
+  canManage: boolean;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(tag.name);
@@ -67,6 +67,14 @@ function TagRow({
     onError: () => setError("Não foi possível remover a tag."),
   });
 
+  if (!canManage) {
+    return (
+      <li>
+        <TagChip tag={tag} />
+      </li>
+    );
+  }
+
   return (
     <li className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
@@ -102,17 +110,15 @@ function TagRow({
         >
           Salvar
         </Button>
-        {isAdmin ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Remover tag ${tag.name}`}
-            onClick={() => remove.mutate()}
-          >
-            <TrashIcon data-icon="inline-start" />
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Remover tag ${tag.name}`}
+          onClick={() => remove.mutate()}
+        >
+          <TrashIcon data-icon="inline-start" />
+        </Button>
         <TagChip tag={{ ...tag, name, color: color || null }} />
       </div>
       {error ? (
@@ -127,7 +133,7 @@ function TagRow({
 export function SettingsTagsPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
@@ -177,35 +183,37 @@ export function SettingsTagsPage() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-tag-name">Nome</Label>
-            <Input
-              id="new-tag-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Ex.: Prioridade"
-              className="w-44"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-tag-color">Cor</Label>
-            <Input
-              id="new-tag-color"
-              type="color"
-              value={color || "#64748b"}
-              onChange={(event) => setColor(event.target.value)}
-              className="h-9 w-14 cursor-pointer p-1"
-            />
-          </div>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!name.trim() || createTag.isPending}
-          >
-            Criar tag
-          </Button>
-        </form>
+        {canManage ? (
+          <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-tag-name">Nome</Label>
+              <Input
+                id="new-tag-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Ex.: Prioridade"
+                className="w-44"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-tag-color">Cor</Label>
+              <Input
+                id="new-tag-color"
+                type="color"
+                value={color || "#64748b"}
+                onChange={(event) => setColor(event.target.value)}
+                className="h-9 w-14 cursor-pointer p-1"
+              />
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!name.trim() || createTag.isPending}
+            >
+              Criar tag
+            </Button>
+          </form>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -224,7 +232,7 @@ export function SettingsTagsPage() {
                 key={tag.id}
                 tag={tag}
                 workspaceId={workspaceId}
-                isAdmin={isAdmin}
+                canManage={canManage}
               />
             ))}
           </ul>

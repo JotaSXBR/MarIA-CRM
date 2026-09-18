@@ -148,7 +148,7 @@ test("contacts use the authorized workspace", async () => {
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -281,7 +281,7 @@ test("members can create, read and update contacts in their workspace", async ()
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -336,7 +336,7 @@ test("contact mutations reject unauthenticated requests and missing rows return 
       token === "member-token"
         ? { userId, email: "user@example.com", name: "User", isAdmin: false }
         : undefined,
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -388,7 +388,7 @@ test("only workspace admins can delete contacts", async () => {
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
-      role: userId === "admin-id" ? "admin" : "member",
+      role: userId === "admin-id" ? "admin" : "agent",
     }),
   });
   const app = buildApp({ database, auth });
@@ -481,7 +481,7 @@ test("contact detail routes list deals, notes and tasks in the authorized worksp
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -561,7 +561,7 @@ test("members create notes and tasks on a contact with themselves as author/assi
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -608,7 +608,7 @@ test("notes and tasks map missing contacts and rejected refs to 404", async () =
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -689,7 +689,7 @@ test("task completion toggles through PATCH and deletes require admin", async ()
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
-      role: userId === "admin-id" ? "admin" : "member",
+      role: userId === "admin-id" ? "admin" : "agent",
     }),
   });
   const app = buildApp({ database, auth });
@@ -865,7 +865,7 @@ test("contact create and update forward companyId and map invalid refs to 404", 
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -988,7 +988,7 @@ test("company detail routes list and create contacts-linked activity in the auth
       token
         ? { userId, email: "user@example.com", name: "User", isAdmin: false }
         : undefined,
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -1155,7 +1155,7 @@ test("deal detail routes expose the named deal and its notes and tasks", async (
       token
         ? { userId, email: "user@example.com", name: "User", isAdmin: false }
         : undefined,
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -1241,7 +1241,7 @@ test("deal detail routes expose the named deal and its notes and tasks", async (
   }
 });
 
-test("tag CRUD maps conflicts to 409 and deletes require admin", async () => {
+test("tag CRUD maps conflicts to 409 and deletes require manager", async () => {
   const workspaceId = randomUUID();
   const tag = {
     id: randomUUID(),
@@ -1257,13 +1257,23 @@ test("tag CRUD maps conflicts to 409 and deletes require admin", async () => {
   database.deleteTag.mockResolvedValue(true);
   const auth = createAuthStub({
     verifySession: async (token?: string) => ({
-      userId: token === "admin-token" ? "admin-id" : "member-id",
+      userId:
+        token === "admin-token"
+          ? "admin-id"
+          : token === "member-token"
+            ? "member-id"
+            : "manager-id",
       email: "user@example.com",
       name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
-      role: userId === "admin-id" ? "admin" : "member",
+      role:
+        userId === "admin-id"
+          ? "admin"
+          : userId === "member-id"
+            ? "agent"
+            : "manager",
     }),
   });
   const app = buildApp({ database, auth });
@@ -1333,7 +1343,7 @@ test("tag CRUD maps conflicts to 409 and deletes require admin", async () => {
     const memberDelete = await app.inject({
       method: "DELETE",
       url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
-      headers: { authorization: "Bearer token" },
+      headers: { authorization: "Bearer member-token" },
     });
     expect(memberDelete.statusCode).toBe(403);
 
@@ -1375,7 +1385,7 @@ test("entity tag routes list and replace assignments in the authorized workspace
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -1441,7 +1451,7 @@ test("entity tag routes list and replace assignments in the authorized workspace
   }
 });
 
-test("attribute definition CRUD maps conflicts and requires admin for delete", async () => {
+test("attribute definition CRUD maps conflicts and requires manager for delete", async () => {
   const workspaceId = randomUUID();
   const attribute = {
     id: randomUUID(),
@@ -1465,13 +1475,23 @@ test("attribute definition CRUD maps conflicts and requires admin for delete", a
   database.deleteAttribute.mockResolvedValue(true);
   const auth = createAuthStub({
     verifySession: async (token?: string) => ({
-      userId: token === "admin-token" ? "admin-id" : "member-id",
+      userId:
+        token === "admin-token"
+          ? "admin-id"
+          : token === "member-token"
+            ? "member-id"
+            : "manager-id",
       email: "user@example.com",
       name: "User",
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
-      role: userId === "admin-id" ? "admin" : "member",
+      role:
+        userId === "admin-id"
+          ? "admin"
+          : userId === "member-id"
+            ? "agent"
+            : "manager",
     }),
   });
   const app = buildApp({ database, auth });
@@ -1541,7 +1561,7 @@ test("attribute definition CRUD maps conflicts and requires admin for delete", a
     const memberDelete = await app.inject({
       method: "DELETE",
       url: `/attributes/${attribute.id}?workspaceId=${workspaceId}`,
-      headers: { authorization: "Bearer token" },
+      headers: { authorization: "Bearer member-token" },
     });
     expect(memberDelete.statusCode).toBe(403);
 
@@ -1594,7 +1614,7 @@ test("entity attribute routes list and replace values in the authorized workspac
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -1674,7 +1694,7 @@ test("GET /search requires a query and forwards it to the database", async () =>
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -1757,7 +1777,7 @@ test("me/workspaces lists the caller's workspace memberships", async () => {
           }
         : undefined,
     listUserWorkspaces: vi.fn(async () => [
-      { workspaceId, workspaceName: "Workspace", role: "member" as const },
+      { workspaceId, workspaceName: "Workspace", role: "agent" as const },
     ]),
   });
   const app = buildApp({ database: createDatabaseStub(), auth });
@@ -1771,7 +1791,7 @@ test("me/workspaces lists the caller's workspace memberships", async () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual([
-      { workspaceId, workspaceName: "Workspace", role: "member" },
+      { workspaceId, workspaceName: "Workspace", role: "agent" },
     ]);
     expect(auth.listUserWorkspaces).toHaveBeenCalledWith("user-id");
   } finally {
@@ -1812,7 +1832,7 @@ test("admin management covers users, organizations, workspaces and memberships",
       {
         id: membershipId,
         userId,
-        role: "member" as const,
+        role: "agent" as const,
         email: "user@example.com",
         name: "User",
       },
@@ -1890,7 +1910,7 @@ test("admin management covers users, organizations, workspaces and memberships",
       headers: admin,
     });
     expect(members.statusCode).toBe(200);
-    expect(members.json()[0].role).toBe("member");
+    expect(members.json()[0].role).toBe("agent");
     expect(auth.listMembers).toHaveBeenCalledWith(workspaceId);
 
     auth.addMembership.mockResolvedValue("created");
@@ -1900,7 +1920,7 @@ test("admin management covers users, organizations, workspaces and memberships",
           method: "POST",
           url: "/admin/memberships",
           headers: admin,
-          payload: { userId, workspaceId, role: "member" },
+          payload: { userId, workspaceId, role: "agent" },
         })
       ).statusCode,
     ).toBe(201);
@@ -1911,7 +1931,7 @@ test("admin management covers users, organizations, workspaces and memberships",
           method: "POST",
           url: "/admin/memberships",
           headers: admin,
-          payload: { userId, workspaceId, role: "member" },
+          payload: { userId, workspaceId, role: "agent" },
         })
       ).statusCode,
     ).toBe(409);
@@ -1925,7 +1945,7 @@ test("admin management covers users, organizations, workspaces and memberships",
           payload: {
             userId: randomUUID(),
             workspaceId,
-            role: "member",
+            role: "agent",
           },
         })
       ).statusCode,
@@ -1954,7 +1974,7 @@ test("admin management covers users, organizations, workspaces and memberships",
           method: "PATCH",
           url: `/admin/memberships/${membershipId}?workspaceId=${workspaceId}`,
           headers: admin,
-          payload: { role: "member" },
+          payload: { role: "agent" },
         })
       ).statusCode,
     ).toBe(409);
@@ -2077,19 +2097,21 @@ test("pipeline CRUD roundtrips through the authorized workspace", async () => {
   }
 });
 
-test("stages and deals reject members for delete and 404 on invalid refs", async () => {
+test("stages and deals reject agents for delete and 404 on invalid refs", async () => {
   const workspaceId = randomUUID();
   const pipelineId = randomUUID();
   const stageId = randomUUID();
   const database = createDatabaseStub();
   const auth = createAuthStub({
-    verifySession: async () => ({
-      userId: randomUUID(),
+    verifySession: async (token?: string) => ({
+      userId: token === "manager-token" ? "manager-id" : "agent-id",
       email: "member@example.com",
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === "manager-id" ? "manager" : "agent",
+    }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -2118,7 +2140,7 @@ test("stages and deals reject members for delete and 404 on invalid refs", async
         await app.inject({
           method: "POST",
           url: `/pipelines/${pipelineId}/stages?workspaceId=${workspaceId}`,
-          headers: { authorization: "Bearer token" },
+          headers: { authorization: "Bearer manager-token" },
           payload: { name: "Qualificação" },
         })
       ).statusCode,
@@ -2166,7 +2188,7 @@ test("deal move forwards stage and neighbor positions to the database", async ()
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -2421,7 +2443,7 @@ test("inbox routes forward the authorized workspace to the database", async () =
       isAdmin: false,
     }),
     authorizeWorkspace: async (userId?: string) => ({
-      role: userId === "admin-id" ? "admin" : "member",
+      role: userId === "admin-id" ? "admin" : "agent",
     }),
   });
   const app = buildApp({ database, auth });
@@ -2552,7 +2574,7 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const send = vi.fn(async () => ({
     kind: "sent" as const,
@@ -2647,7 +2669,7 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const send = vi.fn(async () => ({
     kind: "unknown" as const,
@@ -2801,7 +2823,7 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {
@@ -2886,7 +2908,7 @@ test("POST /messages/:id/resolve confirms the outcome of unknown sends", async (
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
   const app = buildApp({ database, auth });
   try {

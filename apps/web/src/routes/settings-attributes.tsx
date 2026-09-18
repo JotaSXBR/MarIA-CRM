@@ -7,7 +7,7 @@ import type {
   AttributeEntityType,
   AttributeType,
 } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,11 +47,11 @@ const parseOptions = (raw: string) =>
 function AttributeRow({
   attribute,
   workspaceId,
-  isAdmin,
+  canManage,
 }: {
   attribute: AttributeDefinition;
   workspaceId: string | undefined;
-  isAdmin: boolean;
+  canManage: boolean;
 }) {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState(attribute.label);
@@ -94,6 +94,18 @@ function AttributeRow({
     onError: () => setError("Não foi possível remover o atributo."),
   });
 
+  if (!canManage) {
+    return (
+      <li className="flex flex-wrap items-center gap-2">
+        <span className="text-sm">{attribute.label}</span>
+        <Badge variant="secondary">{TYPE_LABELS[attribute.type]}</Badge>
+        <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+          {attribute.key}
+        </code>
+      </li>
+    );
+  }
+
   return (
     <li className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
@@ -125,17 +137,15 @@ function AttributeRow({
         >
           Salvar
         </Button>
-        {isAdmin ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Remover atributo ${attribute.label}`}
-            onClick={() => remove.mutate()}
-          >
-            <TrashIcon data-icon="inline-start" />
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Remover atributo ${attribute.label}`}
+          onClick={() => remove.mutate()}
+        >
+          <TrashIcon data-icon="inline-start" />
+        </Button>
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -149,7 +159,7 @@ function AttributeRow({
 export function SettingsAttributesPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [entityType, setEntityType] = useState<AttributeEntityType>("contact");
   const [label, setLabel] = useState("");
@@ -210,75 +220,79 @@ export function SettingsAttributesPage() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-attr-entity">Entidade</Label>
-            <select
-              id="new-attr-entity"
-              aria-label="Entidade"
-              value={entityType}
-              onChange={(event) =>
-                setEntityType(event.target.value as AttributeEntityType)
-              }
-              className={selectClass}
-            >
-              {Object.entries(ENTITY_LABELS).map(([value, text]) => (
-                <option key={value} value={value}>
-                  {text}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-attr-label">Nome</Label>
-            <Input
-              id="new-attr-label"
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder="Ex.: Segmento"
-              className="w-44"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-attr-type">Tipo</Label>
-            <select
-              id="new-attr-type"
-              aria-label="Tipo"
-              value={type}
-              onChange={(event) => setType(event.target.value as AttributeType)}
-              className={selectClass}
-            >
-              {Object.entries(TYPE_LABELS).map(([value, text]) => (
-                <option key={value} value={value}>
-                  {text}
-                </option>
-              ))}
-            </select>
-          </div>
-          {type === "select" ? (
+        {canManage ? (
+          <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-attr-options">Opções</Label>
+              <Label htmlFor="new-attr-entity">Entidade</Label>
+              <select
+                id="new-attr-entity"
+                aria-label="Entidade"
+                value={entityType}
+                onChange={(event) =>
+                  setEntityType(event.target.value as AttributeEntityType)
+                }
+                className={selectClass}
+              >
+                {Object.entries(ENTITY_LABELS).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-attr-label">Nome</Label>
               <Input
-                id="new-attr-options"
-                value={options}
-                onChange={(event) => setOptions(event.target.value)}
-                placeholder="Opções separadas por vírgula"
-                className="w-64"
+                id="new-attr-label"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="Ex.: Segmento"
+                className="w-44"
               />
             </div>
-          ) : null}
-          <Button
-            type="submit"
-            size="sm"
-            disabled={
-              !label.trim() ||
-              (type === "select" && parseOptions(options).length === 0) ||
-              createAttribute.isPending
-            }
-          >
-            Criar atributo
-          </Button>
-        </form>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-attr-type">Tipo</Label>
+              <select
+                id="new-attr-type"
+                aria-label="Tipo"
+                value={type}
+                onChange={(event) =>
+                  setType(event.target.value as AttributeType)
+                }
+                className={selectClass}
+              >
+                {Object.entries(TYPE_LABELS).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {type === "select" ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="new-attr-options">Opções</Label>
+                <Input
+                  id="new-attr-options"
+                  value={options}
+                  onChange={(event) => setOptions(event.target.value)}
+                  placeholder="Opções separadas por vírgula"
+                  className="w-64"
+                />
+              </div>
+            ) : null}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                !label.trim() ||
+                (type === "select" && parseOptions(options).length === 0) ||
+                createAttribute.isPending
+              }
+            >
+              Criar atributo
+            </Button>
+          </form>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -303,7 +317,7 @@ export function SettingsAttributesPage() {
                       key={attribute.id}
                       attribute={attribute}
                       workspaceId={workspaceId}
-                      isAdmin={isAdmin}
+                      canManage={canManage}
                     />
                   ))}
                 </ul>

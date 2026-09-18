@@ -6,7 +6,7 @@ import { useWorkspace } from "@/lib/workspace";
 
 export function DealEditor({
   deal,
-  isAdmin,
+  canManage,
   contacts,
   companies,
   onClose,
@@ -14,7 +14,7 @@ export function DealEditor({
   onDeleted,
 }: {
   deal: Deal;
-  isAdmin: boolean;
+  canManage: boolean;
   contacts: Contact[];
   companies: Company[];
   onClose: () => void;
@@ -145,7 +145,7 @@ export function DealEditor({
           >
             Cancelar
           </button>
-          {isAdmin ? (
+          {canManage ? (
             <button
               type="button"
               onClick={() => remove.mutate()}

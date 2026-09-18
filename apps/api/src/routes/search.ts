@@ -42,10 +42,10 @@ export function registerSearchRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
 
   app.get(
     "/search",
@@ -68,7 +68,7 @@ export function registerSearchRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { q } = request.query as { q: string };
       return database.searchEntities(authorized.workspaceId, q);

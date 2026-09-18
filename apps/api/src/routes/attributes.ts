@@ -21,10 +21,10 @@ export function registerAttributeRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
 
   app.get(
     "/attributes",
@@ -47,7 +47,7 @@ export function registerAttributeRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { entityType } = request.query as {
         entityType?: "contact" | "company" | "deal";
@@ -77,12 +77,13 @@ export function registerAttributeRoutes(
         response: {
           201: attributeDefinitionSchema,
           401: { type: "null" },
+          403: { type: "null" },
           409: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const input = request.body as {
         entityType: "contact" | "company" | "deal";
@@ -119,12 +120,13 @@ export function registerAttributeRoutes(
         response: {
           200: attributeDefinitionSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const input = request.body as {
@@ -157,11 +159,8 @@ export function registerAttributeRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteAttribute(
         authorized.workspaceId,
@@ -181,7 +180,7 @@ export function registerEntityAttributeRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
   entity: {
     path: string;
@@ -189,7 +188,7 @@ export function registerEntityAttributeRoutes(
     getParent: (workspaceId: string, id: string) => Promise<unknown>;
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
   const base = `/${entity.path}/:id/attributes`;
 
   app.get(
@@ -207,7 +206,7 @@ export function registerEntityAttributeRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       if (!(await entity.getParent(authorized.workspaceId, id))) {
@@ -232,12 +231,13 @@ export function registerEntityAttributeRoutes(
         response: {
           200: { type: "array", items: entityAttributeSchema },
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { values } = request.body as {

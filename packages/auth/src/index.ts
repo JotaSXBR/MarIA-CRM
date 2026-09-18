@@ -11,7 +11,22 @@ import {
   workspaces,
 } from "@maria/database/schema";
 
-export type UserRole = "admin" | "member";
+export const WORKSPACE_ROLES = ["viewer", "agent", "manager", "admin"] as const;
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+
+export const ROLE_RANK: Record<WorkspaceRole, number> = {
+  viewer: 1,
+  agent: 2,
+  manager: 3,
+  admin: 4,
+};
+
+export function hasWorkspaceRole(
+  role: WorkspaceRole,
+  minimum: WorkspaceRole,
+): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[minimum];
+}
 
 export type AuthPort = {
   login(
@@ -27,12 +42,12 @@ export type AuthPort = {
   authorizeWorkspace(
     userId: string,
     workspaceId: string,
-  ): Promise<{ role: UserRole } | undefined>;
+  ): Promise<{ role: WorkspaceRole } | undefined>;
   listUserWorkspaces(userId: string): Promise<
     {
       workspaceId: string;
       workspaceName: string;
-      role: UserRole;
+      role: WorkspaceRole;
     }[]
   >;
   createUser(input: {
@@ -40,7 +55,7 @@ export type AuthPort = {
     name: string;
     password: string;
     workspaceId?: string | undefined;
-    role?: UserRole | undefined;
+    role?: WorkspaceRole | undefined;
   }): Promise<{ userId: string } | undefined>;
   listUsers(): Promise<
     {
@@ -68,7 +83,7 @@ export type AuthPort = {
     {
       id: string;
       userId: string;
-      role: UserRole;
+      role: WorkspaceRole;
       email: string;
       name: string;
     }[]
@@ -76,12 +91,12 @@ export type AuthPort = {
   addMembership(input: {
     userId: string;
     workspaceId: string;
-    role: UserRole;
+    role: WorkspaceRole;
   }): Promise<"created" | "duplicate" | "not-found">;
   updateMembershipRole(
     workspaceId: string,
     membershipId: string,
-    role: UserRole,
+    role: WorkspaceRole,
   ): Promise<"updated" | "not-found" | "last-admin">;
   removeMembership(
     workspaceId: string,
@@ -183,7 +198,7 @@ export function createLocalAuth(
   const authorizeWorkspace = async (
     userId: string,
     workspaceId: string,
-  ): Promise<{ role: UserRole } | undefined> => {
+  ): Promise<{ role: WorkspaceRole } | undefined> => {
     return database.withWorkspace(workspaceId, async (tx) => {
       const rows = await tx
         .select({ role: memberships.role })
@@ -196,7 +211,7 @@ export function createLocalAuth(
         );
       const membership = rows[0];
       if (!membership) return undefined;
-      return { role: membership.role as UserRole };
+      return { role: membership.role as WorkspaceRole };
     });
   };
 
@@ -218,7 +233,7 @@ export function createLocalAuth(
     name: string;
     password: string;
     workspaceId?: string;
-    role?: UserRole;
+    role?: WorkspaceRole;
   }): Promise<{ userId: string } | undefined> => {
     const normalized = normalizeEmail(input.email);
     const existing = await db
@@ -243,7 +258,7 @@ export function createLocalAuth(
         await tx.insert(memberships).values({
           userId: user.id,
           workspaceId,
-          role: role ?? "member",
+          role: role ?? "agent",
         });
       });
     }
@@ -369,7 +384,7 @@ export function createLocalAuth(
   const addMembership = async (input: {
     userId: string;
     workspaceId: string;
-    role: UserRole;
+    role: WorkspaceRole;
   }): Promise<"created" | "duplicate" | "not-found"> => {
     const user = await db
       .select({ id: users.id })
@@ -413,7 +428,7 @@ export function createLocalAuth(
   const updateMembershipRole = async (
     workspaceId: string,
     membershipId: string,
-    role: UserRole,
+    role: WorkspaceRole,
   ): Promise<"updated" | "not-found" | "last-admin"> => {
     return database.withWorkspace(workspaceId, async (tx) => {
       await lockWorkspaceMemberships(tx, workspaceId);

@@ -16,10 +16,10 @@ export function registerContactRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
   app.get(
     "/contacts",
     {
@@ -41,7 +41,7 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       return database.listContacts(authorized.workspaceId);
     },
@@ -72,12 +72,13 @@ export function registerContactRoutes(
         response: {
           201: contactSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const input = request.body as {
         name: string;
@@ -114,7 +115,7 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const contact = await database.getContact(authorized.workspaceId, id);
@@ -149,12 +150,13 @@ export function registerContactRoutes(
         response: {
           200: contactSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const input = request.body as {
@@ -194,11 +196,8 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteContact(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();
@@ -220,7 +219,7 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const contact = await database.getContact(authorized.workspaceId, id);
@@ -244,7 +243,7 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const contact = await database.getContact(authorized.workspaceId, id);
@@ -269,12 +268,13 @@ export function registerContactRoutes(
         response: {
           201: noteSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { body } = request.body as { body: string };
@@ -303,7 +303,7 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const contact = await database.getContact(authorized.workspaceId, id);
@@ -331,12 +331,13 @@ export function registerContactRoutes(
         response: {
           201: taskSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const input = request.body as { title: string; dueAt?: string | null };
@@ -353,7 +354,7 @@ export function registerContactRoutes(
 
   registerEntityTagRoutes(
     app,
-    { authorizeWorkspaceRequest },
+    { requireWorkspaceRole },
     {
       path: "contacts",
       getParent: (workspaceId, id) => database.getContact(workspaceId, id),
@@ -365,7 +366,7 @@ export function registerContactRoutes(
 
   registerEntityAttributeRoutes(
     app,
-    { database, authorizeWorkspaceRequest },
+    { database, requireWorkspaceRole },
     {
       path: "contacts",
       entityType: "contact",
@@ -393,12 +394,13 @@ export function registerContactRoutes(
         response: {
           200: taskSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const input = request.body as {
@@ -434,11 +436,8 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteTask(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();
@@ -462,11 +461,8 @@ export function registerContactRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteNote(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();

@@ -122,7 +122,7 @@ test("login stores the session token and lands on the inbox", async () => {
     if (url.includes("/me/workspaces")) {
       return new Response(
         JSON.stringify([
-          { workspaceId, workspaceName: "Workspace", role: "member" },
+          { workspaceId, workspaceName: "Workspace", role: "agent" },
         ]),
         { status: 200 },
       );
@@ -475,7 +475,7 @@ test("contact detail shows deals, notes and tasks and posts a new note", async (
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
-            { workspaceId, workspaceName: "Workspace", role: "member" },
+            { workspaceId, workspaceName: "Workspace", role: "agent" },
           ]),
           { status: 200 },
         );
@@ -620,7 +620,7 @@ test("contact detail shows assigned tags and updates assignments", async () => {
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
-            { workspaceId, workspaceName: "Workspace", role: "member" },
+            { workspaceId, workspaceName: "Workspace", role: "manager" },
           ]),
           { status: 200 },
         );
@@ -740,7 +740,7 @@ test("contact detail edits custom attributes via PUT", async () => {
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
-            { workspaceId, workspaceName: "Workspace", role: "member" },
+            { workspaceId, workspaceName: "Workspace", role: "agent" },
           ]),
           { status: 200 },
         );
@@ -838,7 +838,7 @@ test("search page groups results and links to entity details", async () => {
     if (url.includes("/me/workspaces")) {
       return new Response(
         JSON.stringify([
-          { workspaceId, workspaceName: "Workspace", role: "member" },
+          { workspaceId, workspaceName: "Workspace", role: "agent" },
         ]),
         { status: 200 },
       );
@@ -909,7 +909,7 @@ test("company detail shows linked contacts, deals, tasks and notes", async () =>
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
-            { workspaceId, workspaceName: "Workspace", role: "member" },
+            { workspaceId, workspaceName: "Workspace", role: "agent" },
           ]),
           { status: 200 },
         );
@@ -1077,7 +1077,7 @@ test("deal detail shows named deal, tasks and notes", async () => {
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
-            { workspaceId, workspaceName: "Workspace", role: "member" },
+            { workspaceId, workspaceName: "Workspace", role: "agent" },
           ]),
           { status: 200 },
         );

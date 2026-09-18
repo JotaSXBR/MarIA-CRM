@@ -258,12 +258,12 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
   );
   await database.withWorkspace(workspaceA, (tx) =>
     tx.execute(
-      sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceA}, 'member')`,
+      sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceA}, 'agent')`,
     ),
   );
   await database.withWorkspace(workspaceB, (tx) =>
     tx.execute(
-      sql`insert into memberships (user_id, workspace_id, role) values (${userB}, ${workspaceB}, 'member')`,
+      sql`insert into memberships (user_id, workspace_id, role) values (${userB}, ${workspaceB}, 'agent')`,
     ),
   );
   expect(
@@ -278,7 +278,7 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
   await expectRlsRejection(
     database.withWorkspace(workspaceA, (tx) =>
       tx.execute(
-        sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceB}, 'member')`,
+        sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceB}, 'agent')`,
       ),
     ),
   );
@@ -1007,7 +1007,7 @@ test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async (
   );
   await database.withWorkspace(workspaceA, (tx) =>
     tx.execute(
-      sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceA}, 'member')`,
+      sql`insert into memberships (user_id, workspace_id, role) values (${userA}, ${workspaceA}, 'agent')`,
     ),
   );
 

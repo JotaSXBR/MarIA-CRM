@@ -19,12 +19,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import type { Deal, Pipeline, Stage } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 
-function DealCard({ deal }: { deal: Deal }) {
+function DealCard({ deal, canEdit }: { deal: Deal; canEdit: boolean }) {
   const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: deal.id });
+    useSortable({ id: deal.id, disabled: !canEdit });
   const value = formatCurrency(deal.valueCents);
   return (
     <li
@@ -35,7 +35,9 @@ function DealCard({ deal }: { deal: Deal }) {
         navigate({ to: "/deals/$dealId", params: { dealId: deal.id } })
       }
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="cursor-grab rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm active:cursor-grabbing"
+      className={`rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm ${
+        canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      }`}
     >
       <p className="font-medium">{deal.title}</p>
       {value ? <p className="mt-1 text-xs text-slate-500">{value}</p> : null}
@@ -46,12 +48,14 @@ function DealCard({ deal }: { deal: Deal }) {
 function StageColumn({
   stage,
   deals,
-  isAdmin,
+  canEdit,
+  canManage,
   onDeleteStage,
 }: {
   stage: Stage;
   deals: Deal[];
-  isAdmin: boolean;
+  canEdit: boolean;
+  canManage: boolean;
   onDeleteStage: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `stage:${stage.id}` });
@@ -84,7 +88,7 @@ function StageColumn({
     <div className="flex w-64 shrink-0 flex-col rounded-xl border border-slate-200 bg-slate-100">
       <div className="flex items-center justify-between px-3 py-2">
         <h3 className="text-sm font-semibold">{stage.name}</h3>
-        {isAdmin ? (
+        {canManage ? (
           <button
             aria-label={`Remover etapa ${stage.name}`}
             onClick={() => onDeleteStage(stage.id)}
@@ -104,27 +108,29 @@ function StageColumn({
         >
           <ul className="space-y-2 py-1">
             {deals.map((deal) => (
-              <DealCard key={deal.id} deal={deal} />
+              <DealCard key={deal.id} deal={deal} canEdit={canEdit} />
             ))}
           </ul>
         </SortableContext>
       </div>
-      <form onSubmit={submit} className="flex gap-1 p-2">
-        <input
-          aria-label={`Novo negócio em ${stage.name}`}
-          placeholder="Novo negócio"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
-        />
-        <button
-          type="submit"
-          aria-label={`Adicionar em ${stage.name}`}
-          className="rounded-lg bg-indigo-600 px-2 text-sm text-white hover:bg-indigo-700"
-        >
-          +
-        </button>
-      </form>
+      {canEdit ? (
+        <form onSubmit={submit} className="flex gap-1 p-2">
+          <input
+            aria-label={`Novo negócio em ${stage.name}`}
+            placeholder="Novo negócio"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+          />
+          <button
+            type="submit"
+            aria-label={`Adicionar em ${stage.name}`}
+            className="rounded-lg bg-indigo-600 px-2 text-sm text-white hover:bg-indigo-700"
+          >
+            +
+          </button>
+        </form>
+      ) : null}
     </div>
   );
 }
@@ -132,7 +138,8 @@ function StageColumn({
 export function PipelinesPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [pipelineId, setPipelineId] = useState<string | null>(null);
   const [newPipeline, setNewPipeline] = useState("");
@@ -247,6 +254,7 @@ export function PipelinesPage() {
   });
 
   const onDragEnd = (event: DragEndEvent) => {
+    if (!canEdit) return;
     const dealId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
     if (!overId) return;
@@ -291,7 +299,7 @@ export function PipelinesPage() {
             ))}
           </select>
         ) : null}
-        {isAdmin ? (
+        {canManage ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -333,11 +341,12 @@ export function PipelinesPage() {
                 key={stage.id}
                 stage={stage}
                 deals={dealsByStage.get(stage.id) ?? []}
-                isAdmin={isAdmin}
+                canEdit={canEdit}
+                canManage={canManage}
                 onDeleteStage={(id) => deleteStage.mutate(id)}
               />
             ))}
-            {isAdmin ? (
+            {canManage ? (
               <form
                 onSubmit={(event) => {
                   event.preventDefault();

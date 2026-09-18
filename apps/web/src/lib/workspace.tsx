@@ -2,10 +2,37 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api.ts";
 
+export type WorkspaceRole = "viewer" | "agent" | "manager" | "admin";
+
 export type WorkspaceMembership = {
   workspaceId: string;
   workspaceName: string;
-  role: "admin" | "member";
+  role: WorkspaceRole;
+};
+
+const WORKSPACE_ROLE_RANK: Record<WorkspaceRole, number> = {
+  viewer: 1,
+  agent: 2,
+  manager: 3,
+  admin: 4,
+};
+
+/** UI visibility helper only — the API enforces the same rank server-side. */
+export function hasWorkspaceRole(
+  role: WorkspaceRole | undefined,
+  minimum: WorkspaceRole,
+): boolean {
+  return (
+    role !== undefined &&
+    WORKSPACE_ROLE_RANK[role] >= WORKSPACE_ROLE_RANK[minimum]
+  );
+}
+
+export const WORKSPACE_ROLE_LABELS: Record<WorkspaceRole, string> = {
+  viewer: "Viewer",
+  agent: "Agente",
+  manager: "Manager",
+  admin: "Admin",
 };
 
 export type SessionUser = {

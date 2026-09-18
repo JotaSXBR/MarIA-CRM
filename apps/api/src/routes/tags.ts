@@ -17,10 +17,10 @@ export function registerTagRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
 
   app.get(
     "/tags",
@@ -35,7 +35,7 @@ export function registerTagRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       return database.listTags(authorized.workspaceId);
     },
@@ -59,12 +59,13 @@ export function registerTagRoutes(
         response: {
           201: tagSchema,
           401: { type: "null" },
+          403: { type: "null" },
           409: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const input = request.body as {
         name: string;
@@ -95,13 +96,14 @@ export function registerTagRoutes(
         response: {
           200: tagSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           409: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const existing = await database.getTag(authorized.workspaceId, id);
@@ -132,11 +134,8 @@ export function registerTagRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteTag(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();
@@ -152,7 +151,7 @@ type TagRow = Awaited<ReturnType<RouteDatabase["listTags"]>>[number];
 export function registerEntityTagRoutes(
   app: FastifyInstance,
   deps: {
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
   entity: {
     path: string;
@@ -165,7 +164,7 @@ export function registerEntityTagRoutes(
     ) => Promise<TagRow[] | undefined>;
   },
 ) {
-  const { authorizeWorkspaceRequest } = deps;
+  const { requireWorkspaceRole } = deps;
   const base = `/${entity.path}/:id/tags`;
 
   app.get(
@@ -183,7 +182,7 @@ export function registerEntityTagRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       if (!(await entity.getParent(authorized.workspaceId, id))) {
@@ -204,12 +203,13 @@ export function registerEntityTagRoutes(
         response: {
           200: { type: "array", items: tagSchema },
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { tagIds } = request.body as { tagIds: string[] };
