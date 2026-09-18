@@ -25,7 +25,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - run: npm install --global pnpm@11.26.0 --ignore-scripts
+      # pnpm 12 requires its install script: it relinks the placeholder bin to the
+      # native @pnpm/exe binary. With --ignore-scripts the bin stays a shell-only
+      # script and direct spawns (e.g. turbo) fail with ENOEXEC.
+      - run: npm install --global pnpm@12.4.2
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Validate local Compose configuration
         run: docker compose -f docker/compose.yaml config --quiet

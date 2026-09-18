@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## Verify first
 
@@ -12,11 +12,10 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#66 merged (skill audit, lint → 0 warnings,
+- `main` — PRs #61–#67 merged (skill audit, lint → 0 warnings,
   NULL-distinct comments, code-simplifier per-slice, PR label rule,
-  contact↔company link + company detail page). PR #67 open
-  (`chore/pnpm-12`): pnpm 11.26.0 → 12.4.2.
-- Branch `feat/deal-detail` — Slice 5 implemented and verified locally:
+  contact↔company link + company detail page, pnpm 12.4.2 upgrade).
+- Branch `feat/deal-detail` (PR #68) — Slice 5 implemented and verified:
   `GET /deals/:id` returns pipeline/stage/contact/company names; aggregate
   routes `GET|POST /deals/:id/{notes,tasks}` with parent 404; deal detail
   page `/deals/$dealId` (header, edit via `DealEditor`, tasks/notes CRUD);
@@ -37,8 +36,34 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#66 merged; PR #67 (pnpm 12.4.2) open.
+- `main` (2026-09-18): PRs #61–#67 merged; PR #68 (deal detail) open.
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- pnpm 12.4.2 merged via PR #67 (`chore/pnpm-12`): all pins moved
+  (`package.json#packageManager`, `ci.yml`, `api.Dockerfile`,
+  `AGENTS.md` baseline). pnpm 12 writes a two-document `pnpm-lock.yaml`:
+  doc 1 pins the package-manager itself (`packageManagerDependencies` for
+  `pnpm@12.4.2` plus `@pnpm/exe.*` platform binaries with integrity), doc 2
+  is the unchanged project lockfile — expected, not corruption;
+  `--frozen-lockfile` accepts it and adds a "supply-chain policies"
+  verification step.
+  Global install note: pnpm 12 ships a shebang-less placeholder `pnpm` bin
+  that its `install.js` replaces with the native `@pnpm/exe` binary.
+  `npm i -g pnpm@12.4.2 --ignore-scripts` skips that step — the bin then
+  only works through a shell (bash ENOEXEC fallback) and any direct
+  `execvp` spawn (turbo tasks, `strace`) fails with
+  `Exec format error (os error 8)`. This broke PR #67 CI's `pnpm verify`
+  (turbo spawns `pnpm run typecheck` per package) until `--ignore-scripts`
+  was removed from the global-install lines in `ci.yml`/`api.Dockerfile`.
+  Keep `--ignore-scripts` on `pnpm install` itself (allowBuilds policy).
+  Verified via clean `node:24-bookworm-slim` clone:
+  `--ignore-scripts` reproduces the ENOEXEC, without it `/usr/local/bin/pnpm`
+  is ELF and `turbo run typecheck --force` passes 6/6 real spawns.
+- Checks (`chore/pnpm-12` dirty tree, 2026-09-18, Windows/pnpm 12.4.2):
+  `pnpm install --frozen-lockfile --ignore-scripts` green; `pnpm fmt:check`
+  clean; oxlint 0/0; `pnpm typecheck` 6/6; `pnpm test` all green;
+  `pnpm test:integration` api 37/37, database 22/22, auth 5/5;
+  `pnpm build` 6/6; `pnpm --filter @maria/api deploy --prod` green;
+  `pnpm audit --prod` clean.
 - Slice 5 on `feat/deal-detail` (2026-09-18, Windows/pnpm):
   - `dealsWithNames` gained `contactName`/`companyName` leftJoins;
     `getDeal` now resolves through it (named deal for the detail view).
@@ -63,7 +88,7 @@ gh pr status
   card→detail→editor flow); `pnpm test:integration` api 38/38 (new deal
   routes test), database 22/22 (dealId filters + getDeal names), auth
   5/5; `pnpm build` 6/6.
-- Slice 4 on `feat/contact-company-link` (2026-09-17, Windows/pnpm):
+- Slice 4 merged via PR #66 (branch `feat/contact-company-link`):
   - `packages/database/src/schema.ts` + migration
     `0014_contact_company_link.sql`: nullable `contacts.company_id` FK →
     `companies.id` + partial `contacts_company_active_idx`
@@ -89,7 +114,7 @@ gh pr status
   - Per-slice `code-simplifier` pass applied: contactSchema deduplicated
     into shared.ts; aggregate routes gained parent-existence 404 for parity
     with contact detail routes; dead flex wrapper dropped.
-- Checks (dirty tree on `feat/contact-company-link`, 2026-09-17,
+- Checks (Slice 4, 2026-09-17,
   Windows/pnpm): `pnpm fmt:check` clean; oxlint direct
   (`pnpm exec oxlint --type-aware apps packages`) **0 warnings/0 errors**;
   `pnpm typecheck` 6/6; `pnpm test` api 26/26, web 8/8 (new company-detail
@@ -198,7 +223,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Commit `feat/deal-detail`; push + PR (label `enhancement`).
+1. Merge PR #68 (`feat/deal-detail`) once checks pass.
 2. Tags/custom attributes, then global search.
 3. Company detail write paths (`POST /companies/:id/{notes,tasks}`) if parity
    with the deal detail hub is wanted.
