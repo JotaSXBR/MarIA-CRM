@@ -12,15 +12,13 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#72 merged (…workspace tags, company write paths,
-  custom attributes via ADR 0014, global search).
-- CRM domain gaps from the original roadmap are closed. New product
-  priority: **onboarding + workspace roles** (master user → self-administered
-  workspaces → Admin/Manager/Agente/Viewer).
-- Branch `docs/onboarding-roles` — research + proposed ADR 0015
-  (roles rank, `/setup` first-run, invitations, delegated membership admin,
-  workspace onboarding wizard). Pending product-owner review before any
-  implementation slice.
+- `main` — PRs #61–#73 merged (…workspace tags, company write paths,
+  custom attributes via ADR 0014, global search, accepted ADR 0015).
+- Product phases and the per-slice decision process are being recorded in
+  `ROADMAP.md` on branch `docs/development-phases` (documentation-only).
+- Next implementation target: **Phase 1.1 — central workspace RBAC**
+  (rank `viewer<agent<manager<admin>`, `member`→`agent`,
+  `ROLE_RANK`/`requireWorkspaceRole`) per accepted ADR 0015.
 
 ## Memory model
 
@@ -46,13 +44,15 @@ gh pr status
     fazer-ai's `/setup` boot-token + advisory-lock bootstrap + hashed-token
     `Invitation`. Both map cleanly onto existing `is_admin` +
     `memberships.role` axes and the ADR 0011 lock protocol.
-  - ADR 0015 drafted as **proposed**: role rank
-    `viewer<agent<manager<admin>` (`member`→`agent`), `/setup` first-run,
-    workspace invitations (copyable link, no SMTP), workspace admins
-    managing their own memberships (supersedes ADR 0011 restriction),
+  - ADR 0015 **accepted**, merged via PR #73 (merge commit `a60bf67`,
+    2026-09-18): role rank `viewer<agent<manager<admin>`
+    (`member`→`agent`), `/setup` first-run, workspace invitations
+    (copyable link, no SMTP), workspace admins managing their own
+    memberships (supersedes ADR 0011 restriction),
     `workspaces.onboarding_state` + step-registry wizard, initial
     capability matrix.
-  - Docs-only branch; no code changed, no gates run beyond reading.
+  - `docs/development-phases` records the product phases and slice
+    decision process in `ROADMAP.md`; docs-only, no code changed.
 - Slice 9 on `feat/global-search` (2026-09-18, Windows/pnpm):
   - DB `searchEntities`: three ILIKE substring queries in one
     `withWorkspace` — contacts (name/email/phone), companies (name),
@@ -337,7 +337,6 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
-- CRM domain gaps remain open work: no global search.
 
 ## Deferred from the code-simplifier review
 
@@ -348,12 +347,11 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Product-owner review of ADR 0015 (`docs/onboarding-roles`): approve,
-   adjust the capability matrix/role names, then open the PR (label
-   `documentation`).
-2. After acceptance, implementation slices in order: (a) role rank +
-   `requireWorkspaceRole` guard + `member`→`agent` migration;
-   (b) `/setup` first-run; (c) invitations + accept page;
-   (d) delegated membership management + members UI;
-   (e) onboarding wizard (state blob + step registry + pages).
-3. Deferred alternative: attribute-based filtering in list views.
+1. Merge the `docs/development-phases` documentation PR (ROADMAP.md,
+   ADR 0015 acceptance, README/AGENTS links).
+2. Start Phase 1.1 on a fresh feature branch: first map the exact route
+   capability table and migration/test surface.
+3. Then implement ranked roles, `requireWorkspaceRole`, `member`→`agent`,
+   and the required DB/API/auth tests.
+4. Reassess before Phase 1.2 `/setup`.
+5. Deferred alternative: attribute-based filtering in list views.

@@ -14,6 +14,7 @@ workspace-scoped list, create, read, update and soft-delete endpoints, and
 global admins. Workers are not implemented yet. The web app has a login flow,
 workspace selection, a drag-and-drop Kanban board, contacts/companies CRUD
 screens, and an admin panel backed by the API.
+The living development sequence and per-slice decision process are recorded in [ROADMAP.md](ROADMAP.md).
 
 ## Development
 
