@@ -1279,3 +1279,175 @@ test("/setup redirects to login once the install is complete", async () => {
   renderApp("/setup");
   expect(await screen.findByRole("heading", { name: "Entrar" })).toBeDefined();
 });
+
+test("invite acceptance creates the account and lands on the inbox", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const posted: unknown[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/invitations/invite-token")) {
+        return new Response(
+          JSON.stringify({
+            email: "agent@example.com",
+            workspaceId,
+            workspaceName: "Acme",
+            role: "agent",
+            expiresAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/invitations/invite-token/accept")) {
+        posted.push(JSON.parse(init!.body as string));
+        return new Response(JSON.stringify({ token: "session-token" }), {
+          status: 201,
+        });
+      }
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Acme", role: "agent" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "agent@example.com",
+            name: "Agent",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations") || url.includes("/contacts")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/invite/invite-token");
+  expect(
+    await screen.findByRole("heading", { name: "Convite para Acme" }),
+  ).toBeDefined();
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Nome"), "Agent");
+  await user.type(screen.getByLabelText("Senha"), "agent-password");
+  await user.click(
+    screen.getByRole("button", { name: "Criar conta e entrar" }),
+  );
+
+  await waitFor(() =>
+    expect(posted).toEqual([{ name: "Agent", password: "agent-password" }]),
+  );
+  expect(localStorage.getItem("maria.token")).toBe("session-token");
+  expect(localStorage.getItem("maria.workspace")).toBe(workspaceId);
+  expect(
+    await screen.findByRole("heading", { name: "Caixa de entrada" }),
+  ).toBeDefined();
+});
+
+test("invite page explains consumed and invalid links", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.endsWith("/invitations/gone")) {
+      return new Response(null, { status: 410 });
+    }
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/invite/gone");
+  expect(
+    await screen.findByRole("heading", { name: "Convite indisponível" }),
+  ).toBeDefined();
+  expect(await screen.findByRole("alert")).toHaveProperty(
+    "textContent",
+    expect.stringContaining("expirou"),
+  );
+
+  cleanup();
+  renderApp("/invite/unknown");
+  expect(await screen.findByRole("alert")).toHaveProperty(
+    "textContent",
+    expect.stringContaining("inválido"),
+  );
+});
+
+test("settings members page lists the team and issues invite links", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  setToken("session-token");
+  const posted: unknown[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Acme", role: "admin" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "admin@example.com",
+            name: "Admin",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/members")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174002",
+              userId: "123e4567-e89b-12d3-a456-426614174001",
+              role: "admin",
+              email: "admin@example.com",
+              name: "Admin",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/invitations") && init?.method === "POST") {
+        posted.push(JSON.parse(init.body as string));
+        return new Response(
+          JSON.stringify({
+            id: "123e4567-e89b-12d3-a456-426614174003",
+            token: "plaintext-token",
+            expiresAt: new Date().toISOString(),
+          }),
+          { status: 201 },
+        );
+      }
+      if (url.includes("/invitations")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/settings/members");
+  expect(await screen.findAllByText("Equipe")).not.toHaveLength(0);
+  expect(await screen.findByText("admin@example.com")).toBeDefined();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Email"), "novo@example.com");
+  await user.click(screen.getByRole("button", { name: "Criar convite" }));
+
+  await waitFor(() =>
+    expect(posted).toEqual([{ email: "novo@example.com", role: "agent" }]),
+  );
+  expect(await screen.findByText(/\/invite\/plaintext-token/)).toBeDefined();
+});

@@ -1,10 +1,11 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import bcryptjs from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, gt, ne, sql } from "drizzle-orm";
+import { eq, and, gt, ne, sql, isNull, desc } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { Database } from "@maria/database";
 import {
+  invitations,
   memberships,
   organizations,
   sessions,
@@ -103,6 +104,66 @@ export type AuthPort = {
     workspaceId: string,
     membershipId: string,
   ): Promise<"removed" | "not-found" | "last-admin">;
+  /** Workspace-scoped invitation lifecycle (ADR 0015 item 5). The plaintext
+   * token is returned exactly once at creation; only its sha256 hash is
+   * persisted. The caller must already be authorized for the workspace. */
+  createInvitation(input: {
+    workspaceId: string;
+    email: string;
+    role: WorkspaceRole;
+    invitedBy: string;
+  }): Promise<
+    | { id: string; token: string; expiresAt: Date }
+    | "already-member"
+    | "conflict"
+  >;
+  /** Live (unconsumed) invitations for a workspace, newest first. */
+  listInvitations(workspaceId: string): Promise<
+    {
+      id: string;
+      email: string;
+      role: WorkspaceRole;
+      expiresAt: Date;
+      createdAt: Date;
+    }[]
+  >;
+  /** Consumes a live invitation without creating a membership. Cross-workspace
+   * ids are invisible to the scoped transaction and return "not-found". */
+  revokeInvitation(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<"revoked" | "not-found">;
+  /** Public token lookup — the token hash itself authorizes reading its own
+   * row (app.invite_token_hash scope); no workspace context is required. */
+  previewInvitation(token: string): Promise<
+    | {
+        email: string;
+        workspaceId: string;
+        workspaceName: string;
+        role: WorkspaceRole;
+        expiresAt: Date;
+      }
+    | "invalid"
+    | "unusable"
+  >;
+  /** Atomic acceptance: resolves the invitee (creates a new user or attaches
+   * an authenticated one), inserts the membership and consumes the invitation
+   * in a single transaction serialized on the invitation row. Failed identity
+   * checks leave the invitation live so it can be retried. */
+  acceptInvitation(
+    token: string,
+    input: { name?: string; password?: string; userId?: string },
+  ): Promise<
+    | {
+        kind: "created" | "attached" | "already-member";
+        userId: string;
+        email: string;
+      }
+    | "invalid"
+    | "unusable"
+    | "user-exists"
+    | "email-mismatch"
+  >;
   /** First-run gate: true while the `users` table is empty (ADR 0015). */
   setupRequired(): Promise<boolean>;
   /** Atomic first-run bootstrap: master `is_admin` user, implicit
@@ -123,6 +184,7 @@ export type LocalAuthConfig = {
 };
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function hashPassword(password: string, rounds = 10): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -488,6 +550,259 @@ export function createLocalAuth(
     });
   };
 
+  const inviteTokenHash = (token: string): string =>
+    createHash("sha256").update(token).digest("hex");
+
+  const createInvitation = async (input: {
+    workspaceId: string;
+    email: string;
+    role: WorkspaceRole;
+    invitedBy: string;
+  }): Promise<
+    | { id: string; token: string; expiresAt: Date }
+    | "already-member"
+    | "conflict"
+  > =>
+    database.withWorkspace(input.workspaceId, async (tx) => {
+      const email = normalizeEmail(input.email);
+      const memberRows = await tx
+        .select({ id: memberships.id })
+        .from(memberships)
+        .innerJoin(users, eq(users.id, memberships.userId))
+        .where(
+          and(
+            eq(memberships.workspaceId, input.workspaceId),
+            eq(users.email, email),
+          ),
+        )
+        .limit(1);
+      if (memberRows[0]) return "already-member";
+      // One live invitation per (workspace, email): predecessors are revoked
+      // before the insert; the partial unique index serializes races.
+      const now = new Date();
+      await tx
+        .update(invitations)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(invitations.workspaceId, input.workspaceId),
+            eq(invitations.email, email),
+            isNull(invitations.consumedAt),
+          ),
+        );
+      const token = randomBytes(24).toString("base64url");
+      const expiresAt = new Date(now.getTime() + INVITATION_TTL_MS);
+      try {
+        const rows = await tx
+          .insert(invitations)
+          .values({
+            email,
+            workspaceId: input.workspaceId,
+            role: input.role,
+            tokenHash: inviteTokenHash(token),
+            expiresAt,
+            invitedBy: input.invitedBy,
+          })
+          .returning({ id: invitations.id });
+        const row = rows[0];
+        if (!row) throw new Error("invitation insert returned no row");
+        return { id: row.id, token, expiresAt };
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "23505"
+        ) {
+          return "conflict";
+        }
+        throw error;
+      }
+    });
+
+  const listInvitations = async (workspaceId: string) =>
+    database.withWorkspace(workspaceId, (tx) =>
+      tx
+        .select({
+          id: invitations.id,
+          email: invitations.email,
+          role: invitations.role,
+          expiresAt: invitations.expiresAt,
+          createdAt: invitations.createdAt,
+        })
+        .from(invitations)
+        .where(
+          and(
+            eq(invitations.workspaceId, workspaceId),
+            isNull(invitations.consumedAt),
+          ),
+        )
+        .orderBy(desc(invitations.createdAt)),
+    );
+
+  const revokeInvitation = async (
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<"revoked" | "not-found"> =>
+    database.withWorkspace(workspaceId, async (tx) => {
+      const rows = await tx
+        .update(invitations)
+        .set({ consumedAt: new Date() })
+        .where(
+          and(eq(invitations.id, invitationId), isNull(invitations.consumedAt)),
+        )
+        .returning({ id: invitations.id });
+      return rows[0] ? "revoked" : "not-found";
+    });
+
+  const previewInvitation = async (
+    token: string,
+  ): Promise<
+    | {
+        email: string;
+        workspaceId: string;
+        workspaceName: string;
+        role: WorkspaceRole;
+        expiresAt: Date;
+      }
+    | "invalid"
+    | "unusable"
+  > => {
+    const tokenHash = inviteTokenHash(token);
+    return database.withInvitation(tokenHash, async (tx) => {
+      const rows = await tx
+        .select({
+          email: invitations.email,
+          role: invitations.role,
+          expiresAt: invitations.expiresAt,
+          consumedAt: invitations.consumedAt,
+          workspaceId: invitations.workspaceId,
+          workspaceName: workspaces.name,
+        })
+        .from(invitations)
+        .innerJoin(workspaces, eq(workspaces.id, invitations.workspaceId))
+        .where(eq(invitations.tokenHash, tokenHash))
+        .limit(1);
+      const invite = rows[0];
+      if (!invite) return "invalid";
+      if (invite.consumedAt || invite.expiresAt <= new Date()) {
+        return "unusable";
+      }
+      return {
+        email: invite.email,
+        workspaceId: invite.workspaceId,
+        workspaceName: invite.workspaceName,
+        role: invite.role,
+        expiresAt: invite.expiresAt,
+      };
+    });
+  };
+
+  const acceptInvitation = async (
+    token: string,
+    input: { name?: string; password?: string; userId?: string },
+  ): Promise<
+    | {
+        kind: "created" | "attached" | "already-member";
+        userId: string;
+        email: string;
+      }
+    | "invalid"
+    | "unusable"
+    | "user-exists"
+    | "email-mismatch"
+  > => {
+    const tokenHash = inviteTokenHash(token);
+    return database.withInvitation(tokenHash, async (tx) => {
+      const rows = await tx
+        .select({
+          id: invitations.id,
+          email: invitations.email,
+          role: invitations.role,
+          workspaceId: invitations.workspaceId,
+          expiresAt: invitations.expiresAt,
+          consumedAt: invitations.consumedAt,
+        })
+        .from(invitations)
+        .where(eq(invitations.tokenHash, tokenHash))
+        .limit(1);
+      const invite = rows[0];
+      if (!invite) return "invalid";
+      if (invite.consumedAt || invite.expiresAt <= new Date()) {
+        return "unusable";
+      }
+      // Identity resolution happens before consumption so a failed check
+      // (existing account, mismatched session) leaves the invitation live.
+      let userId: string | undefined;
+      let kind: "created" | "attached";
+      let passwordHash: string | undefined;
+      if (input.userId) {
+        const callers = await tx
+          .select({ id: users.id, email: users.email })
+          .from(users)
+          .where(eq(users.id, input.userId))
+          .limit(1);
+        const caller = callers[0];
+        if (!caller || caller.email !== invite.email) {
+          return "email-mismatch";
+        }
+        userId = caller.id;
+        kind = "attached";
+      } else {
+        const existing = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, invite.email))
+          .limit(1);
+        if (existing[0]) return "user-exists";
+        if (!input.name || !input.password) return "invalid";
+        passwordHash = await hashPassword(input.password);
+        kind = "created";
+      }
+      // Workspace scope is required for the membership insert; the invitation
+      // row stays visible through the token-hash policy clause.
+      await tx.execute(
+        sql`select set_config('app.workspace_id', ${invite.workspaceId}, true)`,
+      );
+      // Consumption is atomic: racing acceptors serialize on the row lock and
+      // the loser re-evaluates consumed_at as set — before touching users.
+      const consumed = await tx
+        .update(invitations)
+        .set({ consumedAt: new Date() })
+        .where(
+          and(eq(invitations.id, invite.id), isNull(invitations.consumedAt)),
+        )
+        .returning({ id: invitations.id });
+      if (!consumed[0]) return "unusable";
+      if (kind === "created") {
+        const inserted = await tx
+          .insert(users)
+          .values({
+            email: invite.email,
+            name: input.name!,
+            passwordHash: passwordHash!,
+          })
+          .returning({ id: users.id });
+        const user = inserted[0];
+        if (!user) throw new Error("invitation failed to create the user");
+        userId = user.id;
+      }
+      if (!userId) throw new Error("invitation resolved no user");
+      const membership = await tx
+        .insert(memberships)
+        .values({
+          userId,
+          workspaceId: invite.workspaceId,
+          role: invite.role,
+        })
+        .onConflictDoNothing()
+        .returning({ id: memberships.id });
+      if (!membership[0]) {
+        return { kind: "already-member", userId, email: invite.email };
+      }
+      return { kind, userId, email: invite.email };
+    });
+  };
+
   const setupRequired = async (): Promise<boolean> => {
     const rows = await db.select({ id: users.id }).from(users).limit(1);
     return rows.length === 0;
@@ -568,6 +883,11 @@ export function createLocalAuth(
     addMembership,
     updateMembershipRole,
     removeMembership,
+    createInvitation,
+    listInvitations,
+    revokeInvitation,
+    previewInvitation,
+    acceptInvitation,
     setupRequired,
     completeSetup,
     seedAdmin,

@@ -135,3 +135,27 @@ export type ChannelInstance = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type WorkspaceMember = {
+  id: string;
+  userId: string;
+  role: "viewer" | "agent" | "manager" | "admin";
+  email: string;
+  name: string;
+};
+
+export type Invitation = {
+  id: string;
+  email: string;
+  role: "viewer" | "agent" | "manager" | "admin";
+  expiresAt: string;
+  createdAt: string;
+};
+
+export type InvitationPreview = {
+  email: string;
+  workspaceId: string;
+  workspaceName: string;
+  role: "viewer" | "agent" | "manager" | "admin";
+  expiresAt: string;
+};

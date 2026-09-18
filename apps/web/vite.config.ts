@@ -27,6 +27,10 @@ export default defineConfig({
       },
       "/me": api,
       "/admin": api,
+      "/members": api,
+      // `/invitations` API calls proxy through; the SPA acceptance route lives
+      // at `/invite/$token` so there is no path collision.
+      "/invitations": api,
       "/contacts": api,
       "/companies": api,
       "/pipelines": api,

@@ -11,7 +11,7 @@ import type { Database } from "@maria/database";
  * composition root. */
 export type RouteDatabase = Omit<
   Database,
-  "close" | "withWorkspace" | "withUser"
+  "close" | "withWorkspace" | "withUser" | "withInvitation"
 >;
 
 export function extractBearerToken(

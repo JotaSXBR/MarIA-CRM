@@ -65,6 +65,15 @@ keep `ADMIN_EMAIL`/`ADMIN_PASSWORD` to seed the master non-interactively and ski
 entirely. Global administration alone does not grant CRM membership; the setup flow adds
 the master as `admin` of the first workspace so it can operate there.
 
+Workspace managers/admins invite teammates from **Settings → Equipe** (no SMTP required):
+`POST /invitations` returns a one-time plaintext token rendered as a copyable
+`/invite/<token>` link; only its sha256 hash is persisted, invitations expire after 7 days
+and at most one live invitation exists per `(workspace_id, email)`. Invited roles are
+`viewer`/`agent`/`manager` only — `admin` is never invitable and a grant must stay below
+the inviter's rank. `GET /invitations/:token` previews the invite publicly and
+`POST /invitations/:token/accept` either creates a new account (name + password) or
+attaches an authenticated user, consuming the invitation atomically.
+
 After env seeding, log in using the bootstrap administrator, create an
 organization/workspace in Administration and add the administrator as a workspace member.
 Select that workspace to use contacts, companies and Kanban.

@@ -70,10 +70,10 @@ export function createDatabase(pool: Pool) {
   type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   const scopedTransaction = async <T>(
-    setting: { name: string; value: string },
+    setting: { name: string; value: string; uuid?: boolean },
     callback: (tx: DrizzleTx) => Promise<T>,
   ) => {
-    if (!uuid.test(setting.value)) {
+    if (setting.uuid !== false && !uuid.test(setting.value)) {
       throw new TypeError(`${setting.name} must be a UUID`);
     }
 
@@ -107,6 +107,18 @@ export function createDatabase(pool: Pool) {
     userId: string,
     callback: (tx: DrizzleTx) => Promise<T>,
   ) => scopedTransaction({ name: "app.user_id", value: userId }, callback);
+
+  /** Invite-token scope: the token hash itself authorizes reading exactly
+   * its own invitation row (ADR 0015 item 5); the value is always bound as
+   * a parameter, never interpolated. */
+  const withInvitation = <T>(
+    tokenHash: string,
+    callback: (tx: DrizzleTx) => Promise<T>,
+  ) =>
+    scopedTransaction(
+      { name: "app.invite_token_hash", value: tokenHash, uuid: false },
+      callback,
+    );
 
   const contactColumns = {
     id: contacts.id,
@@ -2063,6 +2075,8 @@ export function createDatabase(pool: Pool) {
     withWorkspace,
     // Same contract for user-scoped reads (e.g. own memberships via app.user_id).
     withUser,
+    // Same contract for invitation-token-scoped reads (token IS the credential).
+    withInvitation,
   };
 }
 
