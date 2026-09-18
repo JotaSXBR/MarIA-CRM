@@ -61,8 +61,10 @@ During work:
   references. Research is read-only and does not authorize copying code, installing dependencies
   or changing architecture; verify provenance and license, and record adopted material tradeoffs
   in the relevant ADR or PR.
-- The `code-simplifier` skill is a read-only review when requested; apply its findings only
-  within an explicitly authorized implementation task. Reuse authorization already given.
+- The `code-simplifier` skill runs as a per-slice review before tests, commits and PRs:
+  it applies safe, behavior-preserving simplifications within the authorized task scope
+  and reports — never silently changes — architectural or behavioral findings.
+  Repository-wide analysis only on explicit request.
 
 Before completion, run required gates for the touched scope, inspect the final diff/status and report
 **evidence**: tests, migrations, risks, assumptions and manual checks.

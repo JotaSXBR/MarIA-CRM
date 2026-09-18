@@ -32,6 +32,14 @@ function renderApp(initialPath: string) {
   return router;
 }
 
+function requestUrl(input: RequestInfo | URL) {
+  return typeof input === "string"
+    ? input
+    : "url" in input
+      ? input.url
+      : input.href;
+}
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -105,7 +113,7 @@ test("settings profile updates the user name via PATCH /me", async () => {
 test("login stores the session token and lands on the inbox", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url = requestUrl(input);
     if (url.includes("/auth/login")) {
       return new Response(JSON.stringify({ token: "session-token" }), {
         status: 200,
@@ -158,7 +166,7 @@ test("pipelines board renders stages and deals for the workspace", async () => {
   const stageId = "123e4567-e89b-12d3-a456-426614174011";
   setToken("session-token");
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url = requestUrl(input);
     if (url.includes("/me/workspaces")) {
       return new Response(
         JSON.stringify([
@@ -226,7 +234,7 @@ test("pipelines board renders stages and deals for the workspace", async () => {
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).includes(
+        requestUrl(input).includes(
           `/deals?pipelineId=${pipelineId}&workspaceId=${workspaceId}`,
         ),
       ),
@@ -253,7 +261,7 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
   };
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = requestUrl(input);
       if (url.includes("/me/workspaces")) {
         return new Response(
           JSON.stringify([
@@ -342,9 +350,11 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
   await waitFor(() =>
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
-        if (!String(input).includes(`/deals/${dealId}`)) return false;
-        if (init?.method !== "PATCH") return false;
-        const body = JSON.parse(String(init.body)) as {
+        if (!requestUrl(input).includes(`/deals/${dealId}`)) return false;
+        if (init?.method !== "PATCH" || typeof init.body !== "string") {
+          return false;
+        }
+        const body = JSON.parse(init.body) as {
           title: string;
           valueCents: number;
           contactId: string;
@@ -365,7 +375,7 @@ test("admin page renders sections for global admins and denies members", async (
   const userId = "123e4567-e89b-12d3-a456-426614174030";
   setToken("session-token");
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url = requestUrl(input);
     if (url.endsWith("/me")) {
       return new Response(
         JSON.stringify({
