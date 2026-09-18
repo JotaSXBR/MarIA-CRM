@@ -56,6 +56,13 @@ export type EntityDeal = {
 
 export type DealDetail = Deal & EntityDeal;
 
+export type Tag = {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: string;
+};
+
 export type Note = {
   id: string;
   body: string;

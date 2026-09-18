@@ -1,13 +1,26 @@
-import { and, desc, eq, isNull, lt, sql, type SQLWrapper } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  sql,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { generateKeyBetween } from "fractional-indexing";
 import type { Pool } from "pg";
 import {
   channelInstances,
   companies,
+  companyTags,
   contacts,
+  contactTags,
   conversations,
   deals,
+  dealTags,
   dispatchAttempts,
   dispatchIntents,
   memberships,
@@ -16,6 +29,7 @@ import {
   organizations,
   pipelines,
   stages,
+  tags,
   tasks,
   users,
   webhookEvents,
@@ -240,6 +254,56 @@ export function createDatabase(pool: Pool) {
     dueAt: tasks.dueAt,
     doneAt: tasks.doneAt,
     createdAt: tasks.createdAt,
+  };
+
+  const tagColumns = {
+    id: tags.id,
+    name: tags.name,
+    color: tags.color,
+    createdAt: tags.createdAt,
+  };
+
+  type EntityTagTable =
+    typeof contactTags | typeof companyTags | typeof dealTags;
+  type EntityTagColumn =
+    | (typeof contactTags)["contactId"]
+    | (typeof companyTags)["companyId"]
+    | (typeof dealTags)["dealId"];
+
+  const tagsForEntity = (
+    tx: DrizzleTx,
+    joinTable: EntityTagTable,
+    entityColumn: EntityTagColumn,
+    entityId: string,
+  ) =>
+    tx
+      .select(tagColumns)
+      .from(joinTable)
+      .innerJoin(tags, eq(joinTable.tagId, tags.id))
+      .where(and(eq(entityColumn, entityId), notDeleted(tags.deletedAt)))
+      .orderBy(tags.name, tags.id);
+
+  // Wipe-and-rewrite assignment: every supplied tag must be an active tag of
+  // the caller's workspace — a bare FK would not prove tenant equality.
+  const setEntityTags = async (
+    tx: DrizzleTx,
+    joinTable: EntityTagTable,
+    entityColumn: EntityTagColumn,
+    entityId: string,
+    tagIds: string[],
+    insertRows: (tagIds: string[]) => Promise<unknown>,
+  ) => {
+    const uniqueTagIds = [...new Set(tagIds)];
+    if (uniqueTagIds.length > 0) {
+      const found = await tx
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(inArray(tags.id, uniqueTagIds), notDeleted(tags.deletedAt)));
+      if (found.length !== uniqueTagIds.length) return undefined;
+    }
+    await tx.delete(joinTable).where(eq(entityColumn, entityId));
+    if (uniqueTagIds.length > 0) await insertRows(uniqueTagIds);
+    return tagsForEntity(tx, joinTable, entityColumn, entityId);
   };
 
   const channelInstanceColumns = {
@@ -941,6 +1005,164 @@ export function createDatabase(pool: Pool) {
           .where(and(eq(tasks.id, id), notDeleted(tasks.deletedAt)))
           .returning({ id: tasks.id });
         return rows.length > 0;
+      }),
+    listTags: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(tagColumns)
+          .from(tags)
+          .where(notDeleted(tags.deletedAt))
+          .orderBy(tags.name, tags.id),
+      ),
+    getTag: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(tagColumns)
+          .from(tags)
+          .where(and(eq(tags.id, id), notDeleted(tags.deletedAt)))
+          .limit(1);
+        return rows[0];
+      }),
+    // undefined when another active tag already uses the name (routes → 409).
+    createTag: (
+      workspaceId: string,
+      input: { name: string; color?: string | null },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const existing = await tx
+          .select({ id: tags.id })
+          .from(tags)
+          .where(and(eq(tags.name, input.name), notDeleted(tags.deletedAt)))
+          .limit(1);
+        if (existing[0]) return undefined;
+        const rows = await tx
+          .insert(tags)
+          .values({
+            workspaceId,
+            name: input.name,
+            color: input.color ?? null,
+          })
+          .returning(tagColumns);
+        const row = rows[0];
+        if (!row) throw new Error("tag insert returned no row");
+        return row;
+      }),
+    // undefined when another active tag already uses the name — callers
+    // resolve the tag first for 404 vs 409.
+    updateTag: (
+      workspaceId: string,
+      id: string,
+      input: { name?: string; color?: string | null },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (input.name !== undefined) {
+          const conflict = await tx
+            .select({ id: tags.id })
+            .from(tags)
+            .where(
+              and(
+                eq(tags.name, input.name),
+                ne(tags.id, id),
+                notDeleted(tags.deletedAt),
+              ),
+            )
+            .limit(1);
+          if (conflict[0]) return undefined;
+        }
+        const rows = await tx
+          .update(tags)
+          .set(input)
+          .where(and(eq(tags.id, id), notDeleted(tags.deletedAt)))
+          .returning(tagColumns);
+        return rows[0];
+      }),
+    deleteTag: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(tags)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(tags.id, id), notDeleted(tags.deletedAt)))
+          .returning({ id: tags.id });
+        return rows.length > 0;
+      }),
+    listContactTags: (workspaceId: string, contactId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tagsForEntity(tx, contactTags, contactTags.contactId, contactId),
+      ),
+    listCompanyTags: (workspaceId: string, companyId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tagsForEntity(tx, companyTags, companyTags.companyId, companyId),
+      ),
+    listDealTags: (workspaceId: string, dealId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tagsForEntity(tx, dealTags, dealTags.dealId, dealId),
+      ),
+    setContactTags: (
+      workspaceId: string,
+      contactId: string,
+      tagIds: string[],
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (!(await contactCompanyRefsValid(tx, { contactId })))
+          return undefined;
+        return setEntityTags(
+          tx,
+          contactTags,
+          contactTags.contactId,
+          contactId,
+          tagIds,
+          (uniqueTagIds) =>
+            tx.insert(contactTags).values(
+              uniqueTagIds.map((tagId) => ({
+                workspaceId,
+                tagId,
+                contactId,
+              })),
+            ),
+        );
+      }),
+    setCompanyTags: (
+      workspaceId: string,
+      companyId: string,
+      tagIds: string[],
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (!(await contactCompanyRefsValid(tx, { companyId })))
+          return undefined;
+        return setEntityTags(
+          tx,
+          companyTags,
+          companyTags.companyId,
+          companyId,
+          tagIds,
+          (uniqueTagIds) =>
+            tx.insert(companyTags).values(
+              uniqueTagIds.map((tagId) => ({
+                workspaceId,
+                tagId,
+                companyId,
+              })),
+            ),
+        );
+      }),
+    setDealTags: (workspaceId: string, dealId: string, tagIds: string[]) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (!(await dealRefValid(tx, dealId))) return undefined;
+        return setEntityTags(
+          tx,
+          dealTags,
+          dealTags.dealId,
+          dealId,
+          tagIds,
+          (uniqueTagIds) =>
+            tx.insert(dealTags).values(
+              uniqueTagIds.map((tagId) => ({
+                workspaceId,
+                tagId,
+                dealId,
+              })),
+            ),
+        );
       }),
     createChannelInstance: (
       workspaceId: string,

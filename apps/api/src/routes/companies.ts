@@ -8,6 +8,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityTagRoutes } from "./tags.ts";
 
 const companySchema = {
   type: "object",
@@ -280,6 +281,18 @@ export function registerCompanyRoutes(
       const company = await database.getCompany(authorized.workspaceId, id);
       if (!company) return reply.code(404).send();
       return database.listNotes(authorized.workspaceId, { companyId: id });
+    },
+  );
+
+  registerEntityTagRoutes(
+    app,
+    { authorizeWorkspaceRequest },
+    {
+      path: "companies",
+      getParent: (workspaceId, id) => database.getCompany(workspaceId, id),
+      listTags: (workspaceId, id) => database.listCompanyTags(workspaceId, id),
+      setTags: (workspaceId, id, tagIds) =>
+        database.setCompanyTags(workspaceId, id, tagIds),
     },
   );
 }

@@ -145,6 +145,31 @@ export const entityDealSchema = {
   },
 } as const;
 
+export const tagSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "name", "color", "createdAt"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    color: { type: ["string", "null"] },
+    createdAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
+export const tagIdsBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["tagIds"],
+  properties: {
+    tagIds: {
+      type: "array",
+      items: { type: "string", format: "uuid" },
+      maxItems: 50,
+    },
+  },
+} as const;
+
 export const noteSchema = {
   type: "object",
   additionalProperties: false,

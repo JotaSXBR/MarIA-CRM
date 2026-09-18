@@ -344,7 +344,7 @@ test("clicking a deal opens its detail page and edits via the editor", async () 
   const user = userEvent.setup();
   await user.click(await screen.findByText("Proposta ACME"));
 
-  await user.click(await screen.findByRole("button", { name: /Editar/ }));
+  await user.click(await screen.findByRole("button", { name: "Editar" }));
 
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toBeDefined();
@@ -563,6 +563,9 @@ test("contact detail shows deals, notes and tasks and posts a new note", async (
           { status: 200 },
         );
       }
+      if (url.includes("/tags")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
       if (url.includes(`/contacts/${contactId}`)) {
         return new Response(JSON.stringify(contact), { status: 200 });
       }
@@ -585,6 +588,123 @@ test("contact detail shows deals, notes and tasks and posts a new note", async (
   await user.type(screen.getByLabelText("Nova nota"), "Nova nota");
   await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
   await waitFor(() => expect(posted).toEqual([{ body: "Nova nota" }]));
+});
+
+test("contact detail shows assigned tags and updates assignments", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const contactId = "123e4567-e89b-12d3-a456-426614174040";
+  const tagA = {
+    id: "123e4567-e89b-12d3-a456-426614174050",
+    name: "Prioridade",
+    color: "#22c55e",
+    createdAt: new Date().toISOString(),
+  };
+  const tagB = {
+    id: "123e4567-e89b-12d3-a456-426614174051",
+    name: "Cliente",
+    color: null,
+    createdAt: new Date().toISOString(),
+  };
+  const tagC = {
+    id: "123e4567-e89b-12d3-a456-426614174052",
+    name: "VIP",
+    color: null,
+    createdAt: new Date().toISOString(),
+  };
+  const puts: unknown[] = [];
+  const posts: unknown[] = [];
+  setToken("session-token");
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "member" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174041",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/tags`)) {
+        if (init?.method === "PUT") {
+          const body = JSON.parse(init.body as string);
+          puts.push(body);
+          return new Response(
+            JSON.stringify(
+              (body as { tagIds: string[] }).tagIds.map((id) =>
+                [tagA, tagB, tagC].find((tag) => tag.id === id),
+              ),
+            ),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify([tagA]), { status: 200 });
+      }
+      if (url.includes("/tags")) {
+        if (init?.method === "POST") {
+          posts.push(JSON.parse(init.body as string));
+          return new Response(JSON.stringify(tagC), { status: 201 });
+        }
+        return new Response(JSON.stringify([tagA, tagB]), { status: 200 });
+      }
+      if (url.includes(`/contacts/${contactId}/`)) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes(`/contacts/${contactId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: contactId,
+            name: "Maria Silva",
+            email: null,
+            phone: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(`/contacts/${contactId}`);
+
+  expect(
+    await screen.findByRole("heading", { name: "Maria Silva" }),
+  ).toBeDefined();
+  expect(await screen.findByText("Prioridade")).toBeDefined();
+
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Editar tags" }));
+  await user.click(
+    await screen.findByRole("menuitemcheckbox", { name: "Cliente" }),
+  );
+  await waitFor(() => expect(puts).toEqual([{ tagIds: [tagA.id, tagB.id] }]));
+
+  fireEvent.change(screen.getByLabelText("Nome da nova tag"), {
+    target: { value: "VIP" },
+  });
+  fireEvent.submit(
+    screen.getByRole("button", { name: "Criar" }).closest("form")!,
+  );
+  await waitFor(() => expect(posts).toEqual([{ name: "VIP" }]));
+  await waitFor(() =>
+    expect(puts).toEqual([
+      { tagIds: [tagA.id, tagB.id] },
+      { tagIds: [tagA.id, tagC.id] },
+    ]),
+  );
 });
 
 test("company detail shows linked contacts, deals and notes", async () => {
@@ -653,6 +773,9 @@ test("company detail shows linked contacts, deals and notes", async () => {
         ]),
         { status: 200 },
       );
+    }
+    if (url.includes("/tags")) {
+      return new Response(JSON.stringify([]), { status: 200 });
     }
     if (url.includes(`/companies/${companyId}`)) {
       return new Response(
@@ -748,6 +871,9 @@ test("deal detail shows named deal, tasks and notes", async () => {
           ]),
           { status: 200 },
         );
+      }
+      if (url.includes("/tags")) {
+        return new Response(JSON.stringify([]), { status: 200 });
       }
       if (url.includes(`/deals/${dealId}`)) {
         return new Response(

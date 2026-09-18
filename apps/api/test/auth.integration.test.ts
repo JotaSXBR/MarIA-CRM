@@ -58,6 +58,17 @@ function createDatabaseStub() {
     createTask: vi.fn().mockResolvedValue(undefined),
     updateTask: vi.fn().mockResolvedValue(undefined),
     deleteTask: vi.fn().mockResolvedValue(false),
+    listTags: vi.fn().mockResolvedValue([]),
+    getTag: vi.fn().mockResolvedValue(undefined),
+    createTag: vi.fn().mockResolvedValue(undefined),
+    updateTag: vi.fn().mockResolvedValue(undefined),
+    deleteTag: vi.fn().mockResolvedValue(false),
+    listContactTags: vi.fn().mockResolvedValue([]),
+    listCompanyTags: vi.fn().mockResolvedValue([]),
+    listDealTags: vi.fn().mockResolvedValue([]),
+    setContactTags: vi.fn().mockResolvedValue(undefined),
+    setCompanyTags: vi.fn().mockResolvedValue(undefined),
+    setDealTags: vi.fn().mockResolvedValue(undefined),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -1141,6 +1152,206 @@ test("deal detail routes expose the named deal and its notes and tasks", async (
       headers: { authorization: "Bearer token" },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("tag CRUD maps conflicts to 409 and deletes require admin", async () => {
+  const workspaceId = randomUUID();
+  const tag = {
+    id: randomUUID(),
+    name: "Prioridade",
+    color: "#22c55e",
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.listTags.mockResolvedValue([tag]);
+  database.getTag.mockResolvedValue(tag);
+  database.createTag.mockResolvedValue(tag);
+  database.updateTag.mockResolvedValue(tag);
+  database.deleteTag.mockResolvedValue(true);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId: token === "admin-token" ? "admin-id" : "member-id",
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === "admin-id" ? "admin" : "member",
+    }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const listed = await app.inject({
+      method: "GET",
+      url: `/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([
+      { ...tag, createdAt: tag.createdAt.toISOString() },
+    ]);
+    expect(database.listTags).toHaveBeenCalledWith(workspaceId);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Prioridade", color: "#22c55e" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(database.createTag).toHaveBeenCalledWith(workspaceId, {
+      name: "Prioridade",
+      color: "#22c55e",
+    });
+
+    database.createTag.mockResolvedValue(undefined);
+    const conflict = await app.inject({
+      method: "POST",
+      url: `/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Prioridade" },
+    });
+    expect(conflict.statusCode).toBe(409);
+
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Urgente" },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(database.updateTag).toHaveBeenCalledWith(workspaceId, tag.id, {
+      name: "Urgente",
+    });
+
+    database.getTag.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "PATCH",
+      url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Urgente" },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    database.getTag.mockResolvedValue(tag);
+    database.updateTag.mockResolvedValue(undefined);
+    const renameConflict = await app.inject({
+      method: "PATCH",
+      url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Urgente" },
+    });
+    expect(renameConflict.statusCode).toBe(409);
+
+    const memberDelete = await app.inject({
+      method: "DELETE",
+      url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(memberDelete.statusCode).toBe(403);
+
+    const adminDelete = await app.inject({
+      method: "DELETE",
+      url: `/tags/${tag.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer admin-token" },
+    });
+    expect(adminDelete.statusCode).toBe(204);
+    expect(database.deleteTag).toHaveBeenCalledWith(workspaceId, tag.id);
+  } finally {
+    await app.close();
+  }
+});
+
+test("entity tag routes list and replace assignments in the authorized workspace", async () => {
+  const workspaceId = randomUUID();
+  const contactId = randomUUID();
+  const companyId = randomUUID();
+  const dealId = randomUUID();
+  const tag = {
+    id: randomUUID(),
+    name: "Prioridade",
+    color: null,
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.getContact.mockResolvedValue({ id: contactId });
+  database.getCompany.mockResolvedValue({ id: companyId });
+  database.getDeal.mockResolvedValue({ id: dealId });
+  database.listContactTags.mockResolvedValue([tag]);
+  database.setContactTags.mockResolvedValue([tag]);
+  database.setCompanyTags.mockResolvedValue([tag]);
+  database.setDealTags.mockResolvedValue([tag]);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const listed = await app.inject({
+      method: "GET",
+      url: `/contacts/${contactId}/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([
+      { ...tag, createdAt: tag.createdAt.toISOString() },
+    ]);
+    expect(database.listContactTags).toHaveBeenCalledWith(
+      workspaceId,
+      contactId,
+    );
+
+    database.getContact.mockResolvedValue(undefined);
+    const missingParent = await app.inject({
+      method: "GET",
+      url: `/contacts/${contactId}/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missingParent.statusCode).toBe(404);
+
+    for (const [entity, path] of [
+      ["contact", `/contacts/${contactId}`],
+      ["company", `/companies/${companyId}`],
+      ["deal", `/deals/${dealId}`],
+    ] as const) {
+      const assigned = await app.inject({
+        method: "PUT",
+        url: `${path}/tags?workspaceId=${workspaceId}`,
+        headers: { authorization: "Bearer token" },
+        payload: { tagIds: [tag.id] },
+      });
+      expect(assigned.statusCode).toBe(200);
+      const stub =
+        entity === "contact"
+          ? database.setContactTags
+          : entity === "company"
+            ? database.setCompanyTags
+            : database.setDealTags;
+      const entityId =
+        entity === "contact"
+          ? contactId
+          : entity === "company"
+            ? companyId
+            : dealId;
+      expect(stub).toHaveBeenCalledWith(workspaceId, entityId, [tag.id]);
+    }
+
+    database.setContactTags.mockResolvedValue(undefined);
+    const invalid = await app.inject({
+      method: "PUT",
+      url: `/contacts/${contactId}/tags?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { tagIds: [randomUUID()] },
+    });
+    expect(invalid.statusCode).toBe(404);
   } finally {
     await app.close();
   }

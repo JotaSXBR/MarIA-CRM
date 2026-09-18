@@ -27,6 +27,7 @@ export default defineConfig({
       "/messages": api,
       "/notes": api,
       "/tasks": api,
+      "/tags": api,
       "/channel-instances": api,
       "/webhooks": api,
     },

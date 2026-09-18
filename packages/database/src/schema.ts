@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -277,6 +278,85 @@ export const tasks = pgTable(
     index("tasks_deal_active_idx")
       .on(table.dealId)
       .where(sql`deleted_at is null`),
+  ],
+);
+
+export const tags = pgTable(
+  "tags",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text().notNull(),
+    color: text(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("tags_workspace_id_idx").on(table.workspaceId),
+    index("tags_workspace_active_idx")
+      .on(table.workspaceId)
+      .where(sql`deleted_at is null`),
+    uniqueIndex("tags_workspace_name_active_idx")
+      .on(table.workspaceId, table.name)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
+const entityTagColumns = {
+  workspaceId: uuid("workspace_id")
+    .references(() => workspaces.id, { onDelete: "cascade" })
+    .notNull(),
+  tagId: uuid("tag_id")
+    .references(() => tags.id, { onDelete: "cascade" })
+    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+};
+
+export const contactTags = pgTable(
+  "contact_tags",
+  {
+    ...entityTagColumns,
+    contactId: uuid("contact_id")
+      .references(() => contacts.id, { onDelete: "cascade" })
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tagId, table.contactId] }),
+    index("contact_tags_contact_idx").on(table.contactId),
+  ],
+);
+
+export const companyTags = pgTable(
+  "company_tags",
+  {
+    ...entityTagColumns,
+    companyId: uuid("company_id")
+      .references(() => companies.id, { onDelete: "cascade" })
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tagId, table.companyId] }),
+    index("company_tags_company_idx").on(table.companyId),
+  ],
+);
+
+export const dealTags = pgTable(
+  "deal_tags",
+  {
+    ...entityTagColumns,
+    dealId: uuid("deal_id")
+      .references(() => deals.id, { onDelete: "cascade" })
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tagId, table.dealId] }),
+    index("deal_tags_deal_idx").on(table.dealId),
   ],
 );
 

@@ -76,6 +76,10 @@ async function queryRolePrivileges(client: Pool) {
     can_delete_notes: boolean;
     can_use_tasks: boolean;
     can_delete_tasks: boolean;
+    can_use_tags: boolean;
+    can_delete_tags: boolean;
+    can_use_entity_tags: boolean;
+    can_delete_entity_tags: boolean;
   }>(`
     select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
       rolbypassrls,
@@ -94,7 +98,11 @@ async function queryRolePrivileges(client: Pool) {
       has_table_privilege(current_user, 'notes', 'SELECT, INSERT, UPDATE') as can_use_notes,
       has_table_privilege(current_user, 'notes', 'DELETE') as can_delete_notes,
       has_table_privilege(current_user, 'tasks', 'SELECT, INSERT, UPDATE') as can_use_tasks,
-      has_table_privilege(current_user, 'tasks', 'DELETE') as can_delete_tasks
+      has_table_privilege(current_user, 'tasks', 'DELETE') as can_delete_tasks,
+      has_table_privilege(current_user, 'tags', 'SELECT, INSERT, UPDATE') as can_use_tags,
+      has_table_privilege(current_user, 'tags', 'DELETE') as can_delete_tags,
+      has_table_privilege(current_user, 'contact_tags', 'SELECT, INSERT, UPDATE') as can_use_entity_tags,
+      has_table_privilege(current_user, 'contact_tags', 'DELETE') as can_delete_entity_tags
     from pg_roles
     where rolname = current_user
   `);
@@ -126,6 +134,10 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
       can_delete_notes: false,
       can_use_tasks: true,
       can_delete_tasks: false,
+      can_use_tags: true,
+      can_delete_tags: false,
+      can_use_entity_tags: true,
+      can_delete_entity_tags: true,
     },
   ]);
   expect(
@@ -134,20 +146,24 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
         select c.relname, r.rolsuper, r.rolbypassrls, c.relforcerowsecurity,
           c.relowner = r.oid as owns_table
         from pg_roles r cross join pg_class c
-        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals', 'notes', 'tasks')
+        where r.rolname = current_user and c.relname in ('contacts', 'companies', 'memberships', 'invitations', 'pipelines', 'stages', 'deals', 'notes', 'tasks', 'tags', 'contact_tags', 'company_tags', 'deal_tags')
         order by c.relname
       `)
     ).rows,
   ).toEqual(
     [
       "companies",
+      "company_tags",
+      "contact_tags",
       "contacts",
+      "deal_tags",
       "deals",
       "invitations",
       "memberships",
       "notes",
       "pipelines",
       "stages",
+      "tags",
       "tasks",
     ].map((relname) => ({
       relname,
@@ -166,6 +182,8 @@ test("product RLS scopes reads and writes and leaves no context on its pooled co
   expect((await runtime.query("select * from deals")).rows).toEqual([]);
   expect((await runtime.query("select * from notes")).rows).toEqual([]);
   expect((await runtime.query("select * from tasks")).rows).toEqual([]);
+  expect((await runtime.query("select * from tags")).rows).toEqual([]);
+  expect((await runtime.query("select * from contact_tags")).rows).toEqual([]);
   await expect(
     runtime.query(
       "insert into contacts (workspace_id, name) values ($1, 'unscoped')",
@@ -452,6 +470,121 @@ test("company detail aggregates list contacts, deals and notes for the company",
   expect(await database.listDealsForCompany(workspaceA, company!.id)).toEqual(
     [],
   );
+});
+
+test("tags stay workspace-scoped, validate refs and replace assignments", async () => {
+  const tagA = await database.createTag(workspaceA, {
+    name: "Prioridade",
+    color: "#22c55e",
+  });
+  const tagB = await database.createTag(workspaceA, { name: "Cliente" });
+  // Same name is allowed in a different workspace.
+  const foreign = await database.createTag(workspaceB, {
+    name: "Prioridade",
+  });
+  expect(tagA).toMatchObject({ name: "Prioridade", color: "#22c55e" });
+  expect(
+    await database.createTag(workspaceA, { name: "Prioridade" }),
+  ).toBeUndefined();
+  // Name-ordered listing, scoped to the caller's workspace.
+  expect((await database.listTags(workspaceA)).map((t) => t.id)).toEqual([
+    tagB!.id,
+    tagA!.id,
+  ]);
+  expect((await database.listTags(workspaceB)).map((t) => t.id)).toEqual([
+    foreign!.id,
+  ]);
+
+  // Rename conflicts with an existing active name; cross-workspace rows are invisible.
+  expect(
+    await database.updateTag(workspaceA, tagB!.id, { name: "Prioridade" }),
+  ).toBeUndefined();
+  expect(
+    await database.updateTag(workspaceA, tagB!.id, { name: "Conta" }),
+  ).toMatchObject({ name: "Conta" });
+  expect(
+    await database.updateTag(workspaceA, foreign!.id, { name: "X" }),
+  ).toBeUndefined();
+  expect(await database.deleteTag(workspaceA, foreign!.id)).toBe(false);
+
+  const contact = await database.createContact(workspaceA, {
+    name: "Tagged",
+  });
+  const company = await database.createCompany(workspaceA, {
+    name: "Tagged Co",
+  });
+  const pipeline = await database.createPipeline(workspaceA, {
+    name: "Vendas",
+  });
+  const stage = await database.createStage(workspaceA, pipeline!.id, {
+    name: "Novo",
+  });
+  const deal = await database.createDeal(workspaceA, {
+    pipelineId: pipeline!.id,
+    stageId: stage!.id,
+    title: "Tagged deal",
+  });
+
+  // Wipe-and-rewrite assignment returns the resulting name-ordered tags.
+  expect(
+    (
+      await database.setContactTags(workspaceA, contact!.id, [
+        tagA!.id,
+        tagB!.id,
+        tagA!.id,
+      ])
+    )?.map((t) => t.id),
+  ).toEqual([tagB!.id, tagA!.id]);
+  expect(
+    (await database.listContactTags(workspaceA, contact!.id)).map((t) => t.id),
+  ).toEqual([tagB!.id, tagA!.id]);
+  expect(
+    (await database.setContactTags(workspaceA, contact!.id, [tagB!.id]))?.map(
+      (t) => t.id,
+    ),
+  ).toEqual([tagB!.id]);
+  expect(await database.setContactTags(workspaceA, contact!.id, [])).toEqual(
+    [],
+  );
+
+  // Missing, foreign-workspace or deleted refs are rejected, never attached.
+  expect(
+    await database.setContactTags(workspaceA, contact!.id, [foreign!.id]),
+  ).toBeUndefined();
+  expect(
+    await database.setContactTags(workspaceA, contact!.id, [randomUUID()]),
+  ).toBeUndefined();
+  expect(
+    await database.setContactTags(workspaceA, randomUUID(), [tagA!.id]),
+  ).toBeUndefined();
+  expect(
+    await database.setContactTags(workspaceB, contact!.id, [tagA!.id]),
+  ).toBeUndefined();
+
+  expect(
+    (await database.setCompanyTags(workspaceA, company!.id, [tagA!.id]))?.map(
+      (t) => t.id,
+    ),
+  ).toEqual([tagA!.id]);
+  expect(
+    (await database.setDealTags(workspaceA, deal!.id, [tagA!.id]))?.map(
+      (t) => t.id,
+    ),
+  ).toEqual([tagA!.id]);
+  expect(
+    (await database.listCompanyTags(workspaceA, company!.id)).map((t) => t.id),
+  ).toEqual([tagA!.id]);
+  expect(
+    (await database.listDealTags(workspaceA, deal!.id)).map((t) => t.id),
+  ).toEqual([tagA!.id]);
+
+  // Soft-deleting a tag hides it everywhere and frees its name.
+  expect(await database.deleteTag(workspaceA, tagA!.id)).toBe(true);
+  expect(await database.listCompanyTags(workspaceA, company!.id)).toEqual([]);
+  expect(await database.listDealTags(workspaceA, deal!.id)).toEqual([]);
+  expect(
+    await database.createTag(workspaceA, { name: "Prioridade" }),
+  ).toBeDefined();
 });
 
 test("company CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {

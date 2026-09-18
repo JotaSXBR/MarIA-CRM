@@ -7,6 +7,7 @@ import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import type { Company, Contact, DealDetail, Note, Task } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { DealEditor } from "@/components/deal-editor";
+import { TagPicker } from "@/components/tag-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -253,6 +254,7 @@ export function DealDetailPage() {
             </Button>
           ) : null}
         </div>
+        <TagPicker workspaceId={workspaceId} entityPath={`/deals/${dealId}`} />
       </header>
 
       {error ? (

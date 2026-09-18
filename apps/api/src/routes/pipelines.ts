@@ -9,6 +9,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityTagRoutes } from "./tags.ts";
 
 export function registerPipelineRoutes(
   app: FastifyInstance,
@@ -485,6 +486,18 @@ export function registerPipelineRoutes(
       });
       if (!task) return reply.code(404).send();
       return reply.code(201).send({ ...task, assigneeName: null });
+    },
+  );
+
+  registerEntityTagRoutes(
+    app,
+    { authorizeWorkspaceRequest },
+    {
+      path: "deals",
+      getParent: (workspaceId, id) => database.getDeal(workspaceId, id),
+      listTags: (workspaceId, id) => database.listDealTags(workspaceId, id),
+      setTags: (workspaceId, id, tagIds) =>
+        database.setDealTags(workspaceId, id, tagIds),
     },
   );
 
