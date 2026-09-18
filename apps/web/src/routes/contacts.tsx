@@ -2,10 +2,10 @@ import { useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Contact } from "@/lib/types";
+import type { Company, Contact } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 
-const empty = { name: "", email: "", phone: "" };
+const empty = { name: "", email: "", phone: "", companyId: "" };
 
 export function ContactsPage() {
   const { workspace } = useWorkspace();
@@ -22,6 +22,14 @@ export function ContactsPage() {
     enabled: Boolean(workspaceId),
   });
 
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies", workspaceId],
+    queryFn: () => api<Company[]>("/companies", { workspaceId }),
+    enabled: Boolean(workspaceId),
+  });
+
+  const companyName = new Map(companies.map((c) => [c.id, c.name]));
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
 
@@ -35,6 +43,7 @@ export function ContactsPage() {
               name: form.name,
               email: form.email || null,
               phone: form.phone || null,
+              companyId: form.companyId || null,
             },
           })
         : api<Contact>("/contacts", {
@@ -44,6 +53,7 @@ export function ContactsPage() {
               name: form.name,
               email: form.email || null,
               phone: form.phone || null,
+              companyId: form.companyId || null,
             },
           }),
     onSuccess: async () => {
@@ -79,7 +89,7 @@ export function ContactsPage() {
 
       <form
         onSubmit={onSubmit}
-        className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-4"
+        className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-5"
       >
         <input
           required
@@ -104,6 +114,19 @@ export function ContactsPage() {
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
+        <select
+          aria-label="Empresa"
+          value={form.companyId}
+          onChange={(e) => setForm({ ...form, companyId: e.target.value })}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Sem empresa</option>
+          {companies.map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}
+            </option>
+          ))}
+        </select>
         <div className="flex gap-2">
           <button
             type="submit"
@@ -139,19 +162,20 @@ export function ContactsPage() {
               <th className="px-4 py-3 font-medium">Nome</th>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Telefone</th>
+              <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium" aria-label="Ações" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-slate-500">
                   Carregando…
                 </td>
               </tr>
             ) : contacts.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-slate-500">
                   Nenhum contato ainda.
                 </td>
               </tr>
@@ -173,6 +197,19 @@ export function ContactsPage() {
                   <td className="px-4 py-3 text-slate-600">
                     {contact.phone ?? "—"}
                   </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {contact.companyId ? (
+                      <Link
+                        to="/companies/$companyId"
+                        params={{ companyId: contact.companyId }}
+                        className="hover:underline"
+                      >
+                        {companyName.get(contact.companyId) ?? "—"}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => {
@@ -181,6 +218,7 @@ export function ContactsPage() {
                           name: contact.name,
                           email: contact.email ?? "",
                           phone: contact.phone ?? "",
+                          companyId: contact.companyId ?? "",
                         });
                       }}
                       className="mr-2 text-indigo-600 hover:underline"

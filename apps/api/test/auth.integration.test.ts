@@ -50,6 +50,7 @@ function createDatabaseStub() {
     moveDeal: vi.fn().mockResolvedValue(undefined),
     deleteDeal: vi.fn().mockResolvedValue(false),
     listDealsForContact: vi.fn().mockResolvedValue([]),
+    listDealsForCompany: vi.fn().mockResolvedValue([]),
     listNotes: vi.fn().mockResolvedValue([]),
     createNote: vi.fn().mockResolvedValue(undefined),
     deleteNote: vi.fn().mockResolvedValue(false),
@@ -114,6 +115,7 @@ test("contacts use the authorized workspace", async () => {
     name: "Contact",
     email: null,
     phone: null,
+    companyId: null,
     createdAt: new Date(),
   };
   const database = createDatabaseStub();
@@ -244,6 +246,7 @@ test("members can create, read and update contacts in their workspace", async ()
     name: "Contact",
     email: "contact@example.com",
     phone: null,
+    companyId: null,
     createdAt: new Date(),
   };
   const database = createDatabaseStub();
@@ -405,6 +408,7 @@ test("contact detail routes list deals, notes and tasks in the authorized worksp
     name: "Contact",
     email: null,
     phone: null,
+    companyId: null,
     createdAt: new Date(),
   };
   const deal = {
@@ -811,6 +815,191 @@ test("companies follow the same workspace membership contract", async () => {
         })
       ).statusCode,
     ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("contact create and update forward companyId and map invalid refs to 404", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const companyId = randomUUID();
+  const contact = {
+    id: randomUUID(),
+    name: "Contact",
+    email: null,
+    phone: null,
+    companyId,
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.createContact.mockResolvedValue(contact);
+  database.updateContact.mockResolvedValue({ ...contact, companyId: null });
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const created = await app.inject({
+      method: "POST",
+      url: `/contacts?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { name: "Contact", companyId },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(database.createContact).toHaveBeenCalledWith(workspaceId, {
+      name: "Contact",
+      companyId,
+    });
+
+    database.createContact.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/contacts?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { name: "Contact", companyId },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/contacts/${contact.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { companyId: null },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(database.updateContact).toHaveBeenCalledWith(
+      workspaceId,
+      contact.id,
+      { companyId: null },
+    );
+
+    database.updateContact.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/contacts/${contact.id}?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer token" },
+          payload: { companyId },
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("company detail routes list contacts, deals and notes in the authorized workspace", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const company = {
+    id: randomUUID(),
+    name: "Company",
+    createdAt: new Date(),
+  };
+  const contact = {
+    id: randomUUID(),
+    name: "Contact",
+    email: null,
+    phone: null,
+    companyId: company.id,
+    createdAt: new Date(),
+  };
+  const deal = {
+    id: randomUUID(),
+    pipelineId: randomUUID(),
+    stageId: randomUUID(),
+    title: "Negócio",
+    valueCents: null,
+    contactId: contact.id,
+    companyId: company.id,
+    position: "a0",
+    stageName: "Novo",
+    pipelineName: "Vendas",
+    createdAt: new Date(),
+  };
+  const note = {
+    id: randomUUID(),
+    contactId: contact.id,
+    companyId: company.id,
+    dealId: null,
+    authorId: userId,
+    authorName: "User",
+    body: "Anotação",
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.getCompany.mockResolvedValue(company);
+  database.listContacts.mockResolvedValue([contact]);
+  database.listDealsForCompany.mockResolvedValue([deal]);
+  database.listNotes.mockResolvedValue([note]);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token
+        ? { userId, email: "user@example.com", name: "User", isAdmin: false }
+        : undefined,
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect(
+      (
+        await app.inject(
+          `/companies/${company.id}/contacts?workspaceId=${workspaceId}`,
+        )
+      ).statusCode,
+    ).toBe(401);
+    expect(database.listContacts).not.toHaveBeenCalled();
+
+    const contacts = await app.inject({
+      method: "GET",
+      url: `/companies/${company.id}/contacts?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(contacts.statusCode).toBe(200);
+    expect(contacts.json()).toEqual([
+      { ...contact, createdAt: contact.createdAt.toISOString() },
+    ]);
+    expect(database.listContacts).toHaveBeenCalledWith(workspaceId, {
+      companyId: company.id,
+    });
+
+    const deals = await app.inject({
+      method: "GET",
+      url: `/companies/${company.id}/deals?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(deals.statusCode).toBe(200);
+    expect(deals.json()).toEqual([
+      { ...deal, createdAt: deal.createdAt.toISOString() },
+    ]);
+    expect(database.listDealsForCompany).toHaveBeenCalledWith(
+      workspaceId,
+      company.id,
+    );
+
+    const notes = await app.inject({
+      method: "GET",
+      url: `/companies/${company.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(notes.statusCode).toBe(200);
+    expect(notes.json()).toEqual([
+      { ...note, createdAt: note.createdAt.toISOString() },
+    ]);
+    expect(database.listNotes).toHaveBeenCalledWith(workspaceId, {
+      companyId: company.id,
+    });
   } finally {
     await app.close();
   }

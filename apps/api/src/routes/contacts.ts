@@ -1,24 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import {
-  dealSchema,
+  contactSchema,
+  entityDealSchema,
   idParamsSchema,
+  noteSchema,
+  taskSchema,
   workspaceQuerySchema,
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
-
-const contactSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "name", "email", "phone", "createdAt"],
-  properties: {
-    id: { type: "string", format: "uuid" },
-    name: { type: "string" },
-    email: { type: ["string", "null"] },
-    phone: { type: ["string", "null"] },
-    createdAt: { type: "string", format: "date-time" },
-  },
-} as const;
 
 export function registerContactRoutes(
   app: FastifyInstance,
@@ -74,11 +64,13 @@ export function registerContactRoutes(
             name: { type: "string", minLength: 1 },
             email: { type: ["string", "null"], format: "email" },
             phone: { type: ["string", "null"] },
+            companyId: { type: ["string", "null"], format: "uuid" },
           },
         },
         response: {
           201: contactSchema,
           401: { type: "null" },
+          404: { type: "null" },
         },
       },
     },
@@ -89,11 +81,13 @@ export function registerContactRoutes(
         name: string;
         email?: string | null;
         phone?: string | null;
+        companyId?: string | null;
       };
       const contact = await database.createContact(
         authorized.workspaceId,
         input,
       );
+      if (!contact) return reply.code(404).send();
       return reply.code(201).send(contact);
     },
   );
@@ -147,6 +141,7 @@ export function registerContactRoutes(
             name: { type: "string", minLength: 1 },
             email: { type: ["string", "null"], format: "email" },
             phone: { type: ["string", "null"] },
+            companyId: { type: ["string", "null"], format: "uuid" },
           },
         },
         response: {
@@ -164,6 +159,7 @@ export function registerContactRoutes(
         name?: string;
         email?: string | null;
         phone?: string | null;
+        companyId?: string | null;
       };
       const contact = await database.updateContact(
         authorized.workspaceId,
@@ -207,72 +203,6 @@ export function registerContactRoutes(
       return reply.code(204).send();
     },
   );
-  const contactDealSchema = {
-    ...dealSchema,
-    required: [...dealSchema.required, "stageName", "pipelineName"],
-    properties: {
-      ...dealSchema.properties,
-      stageName: { type: "string" },
-      pipelineName: { type: "string" },
-    },
-  } as const;
-
-  const entityLinkProperties = {
-    contactId: { type: ["string", "null"], format: "uuid" },
-    companyId: { type: ["string", "null"], format: "uuid" },
-    dealId: { type: ["string", "null"], format: "uuid" },
-  } as const;
-
-  const noteSchema = {
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "id",
-      "contactId",
-      "companyId",
-      "dealId",
-      "authorId",
-      "authorName",
-      "body",
-      "createdAt",
-    ],
-    properties: {
-      id: { type: "string", format: "uuid" },
-      ...entityLinkProperties,
-      authorId: { type: ["string", "null"], format: "uuid" },
-      authorName: { type: ["string", "null"] },
-      body: { type: "string" },
-      createdAt: { type: "string", format: "date-time" },
-    },
-  } as const;
-
-  const taskSchema = {
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "id",
-      "contactId",
-      "companyId",
-      "dealId",
-      "assigneeId",
-      "assigneeName",
-      "title",
-      "dueAt",
-      "doneAt",
-      "createdAt",
-    ],
-    properties: {
-      id: { type: "string", format: "uuid" },
-      ...entityLinkProperties,
-      assigneeId: { type: ["string", "null"], format: "uuid" },
-      assigneeName: { type: ["string", "null"] },
-      title: { type: "string" },
-      dueAt: { type: ["string", "null"], format: "date-time" },
-      doneAt: { type: ["string", "null"], format: "date-time" },
-      createdAt: { type: "string", format: "date-time" },
-    },
-  } as const;
-
   app.get(
     "/contacts/:id/deals",
     {
@@ -281,7 +211,7 @@ export function registerContactRoutes(
         params: idParamsSchema,
         querystring: workspaceQuerySchema,
         response: {
-          200: { type: "array", items: contactDealSchema },
+          200: { type: "array", items: entityDealSchema },
           401: { type: "null" },
           404: { type: "null" },
         },

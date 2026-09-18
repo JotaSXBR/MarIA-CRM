@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-10-16
+Updated: 2026-09-17
 
 ## Verify first
 
@@ -12,12 +12,14 @@ gh pr status
 
 ## Current objective
 
-- `main` at `99c7a36` — PRs #61–#64 merged (skill audit, lint warnings → 0,
-  NULL-distinct comments, code-simplifier refocused to per-slice).
-- PR #65 open (`chore/pr-label-rule`): AGENTS.md now requires labels on
-  every PR; `chore`/`refactor` labels created, PRs #62–#65 tagged.
-- Next after this: `contacts.companyId` link, company/deal detail pages,
-  then tags/custom attributes and global search.
+- `main` at `000bfab` — PRs #61–#65 merged (skill audit, lint → 0 warnings,
+  NULL-distinct comments, code-simplifier per-slice, PR label rule).
+- Branch `feat/contact-company-link` — Slice 4 implemented and verified
+  locally: nullable `contacts.company_id`, contact create/update validates
+  the company inside the scoped transaction, company detail page
+  (`/companies/:id`) aggregates contacts/deals/notes, company picker in the
+  contact form. Ready to commit; push/PR not yet requested.
+- Next after this: deal detail page, tags/custom attributes, global search.
 
 ## Memory model
 
@@ -30,8 +32,47 @@ gh pr status
 
 ## Verified state
 
-- `main` at `99c7a36` (2026-10-16): PRs #61–#64 merged. Lint baseline is
-  now **0 warnings / 0 errors** — keep it clean.
+- `main` at `000bfab` (2026-09-17): PRs #61–#65 merged, incl. #65 (every PR
+  must carry repository labels). Lint baseline is
+  **0 warnings / 0 errors** — keep it clean.
+- Slice 4 on `feat/contact-company-link` (2026-09-17, Windows/pnpm):
+  - `packages/database/src/schema.ts` + migration
+    `0014_contact_company_link.sql`: nullable `contacts.company_id` FK →
+    `companies.id` + partial `contacts_company_active_idx`
+    (`deleted_at IS NULL`), same convention as `notes_company_active_idx`.
+  - `contactColumns` exposes `companyId`; `createContact`/`updateContact`
+    validate the company via `contactCompanyRefsValid` inside
+    `withWorkspace` (cross-tenant, missing or soft-deleted → `undefined`).
+    `null` clears the link; omitted `companyId` preserves it.
+    `listContacts` gained an optional `{ companyId }` filter;
+    `dealsWithNames` helper shared by `listDealsForContact` and the new
+    `listDealsForCompany`.
+  - `apps/api`: `contactSchema` moved to `routes/shared.ts` with
+    `entityDealSchema`/`noteSchema`/`taskSchema`/`entityLinkProperties`
+    (shared by contacts+companies plugins). `POST`/`PATCH /contacts` accept
+    `companyId` (invalid ref → 404). New aggregate routes
+    `GET /companies/:id/{contacts,deals,notes}` — parent-checked 404 like
+    the contact detail routes.
+  - `apps/web`: new `routes/company-detail.tsx` (contacts/deals/notes
+    cards, read-only) at `/companies/$companyId`; company names link to
+    the detail page; contact form gained a company `<select>` ("Sem
+    empresa" clears) + "Empresa" column; contact detail links its company.
+    `ContactDeal` type renamed `EntityDeal` (shared by both parents).
+  - Per-slice `code-simplifier` pass applied: contactSchema deduplicated
+    into shared.ts; aggregate routes gained parent-existence 404 for parity
+    with contact detail routes; dead flex wrapper dropped.
+- Checks (dirty tree on `feat/contact-company-link`, 2026-09-17,
+  Windows/pnpm): `pnpm fmt:check` clean; oxlint direct
+  (`pnpm exec oxlint --type-aware apps packages`) **0 warnings/0 errors**;
+  `pnpm typecheck` 6/6; `pnpm test` api 26/26, web 8/8 (new company-detail
+  test), database 1/1, messaging 1/1, channel-waha 24/24;
+  `pnpm test:integration` api 37/37 (2 new tests), database 22/22 (2 new
+  tenant-ref/aggregate tests), auth 5/5; `pnpm build` 6/6.
+  - Environment quirk (resolved 2026-09-17): the local RTK hook
+    (`.devin/hooks.v1.json`, untracked) rewrote `pnpm lint` → `rtk lint`,
+    which is ESLint-only. Fixed by adding `"pnpm lint"` to
+    `[hooks].exclude_commands` in `%APPDATA%/rtk/config.toml` so the real
+    script (oxlint) runs.
 - PR #61 (skill audit) merged — `skill-creator` in `.agents/skills/`,
   maria skills updated per below; PR #62 (9 oxlint warnings fixed);
   PR #63 (NULL-distinct comments); PR #64 (code-simplifier 639→103 lines,
@@ -114,11 +155,11 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
-- Notes/tasks are only reachable via the contact detail UI so far; entity-level
-  list/create routes for companies/deals exist in the DB layer but have no
-  API surface yet (deferred to those detail pages).
-- CRM domain gaps remain open work: no `contacts.companyId`, no company/deal
-  detail pages, no tags/custom attributes, no global search.
+- Company detail is read-only for now — notes/tasks creation from the
+  company context has no API route yet (notes accept `companyId` in the DB
+  layer; add `POST /companies/:id/notes` when needed).
+- CRM domain gaps remain open work: no deal detail page, no tags/custom
+  attributes, no global search.
 
 ## Deferred from the code-simplifier review
 
@@ -129,6 +170,6 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #65 when `verify` passes (CodeQL/analyze/dependency-review already green).
-2. Slice 4: `contacts.companyId` + company detail page (contacts, deals,
-   notes aggregated), then deal detail page.
+1. Commit `feat/contact-company-link` locally; push + PR (with a label) on request.
+2. Deal detail page (contacts, notes, tasks aggregated under a deal).
+3. Tags/custom attributes, then global search.
