@@ -305,10 +305,14 @@ export function createDatabase(pool: Pool) {
         ...dealColumns,
         stageName: stages.name,
         pipelineName: pipelines.name,
+        contactName: contacts.name,
+        companyName: companies.name,
       })
       .from(deals)
       .innerJoin(stages, eq(deals.stageId, stages.id))
       .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+      .leftJoin(contacts, eq(deals.contactId, contacts.id))
+      .leftJoin(companies, eq(deals.companyId, companies.id))
       .where(and(parent, notDeleted(deals.deletedAt)))
       .orderBy(desc(deals.createdAt), deals.id);
 
@@ -661,11 +665,7 @@ export function createDatabase(pool: Pool) {
       ),
     getDeal: (workspaceId: string, id: string) =>
       withWorkspace(workspaceId, async (tx) => {
-        const rows = await tx
-          .select(dealColumns)
-          .from(deals)
-          .where(and(eq(deals.id, id), notDeleted(deals.deletedAt)))
-          .limit(1);
+        const rows = await dealsWithNames(tx, eq(deals.id, id)).limit(1);
         return rows[0];
       }),
     createDeal: (

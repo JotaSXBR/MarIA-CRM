@@ -652,6 +652,20 @@ test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async (
   expect(await database.listNotes(workspaceA, {})).toEqual(
     expect.arrayContaining([expect.objectContaining({ id: note!.id })]),
   );
+  expect(
+    (await database.listNotes(workspaceA, { dealId: deal!.id })).map(
+      (row) => row.id,
+    ),
+  ).toEqual([note!.id]);
+
+  // getDeal resolves pipeline/stage/contact/company names for the detail view
+  const namedDeal = await database.getDeal(workspaceA, deal!.id);
+  expect(namedDeal).toMatchObject({
+    stageName: stage!.name,
+    pipelineName: pipeline!.name,
+    contactName: contactA.name,
+    companyName: null,
+  });
 
   // Cross-workspace or unknown refs are rejected even though FKs would accept them
   expect(
@@ -699,6 +713,17 @@ test("notes/tasks stay workspace-scoped, validate refs and soft-delete", async (
       assigneeId: randomUUID(),
     }),
   ).toBeUndefined();
+
+  const dealTask = await database.createTask(workspaceA, {
+    title: "Follow-up do negócio",
+    dealId: deal!.id,
+    assigneeId: userA,
+  });
+  expect(
+    (await database.listTasks(workspaceA, { dealId: deal!.id })).map(
+      (row) => row.id,
+    ),
+  ).toEqual([dealTask!.id]);
 
   const done = await database.updateTask(workspaceA, task!.id, { done: true });
   expect(done!.doneAt).not.toBeNull();

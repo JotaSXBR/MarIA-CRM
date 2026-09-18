@@ -422,6 +422,8 @@ test("contact detail routes list deals, notes and tasks in the authorized worksp
     position: "a0",
     stageName: "Novo",
     pipelineName: "Vendas",
+    contactName: "Contact",
+    companyName: null,
     createdAt: new Date(),
   };
   const note = {
@@ -926,6 +928,8 @@ test("company detail routes list contacts, deals and notes in the authorized wor
     position: "a0",
     stageName: "Novo",
     pipelineName: "Vendas",
+    contactName: "Contact",
+    companyName: "Company",
     createdAt: new Date(),
   };
   const note = {
@@ -1000,6 +1004,143 @@ test("company detail routes list contacts, deals and notes in the authorized wor
     expect(database.listNotes).toHaveBeenCalledWith(workspaceId, {
       companyId: company.id,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test("deal detail routes expose the named deal and its notes and tasks", async () => {
+  const workspaceId = randomUUID();
+  const userId = randomUUID();
+  const deal = {
+    id: randomUUID(),
+    pipelineId: randomUUID(),
+    stageId: randomUUID(),
+    title: "Negócio",
+    valueCents: 150000,
+    contactId: randomUUID(),
+    companyId: randomUUID(),
+    position: "a0",
+    stageName: "Novo",
+    pipelineName: "Vendas",
+    contactName: "Contact",
+    companyName: "Company",
+    createdAt: new Date(),
+  };
+  const note = {
+    id: randomUUID(),
+    contactId: null,
+    companyId: null,
+    dealId: deal.id,
+    authorId: userId,
+    authorName: "User",
+    body: "Anotação",
+    createdAt: new Date(),
+  };
+  const task = {
+    id: randomUUID(),
+    contactId: null,
+    companyId: null,
+    dealId: deal.id,
+    assigneeId: userId,
+    assigneeName: "User",
+    title: "Ligar",
+    dueAt: null,
+    doneAt: null,
+    createdAt: new Date(),
+  };
+  const database = createDatabaseStub();
+  database.getDeal.mockResolvedValue(deal);
+  database.listNotes.mockResolvedValue([note]);
+  database.listTasks.mockResolvedValue([task]);
+  database.createNote.mockResolvedValue(note);
+  database.createTask.mockResolvedValue(task);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) =>
+      token
+        ? { userId, email: "user@example.com", name: "User", isAdmin: false }
+        : undefined,
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    expect(
+      (await app.inject(`/deals/${deal.id}?workspaceId=${workspaceId}`))
+        .statusCode,
+    ).toBe(401);
+    expect(database.getDeal).not.toHaveBeenCalled();
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/deals/${deal.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toEqual({
+      ...deal,
+      createdAt: deal.createdAt.toISOString(),
+    });
+
+    const notes = await app.inject({
+      method: "GET",
+      url: `/deals/${deal.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(notes.statusCode).toBe(200);
+    expect(notes.json()).toEqual([
+      { ...note, createdAt: note.createdAt.toISOString() },
+    ]);
+    expect(database.listNotes).toHaveBeenCalledWith(workspaceId, {
+      dealId: deal.id,
+    });
+
+    const tasks = await app.inject({
+      method: "GET",
+      url: `/deals/${deal.id}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(tasks.statusCode).toBe(200);
+    expect(tasks.json()).toEqual([
+      { ...task, createdAt: task.createdAt.toISOString() },
+    ]);
+    expect(database.listTasks).toHaveBeenCalledWith(workspaceId, {
+      dealId: deal.id,
+    });
+
+    const createdNote = await app.inject({
+      method: "POST",
+      url: `/deals/${deal.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "Anotação" },
+    });
+    expect(createdNote.statusCode).toBe(201);
+    expect(database.createNote).toHaveBeenCalledWith(workspaceId, {
+      body: "Anotação",
+      dealId: deal.id,
+      authorId: userId,
+    });
+
+    const createdTask = await app.inject({
+      method: "POST",
+      url: `/deals/${deal.id}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { title: "Ligar" },
+    });
+    expect(createdTask.statusCode).toBe(201);
+    expect(database.createTask).toHaveBeenCalledWith(workspaceId, {
+      title: "Ligar",
+      dealId: deal.id,
+      assigneeId: userId,
+      dueAt: null,
+    });
+
+    database.getDeal.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "GET",
+      url: `/deals/${deal.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missing.statusCode).toBe(404);
   } finally {
     await app.close();
   }

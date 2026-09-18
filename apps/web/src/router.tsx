@@ -13,6 +13,7 @@ import { ContactDetailPage } from "./routes/contact-detail.tsx";
 import { CompaniesPage } from "./routes/companies.tsx";
 import { CompanyDetailPage } from "./routes/company-detail.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
+import { DealDetailPage } from "./routes/deal-detail.tsx";
 import { InboxPage } from "./routes/inbox.tsx";
 import { AdminPage } from "./routes/admin.tsx";
 import { SettingsLayout } from "./routes/settings.tsx";
@@ -48,6 +49,12 @@ const pipelinesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/pipelines",
   component: PipelinesPage,
+});
+
+const dealDetailRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/deals/$dealId",
+  component: DealDetailPage,
 });
 
 const contactsRoute = createRoute({
@@ -117,6 +124,7 @@ export const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     indexRoute,
     pipelinesRoute,
+    dealDetailRoute,
     contactsRoute,
     contactDetailRoute,
     companiesRoute,

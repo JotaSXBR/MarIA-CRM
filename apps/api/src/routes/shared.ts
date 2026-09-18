@@ -129,11 +129,19 @@ export const entityLinkProperties = {
 
 export const entityDealSchema = {
   ...dealSchema,
-  required: [...dealSchema.required, "stageName", "pipelineName"],
+  required: [
+    ...dealSchema.required,
+    "stageName",
+    "pipelineName",
+    "contactName",
+    "companyName",
+  ],
   properties: {
     ...dealSchema.properties,
     stageName: { type: "string" },
     pipelineName: { type: "string" },
+    contactName: { type: ["string", "null"] },
+    companyName: { type: ["string", "null"] },
   },
 } as const;
 

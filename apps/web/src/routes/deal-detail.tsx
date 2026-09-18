@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, TrashIcon } from "lucide-react";
+import { ArrowLeftIcon, PencilIcon, TrashIcon } from "lucide-react";
 import { api } from "@/lib/api";
-import { formatDate, formatDateTime, initials } from "@/lib/format";
-import type { Company, Contact, EntityDeal, Note, Task } from "@/lib/types";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import type { Company, Contact, DealDetail, Note, Task } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
-import { EntityDealList } from "@/components/entity-deal-list";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { DealEditor } from "@/components/deal-editor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,54 +22,55 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
-export function ContactDetailPage() {
-  const { contactId } = useParams({ strict: false }) as { contactId: string };
+export function DealDetailPage() {
+  const { dealId } = useParams({ strict: false }) as { dealId: string };
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
   const isAdmin = workspace?.role === "admin";
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
   const [noteBody, setNoteBody] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDueAt, setTaskDueAt] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const contact = useQuery({
-    queryKey: ["contact", workspaceId, contactId],
-    queryFn: () => api<Contact>(`/contacts/${contactId}`, { workspaceId }),
-    enabled: Boolean(workspaceId && contactId),
+  const deal = useQuery({
+    queryKey: ["deal", workspaceId, dealId],
+    queryFn: () => api<DealDetail>(`/deals/${dealId}`, { workspaceId }),
+    enabled: Boolean(workspaceId && dealId),
+  });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", workspaceId],
+    queryFn: () => api<Contact[]>("/contacts", { workspaceId }),
+    enabled: Boolean(workspaceId && editing),
   });
 
   const { data: companies = [] } = useQuery({
     queryKey: ["companies", workspaceId],
     queryFn: () => api<Company[]>("/companies", { workspaceId }),
-    enabled: Boolean(workspaceId),
-  });
-
-  const deals = useQuery({
-    queryKey: ["contact-deals", workspaceId, contactId],
-    queryFn: () =>
-      api<EntityDeal[]>(`/contacts/${contactId}/deals`, { workspaceId }),
-    enabled: Boolean(workspaceId && contactId),
+    enabled: Boolean(workspaceId && editing),
   });
 
   const notes = useQuery({
-    queryKey: ["contact-notes", workspaceId, contactId],
-    queryFn: () => api<Note[]>(`/contacts/${contactId}/notes`, { workspaceId }),
-    enabled: Boolean(workspaceId && contactId),
+    queryKey: ["deal-notes", workspaceId, dealId],
+    queryFn: () => api<Note[]>(`/deals/${dealId}/notes`, { workspaceId }),
+    enabled: Boolean(workspaceId && dealId),
   });
 
   const tasks = useQuery({
-    queryKey: ["contact-tasks", workspaceId, contactId],
-    queryFn: () => api<Task[]>(`/contacts/${contactId}/tasks`, { workspaceId }),
-    enabled: Boolean(workspaceId && contactId),
+    queryKey: ["deal-tasks", workspaceId, dealId],
+    queryFn: () => api<Task[]>(`/deals/${dealId}/tasks`, { workspaceId }),
+    enabled: Boolean(workspaceId && dealId),
   });
 
   const invalidate = (key: string) =>
-    queryClient.invalidateQueries({ queryKey: [key, workspaceId, contactId] });
+    queryClient.invalidateQueries({ queryKey: [key, workspaceId, dealId] });
 
   const addNote = useMutation({
     mutationFn: () =>
-      api<Note>(`/contacts/${contactId}/notes`, {
+      api<Note>(`/deals/${dealId}/notes`, {
         method: "POST",
         workspaceId,
         body: { body: noteBody },
@@ -77,14 +78,14 @@ export function ContactDetailPage() {
     onSuccess: async () => {
       setNoteBody("");
       setError(null);
-      await invalidate("contact-notes");
+      await invalidate("deal-notes");
     },
     onError: () => setError("Não foi possível adicionar a nota."),
   });
 
   const addTask = useMutation({
     mutationFn: () =>
-      api<Task>(`/contacts/${contactId}/tasks`, {
+      api<Task>(`/deals/${dealId}/tasks`, {
         method: "POST",
         workspaceId,
         body: {
@@ -96,7 +97,7 @@ export function ContactDetailPage() {
       setTaskTitle("");
       setTaskDueAt("");
       setError(null);
-      await invalidate("contact-tasks");
+      await invalidate("deal-tasks");
     },
     onError: () => setError("Não foi possível adicionar a tarefa."),
   });
@@ -108,21 +109,21 @@ export function ContactDetailPage() {
         workspaceId,
         body: { done: !task.doneAt },
       }),
-    onSuccess: () => invalidate("contact-tasks"),
+    onSuccess: () => invalidate("deal-tasks"),
     onError: () => setError("Não foi possível atualizar a tarefa."),
   });
 
   const removeNote = useMutation({
     mutationFn: (id: string) =>
       api<void>(`/notes/${id}`, { method: "DELETE", workspaceId }),
-    onSuccess: () => invalidate("contact-notes"),
+    onSuccess: () => invalidate("deal-notes"),
     onError: () => setError("Não foi possível remover a nota."),
   });
 
   const removeTask = useMutation({
     mutationFn: (id: string) =>
       api<void>(`/tasks/${id}`, { method: "DELETE", workspaceId }),
-    onSuccess: () => invalidate("contact-tasks"),
+    onSuccess: () => invalidate("deal-tasks"),
     onError: () => setError("Não foi possível remover a tarefa."),
   });
 
@@ -138,16 +139,13 @@ export function ContactDetailPage() {
 
   if (!workspaceId) return <p>Selecione um workspace.</p>;
 
-  if (contact.isLoading) {
+  if (deal.isLoading) {
     return (
       <section className="mx-auto flex max-w-3xl flex-col gap-6">
         <Skeleton className="h-4 w-32" />
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-12 rounded-full" />
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-6 w-64" />
+          <Skeleton className="h-4 w-48" />
         </div>
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-40 w-full" />
@@ -155,69 +153,104 @@ export function ContactDetailPage() {
     );
   }
 
-  if (!contact.data) {
+  if (!deal.data) {
     return (
       <section className="mx-auto max-w-3xl">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Contato não encontrado</EmptyTitle>
+            <EmptyTitle>Negócio não encontrado</EmptyTitle>
             <EmptyDescription>
-              O contato pode ter sido removido ou não pertence a este workspace.
+              O negócio pode ter sido removido ou não pertence a este workspace.
             </EmptyDescription>
           </EmptyHeader>
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link to="/contacts" />}
+            render={<Link to="/pipelines" />}
           >
-            Voltar para contatos
+            Voltar para pipelines
           </Button>
         </Empty>
       </section>
     );
   }
 
-  const detail = contact.data;
+  const detail = deal.data;
 
   return (
     <section
-      aria-labelledby="contact-title"
+      aria-labelledby="deal-title"
       className="mx-auto flex max-w-3xl flex-col gap-6"
     >
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-fit"
-        nativeButton={false}
-        render={<Link to="/contacts" />}
-      >
-        <ArrowLeftIcon data-icon="inline-start" />
-        Voltar para contatos
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+          nativeButton={false}
+          render={<Link to="/pipelines" />}
+        >
+          <ArrowLeftIcon data-icon="inline-start" />
+          Voltar para pipelines
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+          <PencilIcon data-icon="inline-start" />
+          Editar
+        </Button>
+      </div>
 
-      <header className="flex items-center gap-4">
-        <Avatar className="size-12">
-          <AvatarFallback>{initials(detail.name)}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <h1 id="contact-title" className="truncate text-xl font-semibold">
-            {detail.name}
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 id="deal-title" className="text-xl font-semibold">
+            {detail.title}
           </h1>
-          <p className="truncate text-sm text-muted-foreground">
-            {[detail.email, detail.phone].filter(Boolean).join(" · ") ||
-              "Sem email ou telefone"}
-          </p>
-          {detail.companyId ? (
-            <p className="truncate text-sm">
-              <Link
-                to="/companies/$companyId"
-                params={{ companyId: detail.companyId }}
-                className="text-muted-foreground hover:underline"
-              >
-                {companies.find((c) => c.id === detail.companyId)?.name ??
-                  "Empresa"}
-              </Link>
-            </p>
+          <Badge variant="secondary">{detail.stageName}</Badge>
+          {detail.valueCents !== null ? (
+            <span className="text-lg font-semibold">
+              {formatCurrency(detail.valueCents)}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {[
+            detail.pipelineName,
+            detail.contactName ? `Contato: ${detail.contactName}` : null,
+            detail.companyName ? `Empresa: ${detail.companyName}` : null,
+            `Criado em ${formatDate(detail.createdAt)}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {detail.contactId && detail.contactName ? (
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <Link
+                  to="/contacts/$contactId"
+                  params={{ contactId: detail.contactId }}
+                />
+              }
+            >
+              {detail.contactName}
+            </Button>
+          ) : null}
+          {detail.companyId && detail.companyName ? (
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <Link
+                  to="/companies/$companyId"
+                  params={{ companyId: detail.companyId }}
+                />
+              }
+            >
+              {detail.companyName}
+            </Button>
           ) : null}
         </div>
       </header>
@@ -227,15 +260,6 @@ export function ContactDetailPage() {
           {error}
         </p>
       ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Negócios</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EntityDealList deals={deals.data} />
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -342,7 +366,7 @@ export function ContactDetailPage() {
                 <Textarea
                   id="note-body"
                   required
-                  placeholder="Escreva uma nota sobre este contato"
+                  placeholder="Escreva uma nota sobre este negócio"
                   rows={3}
                   value={noteBody}
                   onChange={(e) => setNoteBody(e.target.value)}
@@ -392,6 +416,18 @@ export function ContactDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {editing ? (
+        <DealEditor
+          deal={detail}
+          isAdmin={isAdmin}
+          contacts={contacts}
+          companies={companies}
+          onClose={() => setEditing(false)}
+          onSaved={() => invalidate("deal")}
+          onDeleted={() => navigate({ to: "/pipelines" })}
+        />
+      ) : null}
     </section>
   );
 }

@@ -242,7 +242,7 @@ test("pipelines board renders stages and deals for the workspace", async () => {
   );
 });
 
-test("clicking a deal opens the editor and saves via PATCH", async () => {
+test("clicking a deal opens its detail page and edits via the editor", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const pipelineId = "123e4567-e89b-12d3-a456-426614174010";
   const stageId = "123e4567-e89b-12d3-a456-426614174011";
@@ -258,6 +258,13 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
     companyId: null,
     position: "a0",
     createdAt: new Date().toISOString(),
+  };
+  const dealDetail = {
+    ...deal,
+    stageName: "Novo",
+    pipelineName: "Vendas",
+    contactName: null,
+    companyName: null,
   };
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -300,11 +307,17 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
           { status: 200 },
         );
       }
+      if (url.includes(`/deals/${dealId}/`)) {
+        return new Response("[]", { status: 200 });
+      }
       if (url.includes(`/deals/${dealId}`) && init?.method === "PATCH") {
         return new Response(
           JSON.stringify({ ...deal, title: "Renamed", valueCents: 200000 }),
           { status: 200 },
         );
+      }
+      if (url.includes(`/deals/${dealId}`)) {
+        return new Response(JSON.stringify(dealDetail), { status: 200 });
       }
       if (url.includes("/deals")) {
         return new Response(JSON.stringify([deal]), { status: 200 });
@@ -330,6 +343,8 @@ test("clicking a deal opens the editor and saves via PATCH", async () => {
   renderApp("/pipelines");
   const user = userEvent.setup();
   await user.click(await screen.findByText("Proposta ACME"));
+
+  await user.click(await screen.findByRole("button", { name: /Editar/ }));
 
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toBeDefined();
@@ -662,4 +677,118 @@ test("company detail shows linked contacts, deals and notes", async () => {
   expect(await screen.findByText("Proposta ACME")).toBeDefined();
   expect(screen.getByText("Novo")).toBeDefined();
   expect(await screen.findByText("Cliente estratégico")).toBeDefined();
+});
+
+test("deal detail shows named deal, tasks and notes", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const dealId = "123e4567-e89b-12d3-a456-426614174060";
+  const contactId = "123e4567-e89b-12d3-a456-426614174061";
+  const companyId = "123e4567-e89b-12d3-a456-426614174062";
+  const posted: unknown[] = [];
+  setToken("session-token");
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "member" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/deals/${dealId}/notes`)) {
+        if (init?.method === "POST") {
+          posted.push(JSON.parse(init.body as string));
+          return new Response(
+            JSON.stringify({
+              id: "123e4567-e89b-12d3-a456-426614174063",
+              contactId: null,
+              companyId: null,
+              dealId,
+              authorId: null,
+              authorName: null,
+              body: "Nova nota",
+              createdAt: new Date().toISOString(),
+            }),
+            { status: 201 },
+          );
+        }
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174064",
+              contactId: null,
+              companyId: null,
+              dealId,
+              authorId: null,
+              authorName: "User",
+              body: "Cliente pediu retorno",
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/deals/${dealId}/tasks`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174065",
+              contactId: null,
+              companyId: null,
+              dealId,
+              assigneeId: null,
+              assigneeName: "User",
+              title: "Enviar proposta",
+              dueAt: null,
+              doneAt: null,
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/deals/${dealId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: dealId,
+            pipelineId: "123e4567-e89b-12d3-a456-426614174010",
+            stageId: "123e4567-e89b-12d3-a456-426614174011",
+            title: "Proposta ACME",
+            valueCents: 150000,
+            contactId,
+            companyId,
+            position: "a0",
+            stageName: "Novo",
+            pipelineName: "Vendas",
+            contactName: "Maria Silva",
+            companyName: "ACME",
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(`/deals/${dealId}`);
+
+  expect(
+    await screen.findByRole("heading", { name: "Proposta ACME" }),
+  ).toBeDefined();
+  expect(screen.getByText("Novo")).toBeDefined();
+  expect(
+    await screen.findByRole("button", { name: "Maria Silva" }),
+  ).toBeDefined();
+  expect(await screen.findByRole("button", { name: "ACME" })).toBeDefined();
+  expect(await screen.findByText("Enviar proposta")).toBeDefined();
+  expect(await screen.findByText("Cliente pediu retorno")).toBeDefined();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Nova nota"), "Nova nota");
+  await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
+  await waitFor(() => expect(posted).toEqual([{ body: "Nova nota" }]));
 });
