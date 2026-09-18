@@ -1,6 +1,6 @@
 ---
 name: maria-database-rls
-description: Change MarIA CRM persistence, SQL migrations and scoped transactions while preserving tenant isolation.
+description: Change MarIA CRM persistence, SQL migrations and scoped transactions while preserving tenant isolation. Applies when touching packages/database schema, migrations or scoped transaction helpers.
 ---
 
 # MarIA CRM database and RLS
@@ -16,6 +16,9 @@ packages/database/src/index.ts owns scoped transaction helpers.
 - Validate related IDs in the same scoped transaction; simple FKs do not prove tenant equality.
 - Align schema and reviewed SQL. Drizzle Kit is not configured: do not advertise an unavailable
   generator command. Add numbered SQL migrations; never rewrite applied SQL or push in production.
+- Unique constraints over nullable columns do not deduplicate NULLs — PostgreSQL treats
+  NULLs as distinct. Enforce the NULL case with a partial unique index (see
+  channel_instances, migration 0013).
 - Use the shared migration runner for setup/tests/CI with a separate privileged connection.
   Reject changed history and unmanaged existing schemas. Existing DB adoption needs explicit
   backup/reconciliation planning, not automatic replay.
