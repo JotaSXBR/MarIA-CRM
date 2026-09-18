@@ -17,8 +17,10 @@ packages/database/src/index.ts owns scoped transaction helpers.
 - Align schema and reviewed SQL. Drizzle Kit is not configured: do not advertise an unavailable
   generator command. Add numbered SQL migrations; never rewrite applied SQL or push in production.
 - Unique constraints over nullable columns do not deduplicate NULLs — PostgreSQL treats
-  NULLs as distinct. Enforce the NULL case with a partial unique index (see
-  channel_instances, migration 0013).
+  NULLs as distinct. When NULL must not duplicate, enforce that case with a partial
+  unique index (see channel_instances, migration 0013). Where NULL-distinct is the
+  intent (contacts.phone, messages.provider_message_id), mark it with a comment so
+  the rule is not "fixed" by mistake.
 - Use the shared migration runner for setup/tests/CI with a separate privileged connection.
   Reject changed history and unmanaged existing schemas. Existing DB adoption needs explicit
   backup/reconciliation planning, not automatic replay.

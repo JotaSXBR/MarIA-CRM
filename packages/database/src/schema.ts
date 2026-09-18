@@ -55,6 +55,7 @@ export const contacts = pgTable(
     index("contacts_workspace_active_idx")
       .on(table.workspaceId)
       .where(sql`deleted_at is null`),
+    // NULLs-distinct is intended here: contacts without a phone may coexist.
     uniqueIndex("contacts_workspace_phone_active_idx")
       .on(table.workspaceId, table.phone)
       .where(sql`deleted_at is null`),
@@ -379,6 +380,8 @@ export const messages = pgTable(
   },
   (table) => [
     index("messages_conversation_id_idx").on(table.conversationId),
+    // NULLs-distinct is intended here: local messages without a provider id
+    // may coexist; only provider-identified messages deduplicate.
     uniqueIndex("messages_provider_id_idx").on(
       table.conversationId,
       table.providerMessageId,
