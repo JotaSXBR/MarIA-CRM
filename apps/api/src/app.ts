@@ -31,7 +31,13 @@ export type AppDependencies = {
 };
 
 export function buildApp(dependencies?: AppDependencies) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    // Nullable fields use `type: ["string", "null"]` union keywords, which
+    // are valid JSON Schema — opt in instead of rewriting every schema to
+    // anyOf (issue #76).
+    ajv: { customOptions: { allowUnionTypes: true } },
+  });
   const waha =
     dependencies?.messaging?.waha ??
     createWahaProvider({
