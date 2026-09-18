@@ -912,7 +912,7 @@ test("contact create and update forward companyId and map invalid refs to 404", 
   }
 });
 
-test("company detail routes list contacts, deals and notes in the authorized workspace", async () => {
+test("company detail routes list and create contacts-linked activity in the authorized workspace", async () => {
   const workspaceId = randomUUID();
   const userId = randomUUID();
   const company = {
@@ -953,11 +953,26 @@ test("company detail routes list contacts, deals and notes in the authorized wor
     body: "Anotação",
     createdAt: new Date(),
   };
+  const task = {
+    id: randomUUID(),
+    contactId: null,
+    companyId: company.id,
+    dealId: null,
+    assigneeId: userId,
+    assigneeName: "User",
+    title: "Ligar",
+    dueAt: null,
+    doneAt: null,
+    createdAt: new Date(),
+  };
   const database = createDatabaseStub();
   database.getCompany.mockResolvedValue(company);
   database.listContacts.mockResolvedValue([contact]);
   database.listDealsForCompany.mockResolvedValue([deal]);
   database.listNotes.mockResolvedValue([note]);
+  database.listTasks.mockResolvedValue([task]);
+  database.createNote.mockResolvedValue(note);
+  database.createTask.mockResolvedValue(task);
   const auth = createAuthStub({
     verifySession: async (token?: string) =>
       token
@@ -1015,6 +1030,65 @@ test("company detail routes list contacts, deals and notes in the authorized wor
     expect(database.listNotes).toHaveBeenCalledWith(workspaceId, {
       companyId: company.id,
     });
+
+    const tasks = await app.inject({
+      method: "GET",
+      url: `/companies/${company.id}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(tasks.statusCode).toBe(200);
+    expect(tasks.json()).toEqual([
+      { ...task, createdAt: task.createdAt.toISOString() },
+    ]);
+    expect(database.listTasks).toHaveBeenCalledWith(workspaceId, {
+      companyId: company.id,
+    });
+
+    const postedNote = await app.inject({
+      method: "POST",
+      url: `/companies/${company.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "Nova nota" },
+    });
+    expect(postedNote.statusCode).toBe(201);
+    expect(postedNote.json()).toEqual({
+      ...note,
+      authorName: null,
+      createdAt: note.createdAt.toISOString(),
+    });
+    expect(database.createNote).toHaveBeenCalledWith(workspaceId, {
+      body: "Nova nota",
+      companyId: company.id,
+      authorId: userId,
+    });
+
+    const postedTask = await app.inject({
+      method: "POST",
+      url: `/companies/${company.id}/tasks?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { title: "Ligar", dueAt: null },
+    });
+    expect(postedTask.statusCode).toBe(201);
+    expect(postedTask.json()).toEqual({
+      ...task,
+      assigneeName: null,
+      createdAt: task.createdAt.toISOString(),
+    });
+    expect(database.createTask).toHaveBeenCalledWith(workspaceId, {
+      title: "Ligar",
+      companyId: company.id,
+      assigneeId: userId,
+      dueAt: null,
+    });
+
+    database.createNote.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "POST",
+      url: `/companies/${company.id}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "Nova nota" },
+    });
+    expect(missing.statusCode).toBe(404);
   } finally {
     await app.close();
   }

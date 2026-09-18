@@ -2,9 +2,10 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
 import { api } from "@/lib/api";
-import { formatDate, formatDateTime, initials } from "@/lib/format";
-import type { Company, Contact, EntityDeal, Note } from "@/lib/types";
+import { formatDate, initials } from "@/lib/format";
+import type { Company, Contact, EntityDeal } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
+import { EntityNotesCard, EntityTasksCard } from "@/components/entity-activity";
 import { EntityDealList } from "@/components/entity-deal-list";
 import { TagPicker } from "@/components/tag-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -22,6 +23,7 @@ export function CompanyDetailPage() {
   const { companyId } = useParams({ strict: false }) as { companyId: string };
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
+  const isAdmin = workspace?.role === "admin";
 
   const company = useQuery({
     queryKey: ["company", workspaceId, companyId],
@@ -40,13 +42,6 @@ export function CompanyDetailPage() {
     queryKey: ["company-deals", workspaceId, companyId],
     queryFn: () =>
       api<EntityDeal[]>(`/companies/${companyId}/deals`, { workspaceId }),
-    enabled: Boolean(workspaceId && companyId),
-  });
-
-  const notes = useQuery({
-    queryKey: ["company-notes", workspaceId, companyId],
-    queryFn: () =>
-      api<Note[]>(`/companies/${companyId}/notes`, { workspaceId }),
     enabled: Boolean(workspaceId && companyId),
   });
 
@@ -169,30 +164,18 @@ export function CompanyDetailPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Notas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {notes.data?.length ? (
-            <ul className="flex flex-col divide-y">
-              {notes.data.map((note) => (
-                <li key={note.id} className="py-3 first:pt-0 last:pb-0">
-                  <p className="text-sm whitespace-pre-wrap">{note.body}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {[
-                      note.authorName ?? "Alguém",
-                      formatDateTime(note.createdAt),
-                    ].join(" · ")}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhuma nota ainda.</p>
-          )}
-        </CardContent>
-      </Card>
+      <EntityTasksCard
+        workspaceId={workspaceId}
+        entityPath={`/companies/${companyId}`}
+        isAdmin={isAdmin}
+      />
+
+      <EntityNotesCard
+        workspaceId={workspaceId}
+        entityPath={`/companies/${companyId}`}
+        isAdmin={isAdmin}
+        placeholder="Escreva uma nota sobre esta empresa"
+      />
     </section>
   );
 }

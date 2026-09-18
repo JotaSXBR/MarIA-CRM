@@ -12,16 +12,14 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#68 merged (skill audit, lint → 0 warnings,
-  NULL-distinct comments, code-simplifier per-slice, PR label rule,
-  contact↔company link + company detail, pnpm 12.4.2 upgrade, deal detail
-  page with notes/tasks and entity links).
-- Branch `feat/entity-tags` — Slice 6 implemented and verified: workspace
-  tags on contacts, companies and deals (CRUD + atomic assignment
-  replace + chips/picker UI + settings management).
+- `main` — PRs #61–#69 merged (…pnpm 12.4.2, deal detail, workspace
+  tags on contacts/companies/deals).
+- Branch `feat/company-write-paths` — company detail write paths
+  implemented and verified: `GET|POST /companies/:id/tasks` +
+  `POST /companies/:id/notes`; notes/tasks cards extracted into shared
+  `EntityTasksCard`/`EntityNotesCard` used by all three detail pages.
 - Next after this: custom attributes (deferred — needs typed
-  definition/value model), global search; company detail write paths
-  (`POST /companies/:id/{notes,tasks}`) for parity if wanted.
+  definition/value model), then global search.
 
 ## Memory model
 
@@ -34,8 +32,28 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#68 merged (#68 at `8649136`).
+- `main` (2026-09-18): PRs #61–#69 merged (#69 at `e036dcf`).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- Slice 7 on `feat/company-write-paths` (2026-09-18, Windows/pnpm):
+  - API `routes/companies.ts`: `POST /companies/:id/notes` +
+    `GET|POST /companies/:id/tasks` mirroring the contact routes
+    (author/assignee = session user; `createNote`/`createTask` already
+    validate `companyId` via `entityRefsValid` inside the scoped
+    transaction → `undefined` → 404).
+  - Web: the identical notes/tasks cards previously duplicated in
+    contact-detail and deal-detail extracted to
+    `components/entity-activity.tsx` (`EntityTasksCard`,
+    `EntityNotesCard` — self-contained query/mutations keyed by
+    `entityPath`, per-card error line, admin-gated deletes, optional
+    note placeholder prop). All three detail pages now use them;
+    company detail gained the tasks card and note/task creation
+    (~550 duplicated lines removed, net diff −250 lines).
+- Checks (`feat/company-write-paths` dirty tree, 2026-09-18):
+  `pnpm fmt:check` clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6;
+  `pnpm test` web 10/10 (company test now covers GET tasks + POST
+  notes/tasks); `pnpm test:integration` api 40/40 (company aggregates
+  test extended with tasks GET/POST + notes POST + 404); `pnpm build`
+  6/6.
 - Slice 6 on `feat/entity-tags` (2026-09-18, Windows/pnpm 12.4.2):
   - `schema.ts` + migration `0015_entity_tags.sql`: `tags`
     (workspace_id, name, color, soft-delete; partial unique
@@ -243,9 +261,6 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
-- Company detail is read-only for now — notes/tasks creation from the
-  company context has no API route yet (notes accept `companyId` in the DB
-  layer; add `POST /companies/:id/notes` when needed).
 - CRM domain gaps remain open work: no custom attributes (typed
   definition/value model deferred), no global search.
 

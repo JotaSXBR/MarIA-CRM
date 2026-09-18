@@ -707,88 +707,145 @@ test("contact detail shows assigned tags and updates assignments", async () => {
   );
 });
 
-test("company detail shows linked contacts, deals and notes", async () => {
+test("company detail shows linked contacts, deals, tasks and notes", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const companyId = "123e4567-e89b-12d3-a456-426614174050";
   const contactId = "123e4567-e89b-12d3-a456-426614174051";
+  const postedNotes: unknown[] = [];
+  const postedTasks: unknown[] = [];
   setToken("session-token");
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = requestUrl(input);
-    if (url.includes("/me/workspaces")) {
-      return new Response(
-        JSON.stringify([
-          { workspaceId, workspaceName: "Workspace", role: "member" },
-        ]),
-        { status: 200 },
-      );
-    }
-    if (url.includes(`/companies/${companyId}/contacts`)) {
-      return new Response(
-        JSON.stringify([
-          {
-            id: contactId,
-            name: "Maria Silva",
-            email: "maria@example.com",
-            phone: null,
-            companyId,
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Workspace", role: "member" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/companies/${companyId}/contacts`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: contactId,
+              name: "Maria Silva",
+              email: "maria@example.com",
+              phone: null,
+              companyId,
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/companies/${companyId}/deals`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174052",
+              pipelineId: "123e4567-e89b-12d3-a456-426614174010",
+              stageId: "123e4567-e89b-12d3-a456-426614174011",
+              title: "Proposta ACME",
+              valueCents: 150000,
+              contactId,
+              companyId,
+              position: "a0",
+              stageName: "Novo",
+              pipelineName: "Vendas",
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/companies/${companyId}/tasks`)) {
+        if (init?.method === "POST") {
+          postedTasks.push(JSON.parse(init.body as string));
+          return new Response(
+            JSON.stringify({
+              id: "123e4567-e89b-12d3-a456-426614174055",
+              contactId: null,
+              companyId,
+              dealId: null,
+              assigneeId: null,
+              assigneeName: "User",
+              title: "Nova tarefa",
+              dueAt: null,
+              doneAt: null,
+              createdAt: new Date().toISOString(),
+            }),
+            { status: 201 },
+          );
+        }
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174054",
+              contactId: null,
+              companyId,
+              dealId: null,
+              assigneeId: null,
+              assigneeName: "User",
+              title: "Enviar proposta",
+              dueAt: null,
+              doneAt: null,
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/companies/${companyId}/notes`)) {
+        if (init?.method === "POST") {
+          postedNotes.push(JSON.parse(init.body as string));
+          return new Response(
+            JSON.stringify({
+              id: "123e4567-e89b-12d3-a456-426614174056",
+              contactId: null,
+              companyId,
+              dealId: null,
+              authorId: null,
+              authorName: "User",
+              body: "Nova nota",
+              createdAt: new Date().toISOString(),
+            }),
+            { status: 201 },
+          );
+        }
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174053",
+              contactId: null,
+              companyId,
+              dealId: null,
+              authorId: null,
+              authorName: "User",
+              body: "Cliente estratégico",
+              createdAt: new Date().toISOString(),
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/tags")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes(`/companies/${companyId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: companyId,
+            name: "ACME",
             createdAt: new Date().toISOString(),
-          },
-        ]),
-        { status: 200 },
-      );
-    }
-    if (url.includes(`/companies/${companyId}/deals`)) {
-      return new Response(
-        JSON.stringify([
-          {
-            id: "123e4567-e89b-12d3-a456-426614174052",
-            pipelineId: "123e4567-e89b-12d3-a456-426614174010",
-            stageId: "123e4567-e89b-12d3-a456-426614174011",
-            title: "Proposta ACME",
-            valueCents: 150000,
-            contactId,
-            companyId,
-            position: "a0",
-            stageName: "Novo",
-            pipelineName: "Vendas",
-            createdAt: new Date().toISOString(),
-          },
-        ]),
-        { status: 200 },
-      );
-    }
-    if (url.includes(`/companies/${companyId}/notes`)) {
-      return new Response(
-        JSON.stringify([
-          {
-            id: "123e4567-e89b-12d3-a456-426614174053",
-            contactId: null,
-            companyId,
-            dealId: null,
-            authorId: null,
-            authorName: "User",
-            body: "Cliente estratégico",
-            createdAt: new Date().toISOString(),
-          },
-        ]),
-        { status: 200 },
-      );
-    }
-    if (url.includes("/tags")) {
-      return new Response(JSON.stringify([]), { status: 200 });
-    }
-    if (url.includes(`/companies/${companyId}`)) {
-      return new Response(
-        JSON.stringify({
-          id: companyId,
-          name: "ACME",
-          createdAt: new Date().toISOString(),
-        }),
-        { status: 200 },
-      );
-    }
-    return new Response("not found", { status: 404 });
-  });
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   renderApp(`/companies/${companyId}`);
@@ -799,7 +856,23 @@ test("company detail shows linked contacts, deals and notes", async () => {
   ).toBeDefined();
   expect(await screen.findByText("Proposta ACME")).toBeDefined();
   expect(screen.getByText("Novo")).toBeDefined();
+  expect(await screen.findByText("Enviar proposta")).toBeDefined();
   expect(await screen.findByText("Cliente estratégico")).toBeDefined();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Nova nota"), "Nova nota");
+  fireEvent.submit(
+    screen.getByRole("button", { name: "Adicionar nota" }).closest("form")!,
+  );
+  await waitFor(() => expect(postedNotes).toEqual([{ body: "Nova nota" }]));
+
+  await user.type(screen.getByLabelText("Título da tarefa"), "Nova tarefa");
+  fireEvent.submit(
+    screen.getByRole("button", { name: "Adicionar tarefa" }).closest("form")!,
+  );
+  await waitFor(() =>
+    expect(postedTasks).toEqual([{ title: "Nova tarefa", dueAt: null }]),
+  );
 });
 
 test("deal detail shows named deal, tasks and notes", async () => {

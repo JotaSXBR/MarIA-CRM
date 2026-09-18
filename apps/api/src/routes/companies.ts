@@ -4,6 +4,7 @@ import {
   entityDealSchema,
   idParamsSchema,
   noteSchema,
+  taskSchema,
   workspaceQuerySchema,
   type AuthGuards,
   type RouteDatabase,
@@ -281,6 +282,104 @@ export function registerCompanyRoutes(
       const company = await database.getCompany(authorized.workspaceId, id);
       if (!company) return reply.code(404).send();
       return database.listNotes(authorized.workspaceId, { companyId: id });
+    },
+  );
+
+  app.post(
+    "/companies/:id/notes",
+    {
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["body"],
+          properties: { body: { type: "string", minLength: 1 } },
+        },
+        response: {
+          201: noteSchema,
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const { body } = request.body as { body: string };
+      const note = await database.createNote(authorized.workspaceId, {
+        body,
+        companyId: id,
+        authorId: authorized.session.userId,
+      });
+      if (!note) return reply.code(404).send();
+      return reply.code(201).send({ ...note, authorName: null });
+    },
+  );
+
+  app.get(
+    "/companies/:id/tasks",
+    {
+      config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          200: { type: "array", items: taskSchema },
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const company = await database.getCompany(authorized.workspaceId, id);
+      if (!company) return reply.code(404).send();
+      return database.listTasks(authorized.workspaceId, { companyId: id });
+    },
+  );
+
+  app.post(
+    "/companies/:id/tasks",
+    {
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title"],
+          properties: {
+            title: { type: "string", minLength: 1 },
+            dueAt: { type: ["string", "null"], format: "date-time" },
+          },
+        },
+        response: {
+          201: taskSchema,
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const input = request.body as { title: string; dueAt?: string | null };
+      const task = await database.createTask(authorized.workspaceId, {
+        title: input.title,
+        companyId: id,
+        assigneeId: authorized.session.userId,
+        dueAt: input.dueAt ? new Date(input.dueAt) : null,
+      });
+      if (!task) return reply.code(404).send();
+      return reply.code(201).send({ ...task, assigneeName: null });
     },
   );
 
