@@ -2,10 +2,12 @@ import {
   and,
   desc,
   eq,
+  ilike,
   inArray,
   isNull,
   lt,
   ne,
+  or,
   sql,
   type SQLWrapper,
 } from "drizzle-orm";
@@ -1440,6 +1442,54 @@ export function createDatabase(pool: Pool) {
           entityId,
           values,
         );
+      }),
+    // Case-insensitive substring search across the three CRM entities.
+    // Backslash is LIKE's default escape in PostgreSQL — user-supplied
+    // wildcards must be escaped so `%`/`_` stay literal.
+    searchEntities: (workspaceId: string, query: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+        const contactRows = await tx
+          .select({
+            id: contacts.id,
+            name: contacts.name,
+            email: contacts.email,
+          })
+          .from(contacts)
+          .where(
+            and(
+              notDeleted(contacts.deletedAt),
+              or(
+                ilike(contacts.name, pattern),
+                ilike(contacts.email, pattern),
+                ilike(contacts.phone, pattern),
+              ),
+            ),
+          )
+          .orderBy(contacts.name, contacts.id)
+          .limit(10);
+        const companyRows = await tx
+          .select({ id: companies.id, name: companies.name })
+          .from(companies)
+          .where(
+            and(
+              notDeleted(companies.deletedAt),
+              ilike(companies.name, pattern),
+            ),
+          )
+          .orderBy(companies.name, companies.id)
+          .limit(10);
+        const dealRows = await tx
+          .select({ id: deals.id, title: deals.title })
+          .from(deals)
+          .where(and(notDeleted(deals.deletedAt), ilike(deals.title, pattern)))
+          .orderBy(deals.title, deals.id)
+          .limit(10);
+        return {
+          contacts: contactRows,
+          companies: companyRows,
+          deals: dealRows,
+        };
       }),
     createChannelInstance: (
       workspaceId: string,

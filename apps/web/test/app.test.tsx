@@ -826,6 +826,76 @@ test("contact detail edits custom attributes via PUT", async () => {
   );
 });
 
+test("search page groups results and links to entity details", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const contactId = "123e4567-e89b-12d3-a456-426614174040";
+  const companyId = "123e4567-e89b-12d3-a456-426614174050";
+  const dealId = "123e4567-e89b-12d3-a456-426614174060";
+  const queries: string[] = [];
+  setToken("session-token");
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          { workspaceId, workspaceName: "Workspace", role: "member" },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith("/me")) {
+      return new Response(
+        JSON.stringify({
+          userId: "123e4567-e89b-12d3-a456-426614174041",
+          email: "user@example.com",
+          name: "User",
+          isAdmin: false,
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/search")) {
+      queries.push(url);
+      return new Response(
+        JSON.stringify({
+          contacts: [
+            { id: contactId, name: "Maria Silva", email: "maria@x.com" },
+          ],
+          companies: [{ id: companyId, name: "ACME" }],
+          deals: [{ id: dealId, title: "Proposta ACME" }],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/search?q=maria");
+
+  expect(await screen.findByRole("heading", { name: "Busca" })).toBeDefined();
+  expect(
+    await screen.findByRole("link", { name: /Maria Silva/ }),
+  ).toBeDefined();
+  expect(await screen.findByRole("link", { name: "ACME" })).toBeDefined();
+  expect(
+    await screen.findByRole("link", { name: "Proposta ACME" }),
+  ).toBeDefined();
+  expect(queries.some((url) => url.includes("q=maria"))).toBe(true);
+
+  // Submitting a new term navigates to /search?q=… and refetches.
+  const user = userEvent.setup();
+  const input = screen.getByLabelText("Termo de busca");
+  await user.clear(input);
+  await user.type(input, "acme");
+  fireEvent.submit(
+    screen.getByRole("button", { name: "Buscar" }).closest("form")!,
+  );
+  await waitFor(() =>
+    expect(queries.some((url) => url.includes("q=acme"))).toBe(true),
+  );
+});
+
 test("company detail shows linked contacts, deals, tasks and notes", async () => {
   const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
   const companyId = "123e4567-e89b-12d3-a456-426614174050";

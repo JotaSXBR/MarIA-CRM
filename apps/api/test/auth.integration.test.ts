@@ -76,6 +76,9 @@ function createDatabaseStub() {
     deleteAttribute: vi.fn().mockResolvedValue(false),
     listEntityAttributes: vi.fn().mockResolvedValue([]),
     setEntityAttributes: vi.fn().mockResolvedValue(undefined),
+    searchEntities: vi
+      .fn()
+      .mockResolvedValue({ contacts: [], companies: [], deals: [] }),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -1648,6 +1651,55 @@ test("entity attribute routes list and replace values in the authorized workspac
       payload: { values: [{ attributeId: randomUUID(), value: "x" }] },
     });
     expect(invalid.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /search requires a query and forwards it to the database", async () => {
+  const workspaceId = randomUUID();
+  const result = {
+    contacts: [
+      { id: randomUUID(), name: "Maria Silva", email: "maria@example.com" },
+    ],
+    companies: [{ id: randomUUID(), name: "ACME" }],
+    deals: [],
+  };
+  const database = createDatabaseStub();
+  database.searchEntities.mockResolvedValue(result);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const missing = await app.inject({
+      method: "GET",
+      url: `/search?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(database.searchEntities).not.toHaveBeenCalled();
+
+    const found = await app.inject({
+      method: "GET",
+      url: `/search?workspaceId=${workspaceId}&q=maria`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(found.statusCode).toBe(200);
+    expect(found.json()).toEqual(result);
+    expect(database.searchEntities).toHaveBeenCalledWith(workspaceId, "maria");
+
+    const unauthorized = await app.inject({
+      method: "GET",
+      url: `/search?workspaceId=${workspaceId}&q=maria`,
+    });
+    expect(unauthorized.statusCode).toBe(401);
   } finally {
     await app.close();
   }

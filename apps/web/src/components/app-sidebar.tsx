@@ -6,6 +6,7 @@ import {
   Inbox,
   Kanban,
   LogOut,
+  Search,
   Settings,
   ShieldCheck,
   Users,
@@ -38,6 +39,7 @@ import {
 
 const NAV_ITEMS = [
   { to: "/inbox", label: "Caixa de entrada", icon: Inbox },
+  { to: "/search", label: "Busca", icon: Search },
   { to: "/contacts", label: "Contatos", icon: Users },
   { to: "/companies", label: "Empresas", icon: Building2 },
   { to: "/pipelines", label: "Pipelines", icon: Kanban },

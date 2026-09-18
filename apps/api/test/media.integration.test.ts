@@ -87,6 +87,9 @@ function createDatabaseStub() {
     deleteAttribute: vi.fn().mockResolvedValue(false),
     listEntityAttributes: vi.fn().mockResolvedValue([]),
     setEntityAttributes: vi.fn().mockResolvedValue(undefined),
+    searchEntities: vi
+      .fn()
+      .mockResolvedValue({ contacts: [], companies: [], deals: [] }),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
