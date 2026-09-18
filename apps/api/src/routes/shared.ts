@@ -170,6 +170,85 @@ export const tagIdsBodySchema = {
   },
 } as const;
 
+export const attributeEntityTypeSchema = {
+  type: "string",
+  enum: ["contact", "company", "deal"],
+} as const;
+
+export const attributeTypeSchema = {
+  type: "string",
+  enum: ["text", "number", "date", "boolean", "select"],
+} as const;
+
+export const attributeDefinitionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "entityType",
+    "key",
+    "label",
+    "type",
+    "options",
+    "createdAt",
+    "updatedAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    entityType: attributeEntityTypeSchema,
+    key: { type: "string" },
+    label: { type: "string" },
+    type: attributeTypeSchema,
+    options: {
+      type: ["array", "null"],
+      items: { type: "string" },
+    },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
+export const entityAttributeSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "entityType",
+    "key",
+    "label",
+    "type",
+    "options",
+    "createdAt",
+    "updatedAt",
+    "value",
+  ],
+  properties: {
+    ...attributeDefinitionSchema.properties,
+    value: { type: ["string", "number", "boolean", "null"] },
+  },
+} as const;
+
+export const entityAttributesBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["values"],
+  properties: {
+    values: {
+      type: "array",
+      maxItems: 100,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["attributeId", "value"],
+        properties: {
+          attributeId: { type: "string", format: "uuid" },
+          value: { type: ["string", "number", "boolean", "null"] },
+        },
+      },
+    },
+  },
+} as const;
+
 export const noteSchema = {
   type: "object",
   additionalProperties: false,

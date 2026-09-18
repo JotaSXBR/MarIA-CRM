@@ -360,6 +360,77 @@ export const dealTags = pgTable(
   ],
 );
 
+export const attributeDefinitions = pgTable(
+  "attribute_definitions",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    entityType: text("entity_type")
+      .notNull()
+      .$type<"contact" | "company" | "deal">(),
+    key: text().notNull(),
+    label: text().notNull(),
+    type: text()
+      .notNull()
+      .$type<"text" | "number" | "date" | "boolean" | "select">(),
+    options: jsonb().$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("attribute_definitions_workspace_id_idx").on(table.workspaceId),
+    index("attribute_definitions_entity_idx").on(
+      table.workspaceId,
+      table.entityType,
+    ),
+    uniqueIndex("attribute_definitions_workspace_entity_key_active_idx")
+      .on(table.workspaceId, table.entityType, table.key)
+      .where(sql`deleted_at is null`),
+  ],
+);
+
+export const entityAttributeValues = pgTable(
+  "entity_attribute_values",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    attributeId: uuid("attribute_id")
+      .references(() => attributeDefinitions.id, { onDelete: "cascade" })
+      .notNull(),
+    entityType: text("entity_type")
+      .notNull()
+      .$type<"contact" | "company" | "deal">(),
+    entityId: uuid("entity_id").notNull(),
+    value: jsonb().$type<string | number | boolean | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("entity_attribute_values_attribute_entity_idx").on(
+      table.attributeId,
+      table.entityId,
+    ),
+    index("entity_attribute_values_entity_idx").on(
+      table.workspaceId,
+      table.entityType,
+      table.entityId,
+    ),
+  ],
+);
+
 export const invitations = pgTable(
   "invitations",
   {

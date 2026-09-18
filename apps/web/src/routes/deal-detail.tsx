@@ -8,6 +8,7 @@ import type { Company, Contact, DealDetail } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { DealEditor } from "@/components/deal-editor";
 import { EntityNotesCard, EntityTasksCard } from "@/components/entity-activity";
+import { EntityAttributesCard } from "@/components/entity-attributes-card";
 import { TagPicker } from "@/components/tag-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,6 +168,11 @@ export function DealDetailPage() {
         </div>
         <TagPicker workspaceId={workspaceId} entityPath={`/deals/${dealId}`} />
       </header>
+
+      <EntityAttributesCard
+        workspaceId={workspaceId}
+        entityPath={`/deals/${dealId}`}
+      />
 
       <EntityTasksCard
         workspaceId={workspaceId}

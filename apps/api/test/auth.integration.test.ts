@@ -69,6 +69,13 @@ function createDatabaseStub() {
     setContactTags: vi.fn().mockResolvedValue(undefined),
     setCompanyTags: vi.fn().mockResolvedValue(undefined),
     setDealTags: vi.fn().mockResolvedValue(undefined),
+    listAttributes: vi.fn().mockResolvedValue([]),
+    getAttribute: vi.fn().mockResolvedValue(undefined),
+    createAttribute: vi.fn().mockResolvedValue(undefined),
+    updateAttribute: vi.fn().mockResolvedValue(undefined),
+    deleteAttribute: vi.fn().mockResolvedValue(false),
+    listEntityAttributes: vi.fn().mockResolvedValue([]),
+    setEntityAttributes: vi.fn().mockResolvedValue(undefined),
     listOrganizations: vi.fn().mockResolvedValue([]),
     createOrganization: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue([]),
@@ -1424,6 +1431,221 @@ test("entity tag routes list and replace assignments in the authorized workspace
       url: `/contacts/${contactId}/tags?workspaceId=${workspaceId}`,
       headers: { authorization: "Bearer token" },
       payload: { tagIds: [randomUUID()] },
+    });
+    expect(invalid.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("attribute definition CRUD maps conflicts and requires admin for delete", async () => {
+  const workspaceId = randomUUID();
+  const attribute = {
+    id: randomUUID(),
+    entityType: "contact",
+    key: "segmento",
+    label: "Segmento",
+    type: "select",
+    options: ["SMB", "Enterprise"],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const serialized = {
+    ...attribute,
+    createdAt: attribute.createdAt.toISOString(),
+    updatedAt: attribute.updatedAt.toISOString(),
+  };
+  const database = createDatabaseStub();
+  database.listAttributes.mockResolvedValue([attribute]);
+  database.createAttribute.mockResolvedValue(attribute);
+  database.updateAttribute.mockResolvedValue(attribute);
+  database.deleteAttribute.mockResolvedValue(true);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId: token === "admin-token" ? "admin-id" : "member-id",
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === "admin-id" ? "admin" : "member",
+    }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const listed = await app.inject({
+      method: "GET",
+      url: `/attributes?workspaceId=${workspaceId}&entityType=contact`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([serialized]);
+    expect(database.listAttributes).toHaveBeenCalledWith(
+      workspaceId,
+      "contact",
+    );
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/attributes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: {
+        entityType: "contact",
+        label: "Segmento",
+        type: "select",
+        options: ["SMB", "Enterprise"],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(database.createAttribute).toHaveBeenCalledWith(workspaceId, {
+      entityType: "contact",
+      label: "Segmento",
+      type: "select",
+      options: ["SMB", "Enterprise"],
+    });
+
+    database.createAttribute.mockResolvedValue(undefined);
+    const conflict = await app.inject({
+      method: "POST",
+      url: `/attributes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { entityType: "contact", label: "Segmento", type: "text" },
+    });
+    expect(conflict.statusCode).toBe(409);
+
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: `/attributes/${attribute.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { label: "Segmento novo" },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(database.updateAttribute).toHaveBeenCalledWith(
+      workspaceId,
+      attribute.id,
+      { label: "Segmento novo" },
+    );
+
+    database.updateAttribute.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "PATCH",
+      url: `/attributes/${attribute.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { label: "Segmento novo" },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const memberDelete = await app.inject({
+      method: "DELETE",
+      url: `/attributes/${attribute.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(memberDelete.statusCode).toBe(403);
+
+    const adminDelete = await app.inject({
+      method: "DELETE",
+      url: `/attributes/${attribute.id}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer admin-token" },
+    });
+    expect(adminDelete.statusCode).toBe(204);
+    expect(database.deleteAttribute).toHaveBeenCalledWith(
+      workspaceId,
+      attribute.id,
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test("entity attribute routes list and replace values in the authorized workspace", async () => {
+  const workspaceId = randomUUID();
+  const contactId = randomUUID();
+  const companyId = randomUUID();
+  const dealId = randomUUID();
+  const entityAttribute = {
+    id: randomUUID(),
+    entityType: "contact",
+    key: "segmento",
+    label: "Segmento",
+    type: "text",
+    options: null,
+    value: "SMB",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const serialized = {
+    ...entityAttribute,
+    createdAt: entityAttribute.createdAt.toISOString(),
+    updatedAt: entityAttribute.updatedAt.toISOString(),
+  };
+  const database = createDatabaseStub();
+  database.getContact.mockResolvedValue({ id: contactId });
+  database.getCompany.mockResolvedValue({ id: companyId });
+  database.getDeal.mockResolvedValue({ id: dealId });
+  database.listEntityAttributes.mockResolvedValue([entityAttribute]);
+  database.setEntityAttributes.mockResolvedValue([entityAttribute]);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: randomUUID(),
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "member" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const listed = await app.inject({
+      method: "GET",
+      url: `/contacts/${contactId}/attributes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([serialized]);
+    expect(database.listEntityAttributes).toHaveBeenCalledWith(
+      workspaceId,
+      "contact",
+      contactId,
+    );
+
+    database.getContact.mockResolvedValue(undefined);
+    const missingParent = await app.inject({
+      method: "GET",
+      url: `/contacts/${contactId}/attributes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(missingParent.statusCode).toBe(404);
+
+    const values = [
+      { attributeId: entityAttribute.id, value: "Enterprise" },
+      { attributeId: randomUUID(), value: null },
+    ];
+    for (const [entityType, path, entityId] of [
+      ["contact", `/contacts/${contactId}`, contactId],
+      ["company", `/companies/${companyId}`, companyId],
+      ["deal", `/deals/${dealId}`, dealId],
+    ] as const) {
+      const assigned = await app.inject({
+        method: "PUT",
+        url: `${path}/attributes?workspaceId=${workspaceId}`,
+        headers: { authorization: "Bearer token" },
+        payload: { values },
+      });
+      expect(assigned.statusCode).toBe(200);
+      expect(database.setEntityAttributes).toHaveBeenCalledWith(
+        workspaceId,
+        entityType,
+        entityId,
+        values,
+      );
+    }
+
+    database.setEntityAttributes.mockResolvedValue(undefined);
+    const invalid = await app.inject({
+      method: "PUT",
+      url: `/contacts/${contactId}/attributes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { values: [{ attributeId: randomUUID(), value: "x" }] },
     });
     expect(invalid.statusCode).toBe(404);
   } finally {

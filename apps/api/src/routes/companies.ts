@@ -9,6 +9,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityAttributeRoutes } from "./attributes.ts";
 import { registerEntityTagRoutes } from "./tags.ts";
 
 const companySchema = {
@@ -392,6 +393,16 @@ export function registerCompanyRoutes(
       listTags: (workspaceId, id) => database.listCompanyTags(workspaceId, id),
       setTags: (workspaceId, id, tagIds) =>
         database.setCompanyTags(workspaceId, id, tagIds),
+    },
+  );
+
+  registerEntityAttributeRoutes(
+    app,
+    { database, authorizeWorkspaceRequest },
+    {
+      path: "companies",
+      entityType: "company",
+      getParent: (workspaceId, id) => database.getCompany(workspaceId, id),
     },
   );
 }

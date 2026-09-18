@@ -6,6 +6,7 @@ import { formatDate, initials } from "@/lib/format";
 import type { Company, Contact, EntityDeal } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { EntityNotesCard, EntityTasksCard } from "@/components/entity-activity";
+import { EntityAttributesCard } from "@/components/entity-attributes-card";
 import { EntityDealList } from "@/components/entity-deal-list";
 import { TagPicker } from "@/components/tag-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -163,6 +164,11 @@ export function CompanyDetailPage() {
           <EntityDealList deals={deals.data} />
         </CardContent>
       </Card>
+
+      <EntityAttributesCard
+        workspaceId={workspaceId}
+        entityPath={`/companies/${companyId}`}
+      />
 
       <EntityTasksCard
         workspaceId={workspaceId}

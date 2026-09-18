@@ -4,6 +4,7 @@ const SETTINGS_NAV = [
   { to: "/settings/profile", label: "Perfil" },
   { to: "/settings/channels", label: "Canais" },
   { to: "/settings/tags", label: "Tags" },
+  { to: "/settings/attributes", label: "Atributos" },
 ] as const;
 
 export function SettingsLayout() {
