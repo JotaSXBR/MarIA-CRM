@@ -5,8 +5,9 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { getToken } from "./lib/api.ts";
+import { api, getToken } from "./lib/api.ts";
 import { LoginPage } from "./routes/login.tsx";
+import { SetupPage } from "./routes/setup.tsx";
 import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
 import { ContactDetailPage } from "./routes/contact-detail.tsx";
@@ -28,7 +29,23 @@ const rootRoute = createRootRoute({ component: Outlet });
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
+  beforeLoad: async () => {
+    const status = await api<{ setupRequired: boolean }>("/setup/status").catch(
+      () => undefined,
+    );
+    if (status?.setupRequired) {
+      throw redirect({ to: "/setup", search: {} });
+    }
+  },
   component: LoginPage,
+});
+
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/setup",
+  validateSearch: (search): { token?: string } =>
+    typeof search.token === "string" ? { token: search.token } : {},
+  component: SetupPage,
 });
 
 const appRoute = createRoute({
@@ -145,6 +162,7 @@ const settingsAttributesRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   loginRoute,
+  setupRoute,
   appRoute.addChildren([
     indexRoute,
     pipelinesRoute,

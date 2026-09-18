@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { createLocalAuth } from "@maria/auth";
 import { createDatabase } from "@maria/database";
@@ -16,7 +17,18 @@ const auth = createLocalAuth(pool, database, {
   adminPassword: process.env.ADMIN_PASSWORD,
 });
 await auth.seedAdmin();
-const app = buildApp({ database, auth });
+
+const setupRequired = await auth.setupRequired();
+const setupTokenRequired = process.env.SETUP_TOKEN_REQUIRED !== "false";
+const setupToken =
+  setupRequired && setupTokenRequired
+    ? randomBytes(24).toString("base64url")
+    : undefined;
+const app = buildApp({
+  database,
+  auth,
+  setup: { tokenRequired: setupTokenRequired, token: setupToken },
+});
 const shutdown = async () => {
   try {
     await app.close();
@@ -32,7 +44,16 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 try {
-  await app.listen(listenOptions(process.env));
+  const { host, port } = listenOptions(process.env);
+  await app.listen({ host, port });
+  if (setupRequired) {
+    const url = `http://${host}:${port}/setup`;
+    app.log.info(
+      setupToken
+        ? `Setup required — create the master account at ${url}?token=${setupToken}`
+        : `Setup required — create the master account at ${url}`,
+    );
+  }
 } catch (error) {
   app.log.error(error);
   await shutdown();

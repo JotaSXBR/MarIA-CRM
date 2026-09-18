@@ -312,3 +312,110 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
     await testDatabase.close();
   }
 }, 120000);
+
+test("built server logs a single-use setup URL on an empty install", async () => {
+  const testDatabase = await startTestDatabase();
+  try {
+    const uri = new URL(testDatabase.container.getConnectionUri());
+    uri.username = "maria_runtime";
+    uri.password = "runtime";
+    const child = spawn(process.execPath, ["dist/server.js"], {
+      env: {
+        ...process.env,
+        HOST: "127.0.0.1",
+        PORT: "0",
+        DATABASE_URL: uri.toString(),
+        ADMIN_EMAIL: "",
+        ADMIN_PASSWORD: "",
+      },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    const exited = once(child, "exit");
+    const lines = createInterface({ input: child.stdout });
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 25000);
+    try {
+      let address: string | undefined;
+      let setupToken: string | undefined;
+      for await (const line of lines) {
+        const match = /Server listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(
+          line,
+        );
+        if (match) address = match[1];
+        const tokenMatch = /\/setup\?token=([A-Za-z0-9_-]+)/.exec(line);
+        if (tokenMatch) setupToken = tokenMatch[1];
+        if (address && setupToken) break;
+      }
+      expect(address).toBeDefined();
+      expect(setupToken).toBeDefined();
+
+      const status = await fetch(`${address}/setup/status`);
+      expect(await status.json()).toEqual({
+        setupRequired: true,
+        tokenRequired: true,
+      });
+
+      const body = {
+        email: "master@example.com",
+        name: "Master",
+        password: "master-password",
+        workspaceName: "E2E Workspace",
+      };
+      const denied = await fetch(`${address}/setup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(denied.status).toBe(403);
+
+      const created = await fetch(`${address}/setup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, token: setupToken }),
+      });
+      expect(created.status).toBe(201);
+      const { token } = (await created.json()) as { token: string };
+      expect(token).toBeDefined();
+
+      const replay = await fetch(`${address}/setup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, token: setupToken }),
+      });
+      expect(replay.status).toBe(403);
+
+      const me = await fetch(`${address}/me`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(me.status).toBe(200);
+      expect(((await me.json()) as { isAdmin: boolean }).isAdmin).toBe(true);
+
+      const workspaces = await fetch(`${address}/me/workspaces`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(await workspaces.json()).toEqual([
+        {
+          workspaceId: expect.any(String),
+          workspaceName: "E2E Workspace",
+          role: "admin",
+        },
+      ]);
+
+      const done = await fetch(`${address}/setup/status`);
+      expect(await done.json()).toEqual({
+        setupRequired: false,
+        tokenRequired: true,
+      });
+
+      child.kill("SIGTERM");
+      await exited;
+    } finally {
+      clearTimeout(timeout);
+      lines.close();
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+      await exited;
+    }
+  } finally {
+    await testDatabase.close();
+  }
+}, 120000);

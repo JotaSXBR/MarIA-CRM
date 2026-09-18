@@ -12,20 +12,30 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#74 merged (…global search, accepted ADR 0015,
-  phased product `ROADMAP.md`).
+- `main` — PRs #61–#75 merged (…global search, accepted ADR 0015,
+  phased product `ROADMAP.md`, centralized workspace RBAC).
 - Product track: **onboarding + workspace roles** per `ROADMAP.md` and
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
-- Branch `feat/workspace-rbac` — **Slice 1.1, centralized workspace RBAC**:
-  `WorkspaceRole` `viewer<agent<manager<admin>` + `ROLE_RANK` +
-  `hasWorkspaceRole` in `@maria/auth`; `requireWorkspaceRole(request,
-reply, min)` in `routes/shared.ts` (401 unauthenticated/non-member,
-  403 member below rank) replaces all inline role checks; migration
-  `0017_workspace_roles.sql` rewrites legacy `member`→`agent` in
-  memberships + invitations. Web gates UI by `hasWorkspaceRole`
-  (viewer read-only, agent edits, manager deletes/configures);
-  `session.isAdmin` stays the only platform-admin axis.
+- Branch `feat/first-run-setup` — **Slice 1.2, first-run `/setup`**:
+  `AuthPort.setupRequired()` + `completeSetup()` (bcrypt outside the tx,
+  pre-generated workspace id, `withWorkspace` transaction with the
+  `maria_auth_global_admin` advisory lock + user-count re-check; creates
+  master `is_admin` + implicit org + first workspace + `admin`
+  membership atomically). `routes/setup.ts`: `GET /setup/status`
+  (`{setupRequired, tokenRequired}`) + `POST /setup` (single-use boot
+  token via `SETUP_TOKEN_REQUIRED`, sha256+`timingSafeEqual`, consumed
+  in-process; 403 bad/consumed token, 409 already-setup, 201 returns a
+  session token = auto-login). `server.ts` generates the token only when
+  the install is empty and logs the `/setup?token=…` URL after listen.
+  Web: public `/setup` route (token search param, manual token field
+  when required), `/login` `beforeLoad` redirects anonymous traffic to
+  `/setup` while `setupRequired`; Vite proxy bypasses page loads to
+  `/setup` but proxies `/setup/status` + `POST /setup`. Issue #76
+  (Ajv `allowUnionTypes` warning) remains open as separate cleanup.
+- Issue #76 tracks the pre-existing `strict mode: use allowUnionTypes`
+  Ajv warning (union `type: ["…","null"]` schemas) — separate cleanup,
+  not part of this slice.
 
 ## Memory model
 
@@ -38,6 +48,37 @@ reply, min)` in `routes/shared.ts` (401 unauthenticated/non-member,
 
 ## Verified state
 
+- `feat/first-run-setup` (2026-09-18, Windows/pnpm):
+  - `packages/auth`: `setupRequired()` (users empty) +
+    `completeSetup()` — bcrypt before the tx; one `withWorkspace` tx
+    holding `maria_auth_global_admin` re-checks the user count, then
+    inserts master `is_admin`, implicit org, first workspace and the
+    `admin` membership. `"already-setup"` is the only failure mode.
+  - `apps/api/src/routes/setup.ts`: `GET /setup/status` (30/min) and
+    `POST /setup` (5/min, `password` minLength 8); `SetupConfig` dep
+    injects `{tokenRequired, token}`; boot token compared via sha256 +
+    `timingSafeEqual`, marked consumed in-process on success;
+    403 invalid/consumed/missing token, 409 already-setup, 201 `{token}`
+    after `auth.login`.
+  - `server.ts`: seeds env admin, reads `setupRequired`, generates a
+    base64url token only when the install is empty AND
+    `SETUP_TOKEN_REQUIRED !== "false"`, logs the `/setup?token=…` URL
+    after listen. `SETUP_TOKEN_REQUIRED` added to turbo `passThroughEnv`;
+    env vars documented in `DEVELOPMENT.md`.
+  - `apps/web`: `/setup` public route — status query gates (loading /
+    API-down error / `Navigate` to `/login` when complete), form Nome +
+    Email + Senha(≥8) + Nome do workspace + optional Token de
+    instalação (hidden when `?token=` present); `/login` `beforeLoad`
+    redirects to `/setup` when `setupRequired` (fetch failure falls
+    through to the form). `vite.config.ts` bypasses `GET /setup*` page
+    loads except `/setup/status`, so SPA and API share the prefix.
+  - Tests: `apps/api/test/setup.test.ts` (3 — status, 201+consumed
+    replay 403, 409+400); `packages/auth/test/setup.integration.test.ts`
+    (3 — atomic bootstrap assertions, advisory-lock-gated concurrency →
+    1 user/1 admin/1 membership, env seed wins); `apps/web` (3 —
+    anonymous → /setup redirect, form → inbox with auto-login, complete
+    → /login); `server.e2e.test.ts` second case parses the boot-logged
+    token from real stdout and drives the whole HTTP flow.
 - `feat/workspace-rbac` (2026-09-18, Windows/pnpm):
   - Capability matrix: reads = `viewer`; CRM/inbox writes (POST/PATCH/PUT,
     tag assignment, attribute values, message send/retry/resolve, deal

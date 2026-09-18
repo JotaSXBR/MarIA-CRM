@@ -12,6 +12,7 @@
         "DATABASE_URL",
         "ADMIN_EMAIL",
         "ADMIN_PASSWORD",
+        "SETUP_TOKEN_REQUIRED",
         "WAHA_BASE_URL",
         "WAHA_API_KEY",
         "MEDIA_DIR"

@@ -16,6 +16,15 @@ export default defineConfig({
     proxy: {
       "/health": api,
       "/auth": api,
+      // `/setup` is both an API endpoint (POST + GET /setup/status) and a SPA
+      // route: browser page loads stay local, API calls proxy through.
+      "/setup": {
+        target: api,
+        bypass: (req) =>
+          req.method === "GET" && req.url !== "/setup/status"
+            ? req.url
+            : undefined,
+      },
       "/me": api,
       "/admin": api,
       "/contacts": api,
