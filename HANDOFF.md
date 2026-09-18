@@ -12,8 +12,10 @@ gh pr status
 
 ## Current objective
 
-- `main` at `a49fd2e` (PR #60 merged — code-simplifier pass + deferred corrections).
-- Branch `chore/maria-skill-review` holds the maria-skill audit below.
+- `main` at `99c7a36` — PRs #61–#64 merged (skill audit, lint warnings → 0,
+  NULL-distinct comments, code-simplifier refocused to per-slice).
+- PR #65 open (`chore/pr-label-rule`): AGENTS.md now requires labels on
+  every PR; `chore`/`refactor` labels created, PRs #62–#65 tagged.
 - Next after this: `contacts.companyId` link, company/deal detail pages,
   then tags/custom attributes and global search.
 
@@ -28,9 +30,13 @@ gh pr status
 
 ## Verified state
 
-- `main` at `a49fd2e` (PR #60 merged, 2026-10-16): the code-simplifier pass
-  and deferred corrections below are now in `main`.
-- Maria-skill audit on `chore/maria-skill-review` (2026-10-16):
+- `main` at `99c7a36` (2026-10-16): PRs #61–#64 merged. Lint baseline is
+  now **0 warnings / 0 errors** — keep it clean.
+- PR #61 (skill audit) merged — `skill-creator` in `.agents/skills/`,
+  maria skills updated per below; PR #62 (9 oxlint warnings fixed);
+  PR #63 (NULL-distinct comments); PR #64 (code-simplifier 639→103 lines,
+  per-slice default before tests/commit/PR).
+- Maria-skill audit (merged via #61, 2026-10-16):
   - `skill-creator` installed via `npx skills` into `.agents/skills/` +
     `skills-lock.json` (ecosystem manifest; `npx skills check/update` work).
   - `maria-api-development`: stale `app.ts` reference corrected to the
@@ -123,7 +129,6 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Commit the maria-skill audit on `chore/maria-skill-review`, push, open PR,
-   wait for checks and merge.
+1. Merge PR #65 when `verify` passes (CodeQL/analyze/dependency-review already green).
 2. Slice 4: `contacts.companyId` + company detail page (contacts, deals,
    notes aggregated), then deal detail page.
