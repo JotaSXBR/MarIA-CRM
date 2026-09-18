@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import bcryptjs from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, gt, ne, sql } from "drizzle-orm";
@@ -6,6 +6,7 @@ import type { Pool } from "pg";
 import type { Database } from "@maria/database";
 import {
   memberships,
+  organizations,
   sessions,
   users,
   workspaces,
@@ -102,6 +103,17 @@ export type AuthPort = {
     workspaceId: string,
     membershipId: string,
   ): Promise<"removed" | "not-found" | "last-admin">;
+  /** First-run gate: true while the `users` table is empty (ADR 0015). */
+  setupRequired(): Promise<boolean>;
+  /** Atomic first-run bootstrap: master `is_admin` user, implicit
+   * organization, first workspace and its `admin` membership — serialized by
+   * the global advisory lock with a user-count re-check inside it. */
+  completeSetup(input: {
+    email: string;
+    name: string;
+    password: string;
+    workspaceName: string;
+  }): Promise<{ userId: string; workspaceId: string } | "already-setup">;
   seedAdmin(): Promise<void>;
 };
 
@@ -476,6 +488,56 @@ export function createLocalAuth(
     });
   };
 
+  const setupRequired = async (): Promise<boolean> => {
+    const rows = await db.select({ id: users.id }).from(users).limit(1);
+    return rows.length === 0;
+  };
+
+  const completeSetup = async (input: {
+    email: string;
+    name: string;
+    password: string;
+    workspaceName: string;
+  }): Promise<{ userId: string; workspaceId: string } | "already-setup"> => {
+    const passwordHash = await hashPassword(input.password);
+    const workspaceId = randomUUID();
+    return database.withWorkspace(workspaceId, async (tx) => {
+      await lockGlobalAdminState(tx);
+      const existing = await tx.select({ id: users.id }).from(users).limit(1);
+      if (existing[0]) return "already-setup";
+      const userRows = await tx
+        .insert(users)
+        .values({
+          email: normalizeEmail(input.email),
+          name: input.name,
+          passwordHash,
+          isAdmin: true,
+        })
+        .returning({ id: users.id });
+      const user = userRows[0];
+      if (!user) throw new Error("setup failed to create the master user");
+      const orgRows = await tx
+        .insert(organizations)
+        .values({ name: input.workspaceName })
+        .returning({ id: organizations.id });
+      const organization = orgRows[0];
+      if (!organization) {
+        throw new Error("setup failed to create the default organization");
+      }
+      await tx.insert(workspaces).values({
+        id: workspaceId,
+        orgId: organization.id,
+        name: input.workspaceName,
+      });
+      await tx.insert(memberships).values({
+        userId: user.id,
+        workspaceId,
+        role: "admin",
+      });
+      return { userId: user.id, workspaceId };
+    });
+  };
+
   const seedAdmin = async (): Promise<void> => {
     if (!config.adminEmail || !config.adminPassword) return;
     const normalized = normalizeEmail(config.adminEmail);
@@ -506,6 +568,8 @@ export function createLocalAuth(
     addMembership,
     updateMembershipRole,
     removeMembership,
+    setupRequired,
+    completeSetup,
     seedAdmin,
   };
 }

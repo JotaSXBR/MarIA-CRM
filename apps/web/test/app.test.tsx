@@ -1180,3 +1180,102 @@ test("deal detail shows named deal, tasks and notes", async () => {
   await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
   await waitFor(() => expect(posted).toEqual([{ body: "Nova nota" }]));
 });
+
+test("anonymous visitors land on /setup while the install is empty", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/setup/status")) {
+      return new Response(
+        JSON.stringify({ setupRequired: true, tokenRequired: true }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/login");
+  expect(
+    await screen.findByRole("heading", { name: "Criar a conta mestre" }),
+  ).toBeDefined();
+  expect(screen.getByLabelText("Token de instalação")).toBeDefined();
+});
+
+test("setup creates the master account and lands on the inbox", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const posted: unknown[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/setup/status")) {
+        return new Response(
+          JSON.stringify({ setupRequired: true, tokenRequired: true }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/setup") && init?.method === "POST") {
+        posted.push(JSON.parse(init.body as string));
+        return new Response(JSON.stringify({ token: "session-token" }), {
+          status: 201,
+        });
+      }
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Acme", role: "admin" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/contacts")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/setup?token=boot-token");
+  const user = userEvent.setup();
+  await user.type(await screen.findByLabelText("Nome"), "Master");
+  await user.type(screen.getByLabelText("Email"), "master@example.com");
+  await user.type(screen.getByLabelText("Senha"), "master-password");
+  await user.type(screen.getByLabelText("Nome do workspace"), "Acme");
+  await user.click(screen.getByRole("button", { name: "Concluir instalação" }));
+
+  await waitFor(() =>
+    expect(posted).toEqual([
+      {
+        name: "Master",
+        email: "master@example.com",
+        password: "master-password",
+        workspaceName: "Acme",
+        token: "boot-token",
+      },
+    ]),
+  );
+  expect(localStorage.getItem("maria.token")).toBe("session-token");
+  expect(
+    await screen.findByRole("heading", { name: "Caixa de entrada" }),
+  ).toBeDefined();
+});
+
+test("/setup redirects to login once the install is complete", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/setup/status")) {
+      return new Response(
+        JSON.stringify({ setupRequired: false, tokenRequired: true }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/setup");
+  expect(await screen.findByRole("heading", { name: "Entrar" })).toBeDefined();
+});

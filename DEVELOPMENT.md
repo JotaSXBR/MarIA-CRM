@@ -53,9 +53,20 @@ pnpm dev
 ```
 
 Use URI-encoded passwords in connection URLs when credentials contain reserved characters.
-The API runs at `http://127.0.0.1:3000`, the web app at `http://localhost:5173`. Log in using
-the bootstrap administrator, create an organization/workspace in Administration and add the
-administrator as a workspace member. Global administration alone does not grant CRM membership.
+The API runs at `http://127.0.0.1:3000`, the web app at `http://localhost:5173`.
+
+First run offers two bootstrap paths (ADR 0015) and whichever completes first wins: while
+`users` is empty the API reports `setupRequired` at `GET /setup/status` and anonymous web
+traffic is routed to `/setup`, which creates the master `is_admin` account plus the default
+organization and first workspace in one transaction. With `SETUP_TOKEN_REQUIRED` (default
+on) the API logs a single-use `…/setup?token=…` URL at boot — check `pnpm dev`/container
+logs on the very first start. Set `SETUP_TOKEN_REQUIRED=false` for scripted installs, or
+keep `ADMIN_EMAIL`/`ADMIN_PASSWORD` to seed the master non-interactively and skip `/setup`
+entirely. Global administration alone does not grant CRM membership; the setup flow adds
+the master as `admin` of the first workspace so it can operate there.
+
+After env seeding, log in using the bootstrap administrator, create an
+organization/workspace in Administration and add the administrator as a workspace member.
 Select that workspace to use contacts, companies and Kanban.
 
 `pnpm dev` uses dependency-aware Turbo watch: upstream packages build before the API starts,

@@ -7,6 +7,7 @@ import { createDispatcher } from "./dispatch.ts";
 import { createFsMediaStore, type MediaStore } from "./media-store.ts";
 import { createAuthGuards, type RouteDatabase } from "./routes/shared.ts";
 import { registerSessionRoutes } from "./routes/session.ts";
+import { registerSetupRoutes, type SetupConfig } from "./routes/setup.ts";
 import { registerAdminRoutes } from "./routes/admin.ts";
 import { registerContactRoutes } from "./routes/contacts.ts";
 import { registerCompanyRoutes } from "./routes/companies.ts";
@@ -24,6 +25,8 @@ export type AppDependencies = {
   auth: AuthPort;
   /** Injectable provider registry; defaults to env-configured WAHA. */
   messaging?: { waha?: MessagingProvider };
+  /** First-run bootstrap gate (ADR 0015); absent disables token checks. */
+  setup?: SetupConfig;
 };
 
 export function buildApp(dependencies?: AppDependencies) {
@@ -73,6 +76,10 @@ export function buildApp(dependencies?: AppDependencies) {
     const scoped = { database, ...guards };
 
     registerSessionRoutes(app, { auth });
+    registerSetupRoutes(app, {
+      auth,
+      setup: dependencies.setup ?? { tokenRequired: false },
+    });
     registerAdminRoutes(app, {
       auth,
       database,
