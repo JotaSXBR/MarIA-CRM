@@ -45,6 +45,7 @@ export const contacts = pgTable(
     name: text().notNull(),
     email: text(),
     phone: text(),
+    companyId: uuid("company_id").references(() => companies.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -54,6 +55,9 @@ export const contacts = pgTable(
     index("contacts_workspace_id_idx").on(table.workspaceId),
     index("contacts_workspace_active_idx")
       .on(table.workspaceId)
+      .where(sql`deleted_at is null`),
+    index("contacts_company_active_idx")
+      .on(table.companyId)
       .where(sql`deleted_at is null`),
     // NULLs-distinct is intended here: contacts without a phone may coexist.
     uniqueIndex("contacts_workspace_phone_active_idx")

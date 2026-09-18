@@ -95,6 +95,7 @@ export function createDatabase(pool: Pool) {
     name: contacts.name,
     email: contacts.email,
     phone: contacts.phone,
+    companyId: contacts.companyId,
     createdAt: contacts.createdAt,
   };
 
@@ -298,6 +299,19 @@ export function createDatabase(pool: Pool) {
     filter.dealId ? eq(table.dealId, filter.dealId) : undefined,
   ];
 
+  const dealsWithNames = (tx: DrizzleTx, parent: SQLWrapper) =>
+    tx
+      .select({
+        ...dealColumns,
+        stageName: stages.name,
+        pipelineName: pipelines.name,
+      })
+      .from(deals)
+      .innerJoin(stages, eq(deals.stageId, stages.id))
+      .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+      .where(and(parent, notDeleted(deals.deletedAt)))
+      .orderBy(desc(deals.createdAt), deals.id);
+
   // Provider-event dedup (ADR 0010): the insert is the receipt — a conflict
   // means this (channel, event id, kind) was already processed.
   const recordWebhookEvent = async (
@@ -335,12 +349,22 @@ export function createDatabase(pool: Pool) {
 
   return {
     close: () => pool.end(),
-    listContacts: (workspaceId: string) =>
+    listContacts: (
+      workspaceId: string,
+      filter: { companyId?: string | undefined } = {},
+    ) =>
       withWorkspace(workspaceId, (tx) =>
         tx
           .select(contactColumns)
           .from(contacts)
-          .where(notDeleted(contacts.deletedAt))
+          .where(
+            and(
+              notDeleted(contacts.deletedAt),
+              filter.companyId
+                ? eq(contacts.companyId, filter.companyId)
+                : undefined,
+            ),
+          )
           .orderBy(contacts.createdAt, contacts.id),
       ),
     getContact: (workspaceId: string, id: string) =>
@@ -354,9 +378,18 @@ export function createDatabase(pool: Pool) {
       }),
     createContact: (
       workspaceId: string,
-      input: { name: string; email?: string | null; phone?: string | null },
+      input: {
+        name: string;
+        email?: string | null;
+        phone?: string | null;
+        companyId?: string | null;
+      },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
+        const refsValid = await contactCompanyRefsValid(tx, {
+          companyId: input.companyId,
+        });
+        if (!refsValid) return undefined;
         const rows = await tx
           .insert(contacts)
           .values({ workspaceId, ...input })
@@ -368,9 +401,18 @@ export function createDatabase(pool: Pool) {
     updateContact: (
       workspaceId: string,
       id: string,
-      input: { name?: string; email?: string | null; phone?: string | null },
+      input: {
+        name?: string;
+        email?: string | null;
+        phone?: string | null;
+        companyId?: string | null;
+      },
     ) =>
       withWorkspace(workspaceId, async (tx) => {
+        const refsValid = await contactCompanyRefsValid(tx, {
+          companyId: input.companyId,
+        });
+        if (!refsValid) return undefined;
         const rows = await tx
           .update(contacts)
           .set(input)
@@ -759,19 +801,11 @@ export function createDatabase(pool: Pool) {
       }),
     listDealsForContact: (workspaceId: string, contactId: string) =>
       withWorkspace(workspaceId, (tx) =>
-        tx
-          .select({
-            ...dealColumns,
-            stageName: stages.name,
-            pipelineName: pipelines.name,
-          })
-          .from(deals)
-          .innerJoin(stages, eq(deals.stageId, stages.id))
-          .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
-          .where(
-            and(eq(deals.contactId, contactId), notDeleted(deals.deletedAt)),
-          )
-          .orderBy(desc(deals.createdAt), deals.id),
+        dealsWithNames(tx, eq(deals.contactId, contactId)),
+      ),
+    listDealsForCompany: (workspaceId: string, companyId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        dealsWithNames(tx, eq(deals.companyId, companyId)),
       ),
     listNotes: (workspaceId: string, filter: EntityFilter = {}) =>
       withWorkspace(workspaceId, (tx) =>

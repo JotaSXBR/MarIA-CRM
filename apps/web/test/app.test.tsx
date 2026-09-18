@@ -571,3 +571,95 @@ test("contact detail shows deals, notes and tasks and posts a new note", async (
   await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
   await waitFor(() => expect(posted).toEqual([{ body: "Nova nota" }]));
 });
+
+test("company detail shows linked contacts, deals and notes", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const companyId = "123e4567-e89b-12d3-a456-426614174050";
+  const contactId = "123e4567-e89b-12d3-a456-426614174051";
+  setToken("session-token");
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          { workspaceId, workspaceName: "Workspace", role: "member" },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes(`/companies/${companyId}/contacts`)) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: contactId,
+            name: "Maria Silva",
+            email: "maria@example.com",
+            phone: null,
+            companyId,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes(`/companies/${companyId}/deals`)) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123e4567-e89b-12d3-a456-426614174052",
+            pipelineId: "123e4567-e89b-12d3-a456-426614174010",
+            stageId: "123e4567-e89b-12d3-a456-426614174011",
+            title: "Proposta ACME",
+            valueCents: 150000,
+            contactId,
+            companyId,
+            position: "a0",
+            stageName: "Novo",
+            pipelineName: "Vendas",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes(`/companies/${companyId}/notes`)) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123e4567-e89b-12d3-a456-426614174053",
+            contactId: null,
+            companyId,
+            dealId: null,
+            authorId: null,
+            authorName: "User",
+            body: "Cliente estratégico",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes(`/companies/${companyId}`)) {
+      return new Response(
+        JSON.stringify({
+          id: companyId,
+          name: "ACME",
+          createdAt: new Date().toISOString(),
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(`/companies/${companyId}`);
+
+  expect(await screen.findByRole("heading", { name: "ACME" })).toBeDefined();
+  expect(
+    await screen.findByRole("link", { name: "Maria Silva" }),
+  ).toBeDefined();
+  expect(await screen.findByText("Proposta ACME")).toBeDefined();
+  expect(screen.getByText("Novo")).toBeDefined();
+  expect(await screen.findByText("Cliente estratégico")).toBeDefined();
+});

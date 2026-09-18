@@ -9,7 +9,7 @@ import {
   formatDateTime,
   initials,
 } from "@/lib/format";
-import type { Contact, ContactDeal, Note, Task } from "@/lib/types";
+import type { Company, Contact, EntityDeal, Note, Task } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -44,10 +44,16 @@ export function ContactDetailPage() {
     enabled: Boolean(workspaceId && contactId),
   });
 
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies", workspaceId],
+    queryFn: () => api<Company[]>("/companies", { workspaceId }),
+    enabled: Boolean(workspaceId),
+  });
+
   const deals = useQuery({
     queryKey: ["contact-deals", workspaceId, contactId],
     queryFn: () =>
-      api<ContactDeal[]>(`/contacts/${contactId}/deals`, { workspaceId }),
+      api<EntityDeal[]>(`/contacts/${contactId}/deals`, { workspaceId }),
     enabled: Boolean(workspaceId && contactId),
   });
 
@@ -206,6 +212,18 @@ export function ContactDetailPage() {
             {[detail.email, detail.phone].filter(Boolean).join(" · ") ||
               "Sem email ou telefone"}
           </p>
+          {detail.companyId ? (
+            <p className="truncate text-sm">
+              <Link
+                to="/companies/$companyId"
+                params={{ companyId: detail.companyId }}
+                className="text-muted-foreground hover:underline"
+              >
+                {companies.find((c) => c.id === detail.companyId)?.name ??
+                  "Empresa"}
+              </Link>
+            </p>
+          ) : null}
         </div>
       </header>
 

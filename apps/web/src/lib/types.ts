@@ -1,11 +1,12 @@
 /** Response shapes mirrored from the API serializers. Keep them aligned with
- * the route schemas in `apps/api/src/app.ts` until `@maria/contracts` exists. */
+ * the route schemas in `apps/api/src/routes/` until `@maria/contracts` exists. */
 
 export type Contact = {
   id: string;
   name: string;
   email: string | null;
   phone: string | null;
+  companyId: string | null;
   createdAt: string;
 };
 
@@ -42,7 +43,7 @@ export type Deal = {
   createdAt: string;
 };
 
-export type ContactDeal = {
+export type EntityDeal = {
   id: string;
   title: string;
   valueCents: number | null;

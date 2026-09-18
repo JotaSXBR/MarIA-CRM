@@ -296,15 +296,15 @@ test("contact CRUD stays workspace-scoped and soft-deletes under the runtime rol
     email: "scoped@example.com",
     phone: null,
   });
-  expect(await database.getContact(workspaceA, created.id)).toMatchObject({
-    id: created.id,
+  expect(await database.getContact(workspaceA, created!.id)).toMatchObject({
+    id: created!.id,
   });
-  expect(await database.getContact(workspaceB, created.id)).toBeUndefined();
+  expect(await database.getContact(workspaceB, created!.id)).toBeUndefined();
   expect(
-    await database.updateContact(workspaceB, created.id, { name: "Cross" }),
+    await database.updateContact(workspaceB, created!.id, { name: "Cross" }),
   ).toBeUndefined();
 
-  const updated = await database.updateContact(workspaceA, created.id, {
+  const updated = await database.updateContact(workspaceA, created!.id, {
     name: "Renamed",
     phone: "+55 11 99999-0000",
   });
@@ -313,23 +313,145 @@ test("contact CRUD stays workspace-scoped and soft-deletes under the runtime rol
     email: "scoped@example.com",
   });
 
-  expect(await database.deleteContact(workspaceB, created.id)).toBe(false);
-  expect(await database.deleteContact(workspaceA, created.id)).toBe(true);
-  expect(await database.deleteContact(workspaceA, created.id)).toBe(false);
-  expect(await database.getContact(workspaceA, created.id)).toBeUndefined();
+  expect(await database.deleteContact(workspaceB, created!.id)).toBe(false);
+  expect(await database.deleteContact(workspaceA, created!.id)).toBe(true);
+  expect(await database.deleteContact(workspaceA, created!.id)).toBe(false);
+  expect(await database.getContact(workspaceA, created!.id)).toBeUndefined();
   expect(
-    await database.updateContact(workspaceA, created.id, { name: "Ghost" }),
+    await database.updateContact(workspaceA, created!.id, { name: "Ghost" }),
   ).toBeUndefined();
   expect(
     (await database.listContacts(workspaceA)).map((c) => c.id),
-  ).not.toContain(created.id);
+  ).not.toContain(created!.id);
   expect(
     (
       await admin.query("select deleted_at from contacts where id = $1", [
-        created.id,
+        created!.id,
       ])
     ).rows[0]?.deleted_at,
   ).not.toBeNull();
+});
+
+test("contact company links validate references inside the scoped workspace", async () => {
+  const companyA = await database.createCompany(workspaceA, { name: "Co A" });
+  const companyB = await database.createCompany(workspaceB, { name: "Co B" });
+
+  const linked = await database.createContact(workspaceA, {
+    name: "Linked",
+    companyId: companyA!.id,
+  });
+  expect(linked).toMatchObject({ name: "Linked", companyId: companyA!.id });
+  expect(
+    (await database.listContacts(workspaceA, { companyId: companyA!.id })).map(
+      (c) => c.id,
+    ),
+  ).toEqual([linked!.id]);
+
+  expect(
+    await database.createContact(workspaceA, {
+      name: "Cross",
+      companyId: companyB!.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.createContact(workspaceA, {
+      name: "Ghost",
+      companyId: randomUUID(),
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.updateContact(workspaceA, linked!.id, {
+      companyId: companyB!.id,
+    }),
+  ).toBeUndefined();
+
+  const renamed = await database.updateContact(workspaceA, linked!.id, {
+    name: "Still linked",
+  });
+  expect(renamed).toMatchObject({
+    name: "Still linked",
+    companyId: companyA!.id,
+  });
+
+  const cleared = await database.updateContact(workspaceA, linked!.id, {
+    companyId: null,
+  });
+  expect(cleared).toMatchObject({ companyId: null });
+  expect(
+    await database.listContacts(workspaceA, { companyId: companyA!.id }),
+  ).toEqual([]);
+
+  expect(await database.deleteCompany(workspaceA, companyA!.id)).toBe(true);
+  expect(
+    await database.createContact(workspaceA, {
+      name: "Deleted ref",
+      companyId: companyA!.id,
+    }),
+  ).toBeUndefined();
+  expect(
+    await database.updateContact(workspaceA, linked!.id, {
+      companyId: companyA!.id,
+    }),
+  ).toBeUndefined();
+});
+
+test("company detail aggregates list contacts, deals and notes for the company", async () => {
+  const company = await database.createCompany(workspaceA, { name: "Co" });
+  const other = await database.createCompany(workspaceA, { name: "Other" });
+  const contact = await database.createContact(workspaceA, {
+    name: "Linked",
+    companyId: company!.id,
+  });
+  const pipeline = await database.createPipeline(workspaceA, {
+    name: "Vendas",
+  });
+  const stage = await database.createStage(workspaceA, pipeline!.id, {
+    name: "Novo",
+  });
+  const deal = await database.createDeal(workspaceA, {
+    pipelineId: pipeline!.id,
+    stageId: stage!.id,
+    title: "Com a empresa",
+    contactId: contact!.id,
+    companyId: company!.id,
+  });
+  const unrelated = await database.createDeal(workspaceA, {
+    pipelineId: pipeline!.id,
+    stageId: stage!.id,
+    title: "Outra empresa",
+    companyId: other!.id,
+  });
+  const note = await database.createNote(workspaceA, {
+    body: "Sobre a empresa",
+    companyId: company!.id,
+  });
+
+  expect(
+    (await database.listContacts(workspaceA, { companyId: company!.id })).map(
+      (c) => c.id,
+    ),
+  ).toEqual([contact!.id]);
+
+  const deals = await database.listDealsForCompany(workspaceA, company!.id);
+  expect(deals.map((d) => d.id)).toEqual([deal!.id]);
+  expect(deals[0]).toMatchObject({
+    title: "Com a empresa",
+    stageName: "Novo",
+    pipelineName: "Vendas",
+  });
+
+  const notes = await database.listNotes(workspaceA, {
+    companyId: company!.id,
+  });
+  expect(notes.map((n) => n.id)).toEqual([note!.id]);
+
+  expect(await database.deleteDeal(workspaceA, deal!.id)).toBe(true);
+  expect(await database.deleteDeal(workspaceA, unrelated!.id)).toBe(true);
+  expect(await database.deleteNote(workspaceA, note!.id)).toBe(true);
+  expect(await database.deleteContact(workspaceA, contact!.id)).toBe(true);
+  expect(await database.listDealsForCompany(workspaceA, company!.id)).toEqual(
+    [],
+  );
 });
 
 test("company CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {

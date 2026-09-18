@@ -61,6 +61,7 @@ function createDatabaseStub() {
     moveDeal: vi.fn().mockResolvedValue(undefined),
     deleteDeal: vi.fn().mockResolvedValue(false),
     listDealsForContact: vi.fn().mockResolvedValue([]),
+    listDealsForCompany: vi.fn().mockResolvedValue([]),
     listNotes: vi.fn().mockResolvedValue([]),
     createNote: vi.fn().mockResolvedValue(undefined),
     deleteNote: vi.fn().mockResolvedValue(false),

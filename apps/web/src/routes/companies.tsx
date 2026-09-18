@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Company } from "@/lib/types";
@@ -127,7 +128,15 @@ export function CompaniesPage() {
             ) : (
               companies.map((company) => (
                 <tr key={company.id}>
-                  <td className="px-4 py-3 font-medium">{company.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link
+                      to="/companies/$companyId"
+                      params={{ companyId: company.id }}
+                      className="hover:underline"
+                    >
+                      {company.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {new Date(company.createdAt).toLocaleDateString()}
                   </td>

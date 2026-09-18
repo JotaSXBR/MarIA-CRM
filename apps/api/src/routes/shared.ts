@@ -80,6 +80,20 @@ export const workspaceQuerySchema = {
   },
 } as const;
 
+export const contactSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "name", "email", "phone", "companyId", "createdAt"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    email: { type: ["string", "null"] },
+    phone: { type: ["string", "null"] },
+    companyId: { type: ["string", "null"], format: "uuid" },
+    createdAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
 export const dealSchema = {
   type: "object",
   additionalProperties: false,
@@ -103,6 +117,72 @@ export const dealSchema = {
     contactId: { type: ["string", "null"], format: "uuid" },
     companyId: { type: ["string", "null"], format: "uuid" },
     position: { type: "string" },
+    createdAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
+export const entityLinkProperties = {
+  contactId: { type: ["string", "null"], format: "uuid" },
+  companyId: { type: ["string", "null"], format: "uuid" },
+  dealId: { type: ["string", "null"], format: "uuid" },
+} as const;
+
+export const entityDealSchema = {
+  ...dealSchema,
+  required: [...dealSchema.required, "stageName", "pipelineName"],
+  properties: {
+    ...dealSchema.properties,
+    stageName: { type: "string" },
+    pipelineName: { type: "string" },
+  },
+} as const;
+
+export const noteSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "contactId",
+    "companyId",
+    "dealId",
+    "authorId",
+    "authorName",
+    "body",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    ...entityLinkProperties,
+    authorId: { type: ["string", "null"], format: "uuid" },
+    authorName: { type: ["string", "null"] },
+    body: { type: "string" },
+    createdAt: { type: "string", format: "date-time" },
+  },
+} as const;
+
+export const taskSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "contactId",
+    "companyId",
+    "dealId",
+    "assigneeId",
+    "assigneeName",
+    "title",
+    "dueAt",
+    "doneAt",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    ...entityLinkProperties,
+    assigneeId: { type: ["string", "null"], format: "uuid" },
+    assigneeName: { type: ["string", "null"] },
+    title: { type: "string" },
+    dueAt: { type: ["string", "null"], format: "date-time" },
+    doneAt: { type: ["string", "null"], format: "date-time" },
     createdAt: { type: "string", format: "date-time" },
   },
 } as const;

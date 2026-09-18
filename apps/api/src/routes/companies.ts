@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import {
+  contactSchema,
+  entityDealSchema,
   idParamsSchema,
+  noteSchema,
   workspaceQuerySchema,
   type AuthGuards,
   type RouteDatabase,
@@ -190,6 +193,93 @@ export function registerCompanyRoutes(
       const deleted = await database.deleteCompany(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();
       return reply.code(204).send();
+    },
+  );
+
+  app.get(
+    "/companies/:id/contacts",
+    {
+      config: {
+        rateLimit: {
+          max: 50,
+          timeWindow: "1 minute",
+        },
+      },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          200: { type: "array", items: contactSchema },
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const company = await database.getCompany(authorized.workspaceId, id);
+      if (!company) return reply.code(404).send();
+      return database.listContacts(authorized.workspaceId, { companyId: id });
+    },
+  );
+
+  app.get(
+    "/companies/:id/deals",
+    {
+      config: {
+        rateLimit: {
+          max: 50,
+          timeWindow: "1 minute",
+        },
+      },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          200: { type: "array", items: entityDealSchema },
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const company = await database.getCompany(authorized.workspaceId, id);
+      if (!company) return reply.code(404).send();
+      return database.listDealsForCompany(authorized.workspaceId, id);
+    },
+  );
+
+  app.get(
+    "/companies/:id/notes",
+    {
+      config: {
+        rateLimit: {
+          max: 50,
+          timeWindow: "1 minute",
+        },
+      },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          200: { type: "array", items: noteSchema },
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await authorizeWorkspaceRequest(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const company = await database.getCompany(authorized.workspaceId, id);
+      if (!company) return reply.code(404).send();
+      return database.listNotes(authorized.workspaceId, { companyId: id });
     },
   );
 }
