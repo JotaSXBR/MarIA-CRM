@@ -1,6 +1,6 @@
 ---
 name: maria-dev-setup
-description: Prepare or diagnose the MarIA CRM local development environment and repository commands.
+description: Prepare or diagnose the MarIA CRM local development environment and repository commands. Applies when bootstrapping a clone, debugging dev/build commands or verifying environment setup.
 ---
 
 # MarIA CRM development setup

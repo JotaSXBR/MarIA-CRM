@@ -12,11 +12,8 @@ gh pr status
 
 ## Current objective
 
-- Branch: `feat/notes-tasks-contact-detail` on `main` (`300fef9`, PR #58 merged).
-- HEAD `ed97d77` (notes/tasks domain + contact detail page — already committed).
-- Working tree holds an uncommitted `code-simplifier` repository-wide pass
-  (see below) plus a pre-existing unrelated edit to
-  `.devin/skills/code-simplifier/SKILL.md` (do not mix into the PR).
+- `main` at `a49fd2e` (PR #60 merged — code-simplifier pass + deferred corrections).
+- Branch `chore/maria-skill-review` holds the maria-skill audit below.
 - Next after this: `contacts.companyId` link, company/deal detail pages,
   then tags/custom attributes and global search.
 
@@ -31,9 +28,24 @@ gh pr status
 
 ## Verified state
 
-- `main` at `300fef9` (PR #58 merged); branch HEAD `ed97d77` (notes/tasks +
-  contact detail, committed).
-- Simplification pass applied in the working tree (2026-10-16):
+- `main` at `a49fd2e` (PR #60 merged, 2026-10-16): the code-simplifier pass
+  and deferred corrections below are now in `main`.
+- Maria-skill audit on `chore/maria-skill-review` (2026-10-16):
+  - `skill-creator` installed via `npx skills` into `.agents/skills/` +
+    `skills-lock.json` (ecosystem manifest; `npx skills check/update` work).
+  - `maria-api-development`: stale `app.ts` reference corrected to the
+    `routes/` plugin layout; added domain-plugin rule and the rawBody
+    route-scoped-hook note.
+  - `maria-database-rls`: added NULL-unique → partial-index rule (migration
+    0013 lesson).
+  - `maria-devin-adaptation`: stale 4-skill enumeration replaced by
+    "list `.devin/skills/`"; documented `.agents/` for ecosystem skills.
+  - Descriptions of api-development, database-rls, dev-setup, testing and
+    devin-adaptation gained "Applies when…" triggers (skill-creator guidance:
+    description is the activation mechanism).
+  - No ADR changes needed — the corrections were bug fixes/reorganization,
+    not new decisions; ADR comments in code were fixed in PR #60.
+- Simplification pass merged via PR #60 (2026-10-16):
   - `apps/api/src/app.ts`: `AppDependencies.database` now derives from
     `Database` (`Omit<Database, "close"|"withWorkspace"|"withUser">`) instead
     of ~310 lines of hand-duplicated signatures; shared `meResponseSchema`;
@@ -58,7 +70,7 @@ gh pr status
     app-sidebar; `lib/api.ts` gained a shared `request()` used by `api()` and
     `apiBlob()`; `settings.tsx` uses `Link` `activeProps` instead of manual
     `pathname.startsWith`; relative `../lib/*.ts` imports standardized on `@/`.
-- Second pass — deferred corrections landed in the same dirty tree:
+- Deferred corrections merged in the same PR #60:
   - `apps/api/src/app.ts` split into `src/routes/{session,admin,contacts,
 companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
     `RouteDatabase`, shared schemas). `buildApp` is now ~85 lines of wiring;
@@ -111,7 +123,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Review the simplification diff, then commit (excluding the unrelated
-   `SKILL.md` edit), push, open PR, wait for checks and merge.
+1. Commit the maria-skill audit on `chore/maria-skill-review`, push, open PR,
+   wait for checks and merge.
 2. Slice 4: `contacts.companyId` + company detail page (contacts, deals,
    notes aggregated), then deal detail page.

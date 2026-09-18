@@ -1,6 +1,6 @@
 ---
 name: maria-testing
-description: Select and implement MarIA CRM tests for API, database, tenant isolation and UI changes.
+description: Select and implement MarIA CRM tests for API, database, tenant isolation and UI changes. Applies when writing, selecting or reporting tests for a change.
 ---
 
 # MarIA CRM testing
