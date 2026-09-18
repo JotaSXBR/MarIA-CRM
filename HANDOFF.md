@@ -12,14 +12,15 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#77 merged (…global search, accepted ADR 0015,
+- `main` — PRs #61–#78 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
-  `/setup`). PR #78 (issue #76, Ajv `allowUnionTypes`) is OPEN.
+  `/setup`, Ajv `allowUnionTypes` fix closing issue #76).
 - Product track: **onboarding + workspace roles** per `ROADMAP.md` and
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
 - Branch `feat/workspace-invitations` — **Slice 1.3, workspace
-  invitations** (implemented, PR pending):
+  invitations** — PR #79 OPEN (commit `3dced3a` + merge of `origin/main`
+  incl. #78):
   - Migration `0018_workspace_invitations.sql`: `token`→`token_hash`,
     `used_at`→`consumed_at`, new `invited_by`, partial unique index on
     `(workspace_id, email) WHERE consumed_at IS NULL` (one live invite),
@@ -452,9 +453,8 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #78 (issue #76, Ajv `allowUnionTypes`) once checks pass.
-2. Commit/push `feat/workspace-invitations` and open the Slice 1.3 PR.
-3. Reassess before Phase 1.4 — member management surface (change role,
+1. Merge PR #79 (Slice 1.3 invitations) once checks pass.
+2. Reassess before Phase 1.4 — member management surface (change role,
    suspend/remove beyond the current last-admin protection) or the
    workspace onboarding checklist.
-4. Deferred alternative: attribute-based filtering in list views.
+3. Deferred alternative: attribute-based filtering in list views.
