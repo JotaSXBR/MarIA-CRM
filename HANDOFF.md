@@ -12,14 +12,15 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#71 merged (…workspace tags, company write paths,
-  custom attributes via ADR 0014).
-- Branch `feat/global-search` — global search implemented and
-  verified: `GET /search?q=` across contacts/companies/deals +
-  `/search` page with grouped results and sidebar nav entry.
-- CRM domain gaps from the original roadmap are now closed (tags,
-  custom attributes, global search). Next slices: attribute-based
-  filtering in list views, or new product priorities.
+- `main` — PRs #61–#72 merged (…workspace tags, company write paths,
+  custom attributes via ADR 0014, global search).
+- CRM domain gaps from the original roadmap are closed. New product
+  priority: **onboarding + workspace roles** (master user → self-administered
+  workspaces → Admin/Manager/Agente/Viewer).
+- Branch `docs/onboarding-roles` — research + proposed ADR 0015
+  (roles rank, `/setup` first-run, invitations, delegated membership admin,
+  workspace onboarding wizard). Pending product-owner review before any
+  implementation slice.
 
 ## Memory model
 
@@ -32,8 +33,26 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#71 merged (#71 at `d3f4f66` squash).
+- `main` (2026-09-18): PRs #61–#72 merged (#72 at `33baf41` squash).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- Onboarding/roles research (2026-09-18, `docs/onboarding-roles`):
+  - Seven CRM/agent references cloned/updated under `research/sources/`
+    (gitignored): deskcomm-crm `d86fcea`, fazer-ai/agents `4197ab4`,
+    agents-skills `e54ccb5`, compai-crm `6d4793d`, macro `2b5304d3`,
+    erxes `d2dade7`, ever-gauzy `24c6a4d`. Findings + per-repo verdicts in
+    `research/onboarding-roles-2026-09-18.md` (local only).
+  - Key transferable patterns: deskcomm's `ROLE_RANK` +
+    `requireRole(min)` + `onboarding_state` jsonb + step registry;
+    fazer-ai's `/setup` boot-token + advisory-lock bootstrap + hashed-token
+    `Invitation`. Both map cleanly onto existing `is_admin` +
+    `memberships.role` axes and the ADR 0011 lock protocol.
+  - ADR 0015 drafted as **proposed**: role rank
+    `viewer<agent<manager<admin>` (`member`→`agent`), `/setup` first-run,
+    workspace invitations (copyable link, no SMTP), workspace admins
+    managing their own memberships (supersedes ADR 0011 restriction),
+    `workspaces.onboarding_state` + step-registry wizard, initial
+    capability matrix.
+  - Docs-only branch; no code changed, no gates run beyond reading.
 - Slice 9 on `feat/global-search` (2026-09-18, Windows/pnpm):
   - DB `searchEntities`: three ILIKE substring queries in one
     `withWorkspace` — contacts (name/email/phone), companies (name),
@@ -329,8 +348,12 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Push `feat/entity-tags` and open the PR (label `enhancement`).
-2. Custom attributes (typed definitions + per-entity values), then
-   global search.
-3. Company detail write paths (`POST /companies/:id/{notes,tasks}`) if parity
-   with the deal detail hub is wanted.
+1. Product-owner review of ADR 0015 (`docs/onboarding-roles`): approve,
+   adjust the capability matrix/role names, then open the PR (label
+   `documentation`).
+2. After acceptance, implementation slices in order: (a) role rank +
+   `requireWorkspaceRole` guard + `member`→`agent` migration;
+   (b) `/setup` first-run; (c) invitations + accept page;
+   (d) delegated membership management + members UI;
+   (e) onboarding wizard (state blob + step registry + pages).
+3. Deferred alternative: attribute-based filtering in list views.
