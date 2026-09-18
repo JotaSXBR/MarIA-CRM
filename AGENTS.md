@@ -210,6 +210,7 @@ mutable `latest` image tags. Exact versions belong in manifests and lockfiles.
 ## 7. Essential repository contracts
 
 - `ARCHITECTURE.md` — system boundaries and target repository topology.
+- `ROADMAP.md` — living product phases, slice sequence and reassessment criteria.
 - `adr/` — versioned decision records; superseded records are marked, never rewritten.
 - `README.md` — public project identity and current status.
 - `DEVELOPMENT.md` — reproducible setup, migrations and scope-specific verification matrix.

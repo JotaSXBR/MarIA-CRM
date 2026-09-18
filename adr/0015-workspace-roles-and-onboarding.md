@@ -1,6 +1,6 @@
 # 0015 — Workspace roles and onboarding
 
-**Status:** proposed (2026-09-18; pending product-owner approval)
+**Status:** accepted (2026-09-18; merged in PR #73)
 
 Supersedes part of [ADR 0011](0011-admin-invariant-concurrency.md): the
 "workspace admin does not manage memberships" restriction. The lock protocol
