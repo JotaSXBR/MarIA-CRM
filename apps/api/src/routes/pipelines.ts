@@ -16,10 +16,10 @@ export function registerPipelineRoutes(
   app: FastifyInstance,
   deps: {
     database: RouteDatabase;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, authorizeWorkspaceRequest } = deps;
+  const { database, requireWorkspaceRole } = deps;
   const pipelineSchema = {
     type: "object",
     additionalProperties: false,
@@ -65,7 +65,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       return database.listPipelines(authorized.workspaceId);
     },
@@ -78,11 +78,15 @@ export function registerPipelineRoutes(
       schema: {
         querystring: workspaceQuerySchema,
         body: nameBodySchema,
-        response: { 201: pipelineSchema, 401: { type: "null" } },
+        response: {
+          201: pipelineSchema,
+          401: { type: "null" },
+          403: { type: "null" },
+        },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { name } = request.body as { name: string };
       const created = await database.createPipeline(authorized.workspaceId, {
@@ -108,12 +112,13 @@ export function registerPipelineRoutes(
         response: {
           200: pipelineSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const updated = await database.updatePipeline(
@@ -143,11 +148,8 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const result = await database.deletePipeline(authorized.workspaceId, id);
       if (result === "not-found") return reply.code(404).send();
@@ -170,7 +172,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       return database.listStages(authorized.workspaceId, id);
@@ -188,12 +190,13 @@ export function registerPipelineRoutes(
         response: {
           201: stageSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { name } = request.body as { name: string };
@@ -221,12 +224,13 @@ export function registerPipelineRoutes(
         response: {
           200: stageSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const updated = await database.updateStage(
@@ -256,11 +260,8 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const result = await database.deleteStage(authorized.workspaceId, id);
       if (result === "not-found") return reply.code(404).send();
@@ -292,7 +293,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { pipelineId } = request.query as { pipelineId: string };
       return database.listDeals(authorized.workspaceId, pipelineId);
@@ -321,12 +322,13 @@ export function registerPipelineRoutes(
         response: {
           201: dealSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const created = await database.createDeal(
         authorized.workspaceId,
@@ -359,7 +361,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const deal = await database.getDeal(authorized.workspaceId, id);
@@ -383,7 +385,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const deal = await database.getDeal(authorized.workspaceId, id);
@@ -407,7 +409,7 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const deal = await database.getDeal(authorized.workspaceId, id);
@@ -432,12 +434,13 @@ export function registerPipelineRoutes(
         response: {
           201: noteSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { body } = request.body as { body: string };
@@ -470,12 +473,13 @@ export function registerPipelineRoutes(
         response: {
           201: taskSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const input = request.body as { title: string; dueAt?: string | null };
@@ -492,7 +496,7 @@ export function registerPipelineRoutes(
 
   registerEntityTagRoutes(
     app,
-    { authorizeWorkspaceRequest },
+    { requireWorkspaceRole },
     {
       path: "deals",
       getParent: (workspaceId, id) => database.getDeal(workspaceId, id),
@@ -504,7 +508,7 @@ export function registerPipelineRoutes(
 
   registerEntityAttributeRoutes(
     app,
-    { database, authorizeWorkspaceRequest },
+    { database, requireWorkspaceRole },
     {
       path: "deals",
       entityType: "deal",
@@ -533,12 +537,13 @@ export function registerPipelineRoutes(
         response: {
           200: dealSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const updated = await database.updateDeal(
@@ -576,12 +581,13 @@ export function registerPipelineRoutes(
         response: {
           200: dealSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { stageId, prevDealId, nextDealId } = request.body as {
@@ -615,11 +621,8 @@ export function registerPipelineRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const { id } = request.params as { id: string };
       const deleted = await database.deleteDeal(authorized.workspaceId, id);
       if (!deleted) return reply.code(404).send();

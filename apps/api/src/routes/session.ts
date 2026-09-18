@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { AuthPort } from "@maria/auth";
-import { extractBearerToken } from "./shared.ts";
+import { extractBearerToken, workspaceRoleSchema } from "./shared.ts";
 
 export function registerSessionRoutes(
   app: FastifyInstance,
@@ -157,7 +157,7 @@ export function registerSessionRoutes(
               properties: {
                 workspaceId: { type: "string", format: "uuid" },
                 workspaceName: { type: "string" },
-                role: { type: "string", enum: ["admin", "member"] },
+                role: workspaceRoleSchema,
               },
             },
           },

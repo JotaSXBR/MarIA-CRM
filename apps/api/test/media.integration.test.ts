@@ -31,7 +31,7 @@ const memberAuth = () =>
       name: "User",
       isAdmin: false,
     }),
-    authorizeWorkspace: async () => ({ role: "member" }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
   });
 
 function createDatabaseStub() {

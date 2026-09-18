@@ -72,11 +72,10 @@ export function registerMessagingRoutes(
     waha: MessagingProvider;
     mediaStore: MediaStore;
     dispatcher: Dispatcher;
-    authorizeWorkspaceRequest: AuthGuards["authorizeWorkspaceRequest"];
+    requireWorkspaceRole: AuthGuards["requireWorkspaceRole"];
   },
 ) {
-  const { database, waha, mediaStore, dispatcher, authorizeWorkspaceRequest } =
-    deps;
+  const { database, waha, mediaStore, dispatcher, requireWorkspaceRole } = deps;
   const channelInstanceSchema = {
     type: "object",
     additionalProperties: false,
@@ -192,7 +191,7 @@ export function registerMessagingRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       return database.listChannelInstances(authorized.workspaceId);
     },
@@ -223,11 +222,8 @@ export function registerMessagingRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
       if (!authorized) return;
-      if (authorized.membership.role !== "admin") {
-        return reply.code(403).send();
-      }
       const input = request.body as {
         provider: string;
         providerInstanceId?: string | null;
@@ -255,7 +251,7 @@ export function registerMessagingRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       // Lazy dispatch maintenance: expired leases become `unknown` so the
       // list reflects blocked sends, and orphaned `pending` intents (e.g.
@@ -319,13 +315,14 @@ export function registerMessagingRoutes(
         response: {
           201: messageSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           413: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { body, attachment, contact } = request.body as {
@@ -418,7 +415,7 @@ export function registerMessagingRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const message = await database.getMessage(authorized.workspaceId, id);
@@ -452,13 +449,14 @@ export function registerMessagingRoutes(
         response: {
           201: messageSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           409: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const original = await database.getMessage(authorized.workspaceId, id);
@@ -521,13 +519,14 @@ export function registerMessagingRoutes(
         response: {
           200: messageSchema,
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           409: { type: "null" },
         },
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const { resolution } = request.body as {
@@ -560,7 +559,7 @@ export function registerMessagingRoutes(
       },
     },
     async (request, reply) => {
-      const authorized = await authorizeWorkspaceRequest(request, reply);
+      const authorized = await requireWorkspaceRole(request, reply);
       if (!authorized) return;
       const { id } = request.params as { id: string };
       const conversation = await database.getConversation(

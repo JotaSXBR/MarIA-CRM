@@ -3,12 +3,13 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Company } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 
 export function CompaniesPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -65,38 +66,40 @@ export function CompaniesPage() {
         Empresas
       </h1>
 
-      <form
-        onSubmit={onSubmit}
-        className="mt-4 flex gap-3 rounded-xl border border-slate-200 bg-white p-4"
-      >
-        <input
-          required
-          placeholder="Nome da empresa"
-          aria-label="Nome da empresa"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={save.isPending}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+      {canEdit ? (
+        <form
+          onSubmit={onSubmit}
+          className="mt-4 flex gap-3 rounded-xl border border-slate-200 bg-white p-4"
         >
-          {editingId ? "Salvar" : "Adicionar"}
-        </button>
-        {editingId ? (
+          <input
+            required
+            placeholder="Nome da empresa"
+            aria-label="Nome da empresa"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
           <button
-            type="button"
-            onClick={() => {
-              setEditingId(null);
-              setName("");
-            }}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            type="submit"
+            disabled={save.isPending}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
           >
-            Cancelar
+            {editingId ? "Salvar" : "Adicionar"}
           </button>
-        ) : null}
-      </form>
+          {editingId ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(null);
+                setName("");
+              }}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              Cancelar
+            </button>
+          ) : null}
+        </form>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {error}
@@ -141,16 +144,18 @@ export function CompaniesPage() {
                     {new Date(company.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => {
-                        setEditingId(company.id);
-                        setName(company.name);
-                      }}
-                      className="mr-2 text-indigo-600 hover:underline"
-                    >
-                      Editar
-                    </button>
-                    {isAdmin ? (
+                    {canEdit ? (
+                      <button
+                        onClick={() => {
+                          setEditingId(company.id);
+                          setName(company.name);
+                        }}
+                        className="mr-2 text-indigo-600 hover:underline"
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                    {canManage ? (
                       <button
                         onClick={() => remove.mutate(company.id)}
                         className="text-red-600 hover:underline"

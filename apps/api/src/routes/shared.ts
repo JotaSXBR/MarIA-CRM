@@ -1,5 +1,9 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { AuthPort } from "@maria/auth";
+import {
+  hasWorkspaceRole,
+  type AuthPort,
+  type WorkspaceRole,
+} from "@maria/auth";
 import type { Database } from "@maria/database";
 
 /** Business persistence surface exposed to routes; lifecycle (`close`) and
@@ -45,6 +49,20 @@ export function createAuthGuards(auth: AuthPort) {
     return { session, membership, workspaceId };
   };
 
+  const requireWorkspaceRole = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    minimumRole: WorkspaceRole = "viewer",
+  ) => {
+    const authorized = await authorizeWorkspaceRequest(request, reply);
+    if (!authorized) return undefined;
+    if (!hasWorkspaceRole(authorized.membership.role, minimumRole)) {
+      await reply.code(403).send();
+      return undefined;
+    }
+    return authorized;
+  };
+
   const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
     const token = extractBearerToken(request);
     if (!token) {
@@ -59,10 +77,15 @@ export function createAuthGuards(auth: AuthPort) {
     return session;
   };
 
-  return { authorizeWorkspaceRequest, requireAdmin };
+  return { requireWorkspaceRole, requireAdmin };
 }
 
 export type AuthGuards = ReturnType<typeof createAuthGuards>;
+
+export const workspaceRoleSchema = {
+  type: "string",
+  enum: ["viewer", "agent", "manager", "admin"],
+} as const;
 
 export const idParamsSchema = {
   type: "object",

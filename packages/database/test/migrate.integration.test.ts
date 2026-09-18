@@ -193,6 +193,80 @@ test("rolls back a failed migration and does not write its ledger row", async ()
   });
 }, 120000);
 
+test("0017 upgrades legacy member roles to agent on a prior-prefix database", async () => {
+  const all = await loadMigrations();
+  const roles = all.find(
+    (migration) => migration.name === "0017_workspace_roles.sql",
+  );
+  if (!roles) throw new Error("0017_workspace_roles.sql not found");
+  const prefix = all.filter((migration) => migration.name < roles.name);
+  const directory = await migrationDirectory(
+    Object.fromEntries(
+      prefix.map((migration) => [migration.name, migration.sql]),
+    ),
+  );
+  await withEmptyDatabase(async (connectionString, admin) => {
+    try {
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toHaveLength(prefix.length);
+
+      const { rows: orgs } = await admin.query<{ id: string }>(
+        "insert into organizations (name) values ('Org') returning id",
+      );
+      const { rows: workspaces } = await admin.query<{ id: string }>(
+        "insert into workspaces (org_id, name) values ($1, 'WS') returning id",
+        [orgs[0]!.id],
+      );
+      const { rows: users } = await admin.query<{
+        id: string;
+        email: string;
+      }>(
+        "insert into users (email, name, password_hash) values ('u@example.com', 'U', 'x'), ('v@example.com', 'V', 'x') returning id, email",
+      );
+      const memberUser = users.find((row) => row.email === "u@example.com")!;
+      const adminUser = users.find((row) => row.email === "v@example.com")!;
+      await admin.query(
+        "insert into memberships (user_id, workspace_id, role) values ($1, $2, 'member'), ($3, $2, 'admin')",
+        [memberUser.id, workspaces[0]!.id, adminUser.id],
+      );
+      await admin.query(
+        "insert into invitations (email, workspace_id, role, token, expires_at) values ('i@example.com', $1, 'member', 'tok', now())",
+        [workspaces[0]!.id],
+      );
+
+      await writeFile(join(directory, roles.name), roles.sql);
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toEqual([roles.name]);
+
+      const { rows: membershipRoles } = await admin.query<{ role: string }>(
+        "select role from memberships order by role",
+      );
+      expect(membershipRoles.map((row) => row.role)).toEqual([
+        "admin",
+        "agent",
+      ]);
+      const { rows: invitationRoles } = await admin.query<{ role: string }>(
+        "select role from invitations",
+      );
+      expect(invitationRoles).toEqual([{ role: "agent" }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}, 120000);
+
 test("rejects changed checksums and untracked existing databases", async () => {
   const directory = await migrationDirectory({
     "0100_checksum.sql":

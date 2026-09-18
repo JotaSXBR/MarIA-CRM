@@ -37,9 +37,13 @@ export function TagChip({ tag }: { tag: Tag }) {
 export function TagPicker({
   workspaceId,
   entityPath,
+  canEdit,
+  canManage,
 }: {
   workspaceId: string | undefined;
   entityPath: string;
+  canEdit: boolean;
+  canManage: boolean;
 }) {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
@@ -123,66 +127,74 @@ export function TagPicker({
       {(assigned.data ?? []).map((tag) => (
         <TagChip key={tag.id} tag={tag} />
       ))}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size="sm" aria-label="Editar tags" />}
-        >
-          <TagIcon data-icon="inline-start" />
-          Tags
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Tags do workspace</DropdownMenuLabel>
-            {(allTags.data ?? []).map((tag) => (
-              <DropdownMenuCheckboxItem
-                key={tag.id}
-                checked={assignedIds.has(tag.id)}
-                onCheckedChange={(checked) =>
-                  toggleTag(tag.id, checked === true)
-                }
-              >
-                {tag.color ? (
-                  <span
-                    aria-hidden
-                    className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag.color }}
+      {canEdit ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" size="sm" aria-label="Editar tags" />
+            }
+          >
+            <TagIcon data-icon="inline-start" />
+            Tags
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Tags do workspace</DropdownMenuLabel>
+              {(allTags.data ?? []).map((tag) => (
+                <DropdownMenuCheckboxItem
+                  key={tag.id}
+                  checked={assignedIds.has(tag.id)}
+                  onCheckedChange={(checked) =>
+                    toggleTag(tag.id, checked === true)
+                  }
+                >
+                  {tag.color ? (
+                    <span
+                      aria-hidden
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                  ) : null}
+                  {tag.name}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+            {allTags.data?.length === 0 ? (
+              <p className="px-1.5 py-1 text-sm text-muted-foreground">
+                Nenhuma tag criada ainda.
+              </p>
+            ) : null}
+            {canManage ? (
+              <>
+                <DropdownMenuSeparator />
+                <form onSubmit={submitNewTag} className="flex gap-1.5 p-1.5">
+                  <Input
+                    value={newName}
+                    onChange={(event) => setNewName(event.target.value)}
+                    placeholder="Nova tag"
+                    aria-label="Nome da nova tag"
+                    className="h-8"
                   />
-                ) : null}
-                {tag.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuGroup>
-          {allTags.data?.length === 0 ? (
-            <p className="px-1.5 py-1 text-sm text-muted-foreground">
-              Nenhuma tag criada ainda.
-            </p>
-          ) : null}
-          <DropdownMenuSeparator />
-          <form onSubmit={submitNewTag} className="flex gap-1.5 p-1.5">
-            <Input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="Nova tag"
-              aria-label="Nome da nova tag"
-              className="h-8"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              variant="secondary"
-              disabled={!newName.trim() || createTag.isPending}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Criar
-            </Button>
-          </form>
-          {error ? (
-            <p role="alert" className="px-1.5 pb-1 text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!newName.trim() || createTag.isPending}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Criar
+                  </Button>
+                </form>
+              </>
+            ) : null}
+            {error ? (
+              <p role="alert" className="px-1.5 pb-1 text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
     </div>
   );
 }

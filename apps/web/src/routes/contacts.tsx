@@ -3,14 +3,15 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Company, Contact } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 
 const empty = { name: "", email: "", phone: "", companyId: "" };
 
 export function ContactsPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,68 +88,70 @@ export function ContactsPage() {
         </h1>
       </div>
 
-      <form
-        onSubmit={onSubmit}
-        className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-5"
-      >
-        <input
-          required
-          placeholder="Nome"
-          aria-label="Nome"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          aria-label="Email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
-        <input
-          placeholder="Telefone"
-          aria-label="Telefone"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
-        <select
-          aria-label="Empresa"
-          value={form.companyId}
-          onChange={(e) => setForm({ ...form, companyId: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      {canEdit ? (
+        <form
+          onSubmit={onSubmit}
+          className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-5"
         >
-          <option value="">Sem empresa</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.id}>
-              {company.name}
-            </option>
-          ))}
-        </select>
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={save.isPending}
-            className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          <input
+            required
+            placeholder="Nome"
+            aria-label="Nome"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            aria-label="Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="Telefone"
+            aria-label="Telefone"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <select
+            aria-label="Empresa"
+            value={form.companyId}
+            onChange={(e) => setForm({ ...form, companyId: e.target.value })}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            {editingId ? "Salvar" : "Adicionar"}
-          </button>
-          {editingId ? (
+            <option value="">Sem empresa</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
             <button
-              type="button"
-              onClick={() => {
-                setEditingId(null);
-                setForm(empty);
-              }}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              type="submit"
+              disabled={save.isPending}
+              className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
             >
-              Cancelar
+              {editingId ? "Salvar" : "Adicionar"}
             </button>
-          ) : null}
-        </div>
-      </form>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setForm(empty);
+                }}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                Cancelar
+              </button>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {error}
@@ -211,21 +214,23 @@ export function ContactsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => {
-                        setEditingId(contact.id);
-                        setForm({
-                          name: contact.name,
-                          email: contact.email ?? "",
-                          phone: contact.phone ?? "",
-                          companyId: contact.companyId ?? "",
-                        });
-                      }}
-                      className="mr-2 text-indigo-600 hover:underline"
-                    >
-                      Editar
-                    </button>
-                    {isAdmin ? (
+                    {canEdit ? (
+                      <button
+                        onClick={() => {
+                          setEditingId(contact.id);
+                          setForm({
+                            name: contact.name,
+                            email: contact.email ?? "",
+                            phone: contact.phone ?? "",
+                            companyId: contact.companyId ?? "",
+                          });
+                        }}
+                        className="mr-2 text-indigo-600 hover:underline"
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                    {canManage ? (
                       <button
                         onClick={() => remove.mutate(contact.id)}
                         className="text-red-600 hover:underline"

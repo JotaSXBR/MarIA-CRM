@@ -13,6 +13,7 @@ type EntityAttributesCardProps = {
   /** Entity API path, e.g. `/contacts/<id>` — attributes live under
    * `${entityPath}/attributes`. */
   entityPath: string;
+  canEdit: boolean;
 };
 
 const selectClass =
@@ -92,6 +93,7 @@ function AttributeInput({
 export function EntityAttributesCard({
   workspaceId,
   entityPath,
+  canEdit,
 }: EntityAttributesCardProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Record<string, AttributeValue>>({});
@@ -148,44 +150,46 @@ export function EntityAttributesCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <form onSubmit={onSubmit}>
-          <FieldGroup className="gap-3">
-            {list.map((attribute) => (
-              <Field
-                key={attribute.id}
-                orientation={
-                  attribute.type === "boolean" ? "horizontal" : "vertical"
-                }
-              >
-                <FieldLabel htmlFor={`attr-${attribute.id}`}>
-                  {attribute.label}
-                </FieldLabel>
-                <AttributeInput
-                  attribute={attribute}
-                  value={valueOf(attribute)}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      [attribute.id]: value,
-                    }))
+          <fieldset disabled={!canEdit} className="contents">
+            <FieldGroup className="gap-3">
+              {list.map((attribute) => (
+                <Field
+                  key={attribute.id}
+                  orientation={
+                    attribute.type === "boolean" ? "horizontal" : "vertical"
                   }
-                />
-              </Field>
-            ))}
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={!dirty || save.isPending}
-              >
-                Salvar atributos
-              </Button>
-            </div>
-          </FieldGroup>
+                >
+                  <FieldLabel htmlFor={`attr-${attribute.id}`}>
+                    {attribute.label}
+                  </FieldLabel>
+                  <AttributeInput
+                    attribute={attribute}
+                    value={valueOf(attribute)}
+                    onChange={(value) =>
+                      setDraft((current) => ({
+                        ...current,
+                        [attribute.id]: value,
+                      }))
+                    }
+                  />
+                </Field>
+              ))}
+              {error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              ) : null}
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={!dirty || save.isPending}
+                >
+                  Salvar atributos
+                </Button>
+              </div>
+            </FieldGroup>
+          </fieldset>
         </form>
       </CardContent>
     </Card>

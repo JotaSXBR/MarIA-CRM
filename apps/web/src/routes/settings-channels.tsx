@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatTime } from "@/lib/format";
 import type { ChannelInstance } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,7 +25,7 @@ function generateSecret() {
 export function SettingsChannelsPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [providerInstanceId, setProviderInstanceId] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -120,7 +120,7 @@ export function SettingsChannelsPage() {
         </CardContent>
       </Card>
 
-      {isAdmin ? (
+      {canManage ? (
         <Card>
           <CardHeader>
             <CardTitle>Novo canal</CardTitle>

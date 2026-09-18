@@ -167,7 +167,7 @@ test("local auth supports login, session verification and workspace authorizatio
     name: "Member",
     password: "member-password",
     workspaceId: workspace,
-    role: "member",
+    role: "agent",
   });
   expect(member).toBeDefined();
 
@@ -182,7 +182,7 @@ test("local auth supports login, session verification and workspace authorizatio
   expect(
     await auth.authorizeWorkspace(memberSession!.userId, workspace),
   ).toEqual({
-    role: "member",
+    role: "agent",
   });
   expect(
     await auth.authorizeWorkspace(memberSession!.userId, randomUUID()),
@@ -190,7 +190,7 @@ test("local auth supports login, session verification and workspace authorizatio
 
   const memberships = await auth.listUserWorkspaces(memberSession!.userId);
   expect(memberships).toEqual([
-    { workspaceId: workspace, workspaceName: "Workspace", role: "member" },
+    { workspaceId: workspace, workspaceName: "Workspace", role: "agent" },
   ]);
 
   await expect(
@@ -229,28 +229,28 @@ test("admin management runs under the runtime role with least privilege", async 
     await auth.addMembership({
       userId: user!.userId,
       workspaceId: workspace!.id,
-      role: "member",
+      role: "agent",
     }),
   ).toBe("duplicate");
   expect(
     await auth.addMembership({
       userId: randomUUID(),
       workspaceId: workspace!.id,
-      role: "member",
+      role: "agent",
     }),
   ).toBe("not-found");
   expect(
     await auth.addMembership({
       userId: user!.userId,
       workspaceId: randomUUID(),
-      role: "member",
+      role: "agent",
     }),
   ).toBe("not-found");
 
   const members = await auth.listMembers(workspace!.id);
   expect(members).toHaveLength(1);
   expect(
-    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "member"),
+    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "agent"),
   ).toBe("last-admin");
 
   const second = await auth.createUser({
@@ -264,12 +264,12 @@ test("admin management runs under the runtime role with least privilege", async 
     role: "admin",
   });
   expect(
-    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "member"),
+    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "agent"),
   ).toBe("updated");
 
   const members2 = await auth.listMembers(workspace!.id);
   const lastAdmin = members2.find((member) => member.role === "admin")!;
-  const member = members2.find((member) => member.role === "member")!;
+  const member = members2.find((member) => member.role === "agent")!;
   expect(await auth.removeMembership(workspace!.id, lastAdmin.id)).toBe(
     "last-admin",
   );
@@ -406,9 +406,9 @@ test("concurrent admin removals preserve the last administrators", async () => {
 
   await assertWorkspaceAdminRace("demote-demote", [
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
   ]);
   await assertWorkspaceAdminRace("remove-remove", [
     (raceAuth, workspaceId, membershipId) =>
@@ -418,7 +418,7 @@ test("concurrent admin removals preserve the last administrators", async () => {
   ]);
   await assertWorkspaceAdminRace("demote-remove", [
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "member"),
+      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
     (raceAuth, workspaceId, membershipId) =>
       raceAuth.removeMembership(workspaceId, membershipId),
   ]);

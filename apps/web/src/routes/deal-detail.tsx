@@ -5,7 +5,7 @@ import { ArrowLeftIcon, PencilIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Company, Contact, DealDetail } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 import { DealEditor } from "@/components/deal-editor";
 import { EntityNotesCard, EntityTasksCard } from "@/components/entity-activity";
 import { EntityAttributesCard } from "@/components/entity-attributes-card";
@@ -24,7 +24,8 @@ export function DealDetailPage() {
   const { dealId } = useParams({ strict: false }) as { dealId: string };
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
@@ -106,10 +107,12 @@ export function DealDetailPage() {
           <ArrowLeftIcon data-icon="inline-start" />
           Voltar para pipelines
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          <PencilIcon data-icon="inline-start" />
-          Editar
-        </Button>
+        {canEdit ? (
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+            <PencilIcon data-icon="inline-start" />
+            Editar
+          </Button>
+        ) : null}
       </div>
 
       <header className="flex flex-col gap-2">
@@ -166,31 +169,39 @@ export function DealDetailPage() {
             </Button>
           ) : null}
         </div>
-        <TagPicker workspaceId={workspaceId} entityPath={`/deals/${dealId}`} />
+        <TagPicker
+          workspaceId={workspaceId}
+          entityPath={`/deals/${dealId}`}
+          canEdit={canEdit}
+          canManage={canManage}
+        />
       </header>
 
       <EntityAttributesCard
         workspaceId={workspaceId}
         entityPath={`/deals/${dealId}`}
+        canEdit={canEdit}
       />
 
       <EntityTasksCard
         workspaceId={workspaceId}
         entityPath={`/deals/${dealId}`}
-        isAdmin={isAdmin}
+        canEdit={canEdit}
+        canManage={canManage}
       />
 
       <EntityNotesCard
         workspaceId={workspaceId}
         entityPath={`/deals/${dealId}`}
-        isAdmin={isAdmin}
+        canEdit={canEdit}
+        canManage={canManage}
         placeholder="Escreva uma nota sobre este negócio"
       />
 
       {editing ? (
         <DealEditor
           deal={detail}
-          isAdmin={isAdmin}
+          canManage={canManage}
           contacts={contacts}
           companies={companies}
           onClose={() => setEditing(false)}

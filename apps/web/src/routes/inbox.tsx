@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBlob } from "@/lib/api";
 import { formatTime } from "@/lib/format";
 import type { Contact, Conversation, Message } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "enviando",
@@ -84,6 +84,7 @@ function MediaAttachment({
 export function InboxPage() {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -326,7 +327,8 @@ export function InboxPage() {
                           ? ` · ${STATUS_LABELS[message.status] ?? message.status}`
                           : ""}
                       </p>
-                      {message.direction === "outbound" &&
+                      {canEdit &&
+                      message.direction === "outbound" &&
                       ["failed", "cancelled"].includes(message.status) ? (
                         <button
                           type="button"
@@ -337,7 +339,8 @@ export function InboxPage() {
                           Reenviar
                         </button>
                       ) : null}
-                      {message.direction === "outbound" &&
+                      {canEdit &&
+                      message.direction === "outbound" &&
                       message.status === "unknown" ? (
                         <div className="mt-1 flex items-center justify-end gap-2 text-xs">
                           <button
@@ -373,7 +376,7 @@ export function InboxPage() {
                 ))
               )}
             </div>
-            {attachment ? (
+            {canEdit && attachment ? (
               <div className="flex items-center gap-2 border-t border-slate-200 px-3 py-2 text-xs text-slate-600">
                 <span className="truncate">
                   Anexo: {attachment.name} ({Math.ceil(attachment.size / 1024)}{" "}
@@ -388,83 +391,85 @@ export function InboxPage() {
                 </button>
               </div>
             ) : null}
-            <form
-              onSubmit={onSend}
-              className="flex items-center gap-2 border-t border-slate-200 p-3"
-            >
-              <div className="relative">
-                <button
-                  type="button"
-                  aria-label="Anexar"
-                  onClick={() => {
-                    setContactPickerOpen(false);
-                    setAttachMenuOpen((open) => !open);
-                  }}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                >
-                  +
-                </button>
-                {attachMenuOpen ? (
-                  <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={onAttach(imageVideoInput)}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      Fotos e vídeos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onAttach(documentInput)}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      Documento
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachMenuOpen(false);
-                        setContactPickerOpen(true);
-                      }}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      Contato
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <input
-                ref={imageVideoInput}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={onFilePicked}
-              />
-              <input
-                ref={documentInput}
-                type="file"
-                className="hidden"
-                onChange={onFilePicked}
-              />
-              <input
-                type="text"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder={
-                  attachment ? "Legenda (opcional)…" : "Escreva uma mensagem…"
-                }
-                aria-label="Mensagem"
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <button
-                type="submit"
-                disabled={sendMessage.isPending || !sendable}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            {canEdit ? (
+              <form
+                onSubmit={onSend}
+                className="flex items-center gap-2 border-t border-slate-200 p-3"
               >
-                Enviar
-              </button>
-            </form>
-            {contactPickerOpen ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-label="Anexar"
+                    onClick={() => {
+                      setContactPickerOpen(false);
+                      setAttachMenuOpen((open) => !open);
+                    }}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    +
+                  </button>
+                  {attachMenuOpen ? (
+                    <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={onAttach(imageVideoInput)}
+                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Fotos e vídeos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onAttach(documentInput)}
+                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Documento
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachMenuOpen(false);
+                          setContactPickerOpen(true);
+                        }}
+                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Contato
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <input
+                  ref={imageVideoInput}
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  onChange={onFilePicked}
+                />
+                <input
+                  ref={documentInput}
+                  type="file"
+                  className="hidden"
+                  onChange={onFilePicked}
+                />
+                <input
+                  type="text"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder={
+                    attachment ? "Legenda (opcional)…" : "Escreva uma mensagem…"
+                  }
+                  aria-label="Mensagem"
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={sendMessage.isPending || !sendable}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Enviar
+                </button>
+              </form>
+            ) : null}
+            {canEdit && contactPickerOpen ? (
               <div className="max-h-48 overflow-y-auto border-t border-slate-200">
                 <div className="flex items-center justify-between px-4 py-2">
                   <p className="text-xs font-medium text-slate-600">

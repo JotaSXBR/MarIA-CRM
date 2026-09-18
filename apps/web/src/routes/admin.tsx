@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { useWorkspace } from "@/lib/workspace";
+import {
+  WORKSPACE_ROLE_LABELS,
+  useWorkspace,
+  type WorkspaceRole,
+} from "@/lib/workspace";
 
 type AdminUser = {
   id: string;
@@ -28,7 +32,7 @@ type AdminWorkspace = {
 type Member = {
   id: string;
   userId: string;
-  role: "admin" | "member";
+  role: WorkspaceRole;
   email: string;
   name: string;
 };
@@ -37,6 +41,14 @@ const input =
   "rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-60";
 const button =
   "rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60";
+
+const roleOptions = Object.entries(WORKSPACE_ROLE_LABELS).map(
+  ([value, label]) => (
+    <option key={value} value={value}>
+      {label}
+    </option>
+  ),
+);
 
 function Section({
   title,
@@ -102,7 +114,7 @@ export function AdminPage() {
     name: "",
     password: "",
     workspaceId: "",
-    role: "member" as "admin" | "member",
+    role: "agent" as WorkspaceRole,
   });
   const createUser = useMutation({
     mutationFn: () =>
@@ -123,7 +135,7 @@ export function AdminPage() {
         name: "",
         password: "",
         workspaceId: "",
-        role: "member",
+        role: "agent",
       });
       setError(null);
       invalidate();
@@ -176,7 +188,7 @@ export function AdminPage() {
 
   const [memberForm, setMemberForm] = useState({
     userId: "",
-    role: "member" as "admin" | "member",
+    role: "agent" as WorkspaceRole,
   });
   const addMember = useMutation({
     mutationFn: () =>
@@ -189,7 +201,7 @@ export function AdminPage() {
         },
       }),
     onSuccess: () => {
-      setMemberForm({ userId: "", role: "member" });
+      setMemberForm({ userId: "", role: "agent" });
       setError(null);
       invalidate();
     },
@@ -197,7 +209,7 @@ export function AdminPage() {
   });
 
   const updateMemberRole = useMutation({
-    mutationFn: (input: { id: string; role: "admin" | "member" }) =>
+    mutationFn: (input: { id: string; role: WorkspaceRole }) =>
       api<void>(
         `/admin/memberships/${input.id}?workspaceId=${membersWorkspace}`,
         { method: "PATCH", body: { role: input.role } },
@@ -316,13 +328,12 @@ export function AdminPage() {
               onChange={(e) =>
                 setUserForm({
                   ...userForm,
-                  role: e.target.value as "admin" | "member",
+                  role: e.target.value as WorkspaceRole,
                 })
               }
               className={`${input} mt-2`}
             >
-              <option value="member">member</option>
-              <option value="admin">admin</option>
+              {roleOptions}
             </select>
           ) : null}
 
@@ -473,13 +484,12 @@ export function AdminPage() {
                       onChange={(e) =>
                         updateMemberRole.mutate({
                           id: member.id,
-                          role: e.target.value as "admin" | "member",
+                          role: e.target.value as WorkspaceRole,
                         })
                       }
                       className="rounded border border-slate-300 px-2 py-1 text-xs"
                     >
-                      <option value="member">member</option>
-                      <option value="admin">admin</option>
+                      {roleOptions}
                     </select>
                   </td>
                   <td className="py-2 text-right">
@@ -523,13 +533,12 @@ export function AdminPage() {
               onChange={(e) =>
                 setMemberForm({
                   ...memberForm,
-                  role: e.target.value as "admin" | "member",
+                  role: e.target.value as WorkspaceRole,
                 })
               }
               className={input}
             >
-              <option value="member">member</option>
-              <option value="admin">admin</option>
+              {roleOptions}
             </select>
             <button
               type="submit"

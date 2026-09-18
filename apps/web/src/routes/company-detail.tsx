@@ -4,7 +4,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate, initials } from "@/lib/format";
 import type { Company, Contact, EntityDeal } from "@/lib/types";
-import { useWorkspace } from "@/lib/workspace";
+import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 import { EntityNotesCard, EntityTasksCard } from "@/components/entity-activity";
 import { EntityAttributesCard } from "@/components/entity-attributes-card";
 import { EntityDealList } from "@/components/entity-deal-list";
@@ -24,7 +24,8 @@ export function CompanyDetailPage() {
   const { companyId } = useParams({ strict: false }) as { companyId: string };
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
-  const isAdmin = workspace?.role === "admin";
+  const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canManage = hasWorkspaceRole(workspace?.role, "manager");
 
   const company = useQuery({
     queryKey: ["company", workspaceId, companyId],
@@ -122,6 +123,8 @@ export function CompanyDetailPage() {
       <TagPicker
         workspaceId={workspaceId}
         entityPath={`/companies/${companyId}`}
+        canEdit={canEdit}
+        canManage={canManage}
       />
 
       <Card>
@@ -168,18 +171,21 @@ export function CompanyDetailPage() {
       <EntityAttributesCard
         workspaceId={workspaceId}
         entityPath={`/companies/${companyId}`}
+        canEdit={canEdit}
       />
 
       <EntityTasksCard
         workspaceId={workspaceId}
         entityPath={`/companies/${companyId}`}
-        isAdmin={isAdmin}
+        canEdit={canEdit}
+        canManage={canManage}
       />
 
       <EntityNotesCard
         workspaceId={workspaceId}
         entityPath={`/companies/${companyId}`}
-        isAdmin={isAdmin}
+        canEdit={canEdit}
+        canManage={canManage}
         placeholder="Escreva uma nota sobre esta empresa"
       />
     </section>

@@ -16,13 +16,15 @@ type EntityActivityProps = {
   /** Entity API path, e.g. `/contacts/<id>` — activity lives under
    * `${entityPath}/notes` and `${entityPath}/tasks`. */
   entityPath: string;
-  isAdmin: boolean;
+  canEdit: boolean;
+  canManage: boolean;
 };
 
 export function EntityTasksCard({
   workspaceId,
   entityPath,
-  isAdmin,
+  canEdit,
+  canManage,
 }: EntityActivityProps) {
   const queryClient = useQueryClient();
   const [taskTitle, setTaskTitle] = useState("");
@@ -87,39 +89,41 @@ export function EntityTasksCard({
         <CardTitle>Tarefas</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <form onSubmit={onSubmit}>
-          <FieldGroup className="gap-3">
-            <div className="flex gap-2">
-              <Field className="flex-1">
-                <FieldLabel htmlFor="task-title" className="sr-only">
-                  Título da tarefa
-                </FieldLabel>
-                <Input
-                  id="task-title"
-                  required
-                  placeholder="Nova tarefa"
-                  value={taskTitle}
-                  onChange={(e) => setTaskTitle(e.target.value)}
-                />
-              </Field>
-              <Field className="w-44">
-                <FieldLabel htmlFor="task-due-at" className="sr-only">
-                  Prazo
-                </FieldLabel>
-                <Input
-                  id="task-due-at"
-                  type="datetime-local"
-                  aria-label="Prazo"
-                  value={taskDueAt}
-                  onChange={(e) => setTaskDueAt(e.target.value)}
-                />
-              </Field>
-              <Button type="submit" disabled={addTask.isPending}>
-                Adicionar tarefa
-              </Button>
-            </div>
-          </FieldGroup>
-        </form>
+        {canEdit ? (
+          <form onSubmit={onSubmit}>
+            <FieldGroup className="gap-3">
+              <div className="flex gap-2">
+                <Field className="flex-1">
+                  <FieldLabel htmlFor="task-title" className="sr-only">
+                    Título da tarefa
+                  </FieldLabel>
+                  <Input
+                    id="task-title"
+                    required
+                    placeholder="Nova tarefa"
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                  />
+                </Field>
+                <Field className="w-44">
+                  <FieldLabel htmlFor="task-due-at" className="sr-only">
+                    Prazo
+                  </FieldLabel>
+                  <Input
+                    id="task-due-at"
+                    type="datetime-local"
+                    aria-label="Prazo"
+                    value={taskDueAt}
+                    onChange={(e) => setTaskDueAt(e.target.value)}
+                  />
+                </Field>
+                <Button type="submit" disabled={addTask.isPending}>
+                  Adicionar tarefa
+                </Button>
+              </div>
+            </FieldGroup>
+          </form>
+        ) : null}
 
         {error ? (
           <p role="alert" className="text-sm text-destructive">
@@ -136,6 +140,7 @@ export function EntityTasksCard({
               >
                 <Checkbox
                   checked={Boolean(task.doneAt)}
+                  disabled={!canEdit}
                   onCheckedChange={() => toggleTask.mutate(task)}
                   aria-label={`Concluir ${task.title}`}
                 />
@@ -158,7 +163,7 @@ export function EntityTasksCard({
                       .join(" · ")}
                   </p>
                 </div>
-                {isAdmin ? (
+                {canManage ? (
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -182,7 +187,8 @@ export function EntityTasksCard({
 export function EntityNotesCard({
   workspaceId,
   entityPath,
-  isAdmin,
+  canEdit,
+  canManage,
   placeholder = "Escreva uma nota",
 }: EntityActivityProps & { placeholder?: string }) {
   const queryClient = useQueryClient();
@@ -232,30 +238,32 @@ export function EntityNotesCard({
         <CardTitle>Notas</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <form onSubmit={onSubmit}>
-          <FieldGroup className="gap-3">
-            <Field>
-              <FieldLabel htmlFor="note-body" className="sr-only">
-                Nova nota
-              </FieldLabel>
-              <Textarea
-                id="note-body"
-                required
-                placeholder={placeholder}
-                rows={3}
-                value={noteBody}
-                onChange={(e) => setNoteBody(e.target.value)}
-              />
-            </Field>
-            <Button
-              type="submit"
-              disabled={addNote.isPending}
-              className="w-fit"
-            >
-              Adicionar nota
-            </Button>
-          </FieldGroup>
-        </form>
+        {canEdit ? (
+          <form onSubmit={onSubmit}>
+            <FieldGroup className="gap-3">
+              <Field>
+                <FieldLabel htmlFor="note-body" className="sr-only">
+                  Nova nota
+                </FieldLabel>
+                <Textarea
+                  id="note-body"
+                  required
+                  placeholder={placeholder}
+                  rows={3}
+                  value={noteBody}
+                  onChange={(e) => setNoteBody(e.target.value)}
+                />
+              </Field>
+              <Button
+                type="submit"
+                disabled={addNote.isPending}
+                className="w-fit"
+              >
+                Adicionar nota
+              </Button>
+            </FieldGroup>
+          </form>
+        ) : null}
 
         {error ? (
           <p role="alert" className="text-sm text-destructive">
@@ -279,7 +287,7 @@ export function EntityNotesCard({
                     ].join(" · ")}
                   </p>
                 </div>
-                {isAdmin ? (
+                {canManage ? (
                   <Button
                     variant="ghost"
                     size="icon-sm"

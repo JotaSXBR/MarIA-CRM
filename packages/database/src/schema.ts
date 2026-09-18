@@ -125,7 +125,7 @@ export const memberships = pgTable(
     workspaceId: uuid("workspace_id")
       .references(() => workspaces.id, { onDelete: "cascade" })
       .notNull(),
-    role: text().notNull().$type<"admin" | "member">(),
+    role: text().notNull().$type<"viewer" | "agent" | "manager" | "admin">(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -439,7 +439,7 @@ export const invitations = pgTable(
     workspaceId: uuid("workspace_id")
       .references(() => workspaces.id, { onDelete: "cascade" })
       .notNull(),
-    role: text().notNull().$type<"admin" | "member">(),
+    role: text().notNull().$type<"viewer" | "agent" | "manager" | "admin">(),
     token: text().notNull().unique(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
