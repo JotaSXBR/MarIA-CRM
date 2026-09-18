@@ -8,6 +8,7 @@ import {
 import { api, getToken } from "./lib/api.ts";
 import { LoginPage } from "./routes/login.tsx";
 import { SetupPage } from "./routes/setup.tsx";
+import { InvitePage } from "./routes/invite.tsx";
 import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
 import { ContactDetailPage } from "./routes/contact-detail.tsx";
@@ -23,6 +24,7 @@ import { SettingsProfilePage } from "./routes/settings-profile.tsx";
 import { SettingsChannelsPage } from "./routes/settings-channels.tsx";
 import { SettingsTagsPage } from "./routes/settings-tags.tsx";
 import { SettingsAttributesPage } from "./routes/settings-attributes.tsx";
+import { SettingsMembersPage } from "./routes/settings-members.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -46,6 +48,12 @@ const setupRoute = createRoute({
   validateSearch: (search): { token?: string } =>
     typeof search.token === "string" ? { token: search.token } : {},
   component: SetupPage,
+});
+
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$token",
+  component: InvitePage,
 });
 
 const appRoute = createRoute({
@@ -160,9 +168,16 @@ const settingsAttributesRoute = createRoute({
   component: SettingsAttributesPage,
 });
 
+const settingsMembersRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/members",
+  component: SettingsMembersPage,
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
+  inviteRoute,
   appRoute.addChildren([
     indexRoute,
     pipelinesRoute,
@@ -177,6 +192,7 @@ export const routeTree = rootRoute.addChildren([
     settingsRoute.addChildren([
       settingsIndexRoute,
       settingsProfileRoute,
+      settingsMembersRoute,
       settingsChannelsRoute,
       settingsTagsRoute,
       settingsAttributesRoute,

@@ -20,6 +20,11 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     removeMembership: vi.fn().mockResolvedValue("not-found"),
     setupRequired: vi.fn().mockResolvedValue(true),
     completeSetup: vi.fn().mockResolvedValue("already-setup"),
+    createInvitation: vi.fn().mockResolvedValue("already-member"),
+    listInvitations: vi.fn().mockResolvedValue([]),
+    revokeInvitation: vi.fn().mockResolvedValue("not-found"),
+    previewInvitation: vi.fn().mockResolvedValue("invalid"),
+    acceptInvitation: vi.fn().mockResolvedValue("invalid"),
     seedAdmin: vi.fn().mockResolvedValue(undefined),
   };
   return Object.assign(stub, overrides);

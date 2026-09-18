@@ -440,9 +440,12 @@ export const invitations = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" })
       .notNull(),
     role: text().notNull().$type<"viewer" | "agent" | "manager" | "admin">(),
-    token: text().notNull().unique(),
+    tokenHash: text("token_hash").notNull().unique(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    usedAt: timestamp("used_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    invitedBy: uuid("invited_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

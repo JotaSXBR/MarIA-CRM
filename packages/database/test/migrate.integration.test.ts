@@ -267,6 +267,95 @@ test("0017 upgrades legacy member roles to agent on a prior-prefix database", as
   });
 }, 120000);
 
+test("0018 evolves invitations to hashed tokens with a live-unique index", async () => {
+  const all = await loadMigrations();
+  const invites = all.find(
+    (migration) => migration.name === "0018_workspace_invitations.sql",
+  );
+  if (!invites) throw new Error("0018_workspace_invitations.sql not found");
+  const prefix = all.filter((migration) => migration.name < invites.name);
+  const directory = await migrationDirectory(
+    Object.fromEntries(
+      prefix.map((migration) => [migration.name, migration.sql]),
+    ),
+  );
+  await withEmptyDatabase(async (connectionString, admin) => {
+    try {
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toHaveLength(prefix.length);
+
+      const { rows: orgs } = await admin.query<{ id: string }>(
+        "insert into organizations (name) values ('Org') returning id",
+      );
+      const { rows: workspaces } = await admin.query<{ id: string }>(
+        "insert into workspaces (org_id, name) values ($1, 'WS') returning id",
+        [orgs[0]!.id],
+      );
+      // Old schema: plaintext token + used_at. One live and one consumed
+      // invitation for the same (workspace, email) must survive the upgrade.
+      await admin.query(
+        "insert into invitations (email, workspace_id, role, token, expires_at, used_at) values ('i@example.com', $1, 'agent', 'live-tok', now(), null), ('i@example.com', $1, 'agent', 'old-tok', now(), now())",
+        [workspaces[0]!.id],
+      );
+
+      await writeFile(join(directory, invites.name), invites.sql);
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toEqual([invites.name]);
+
+      const { rows: columns } = await admin.query<{ column_name: string }>(
+        "select column_name from information_schema.columns where table_name = 'invitations' order by column_name",
+      );
+      expect(columns.map((c) => c.column_name)).toEqual([
+        "consumed_at",
+        "created_at",
+        "email",
+        "expires_at",
+        "id",
+        "invited_by",
+        "role",
+        "token_hash",
+        "workspace_id",
+      ]);
+
+      // The consumed row does not block the live-unique index; a second
+      // live invitation for the same (workspace, email) does.
+      await expect(
+        admin.query(
+          "insert into invitations (email, workspace_id, role, token_hash, expires_at) values ('i@example.com', $1, 'agent', 'another-hash', now())",
+          [workspaces[0]!.id],
+        ),
+      ).rejects.toMatchObject({ code: "23505" });
+      await admin.query(
+        "update invitations set consumed_at = now() where token_hash = 'live-tok'",
+      );
+      await admin.query(
+        "insert into invitations (email, workspace_id, role, token_hash, expires_at) values ('i@example.com', $1, 'agent', 'another-hash', now())",
+        [workspaces[0]!.id],
+      );
+
+      // The token-hash policy clause replaced the workspace-only policy.
+      const { rows: policies } = await admin.query<{ policyname: string }>(
+        "select policyname from pg_policies where tablename = 'invitations' order by policyname",
+      );
+      expect(policies.map((p) => p.policyname)).toEqual(["invitations_scope"]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}, 120000);
+
 test("rejects changed checksums and untracked existing databases", async () => {
   const directory = await migrationDirectory({
     "0100_checksum.sql":

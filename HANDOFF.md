@@ -12,30 +12,49 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#75 merged (…global search, accepted ADR 0015,
-  phased product `ROADMAP.md`, centralized workspace RBAC).
+- `main` — PRs #61–#78 merged (…global search, accepted ADR 0015,
+  phased product `ROADMAP.md`, centralized workspace RBAC, first-run
+  `/setup`, Ajv `allowUnionTypes` fix closing issue #76).
 - Product track: **onboarding + workspace roles** per `ROADMAP.md` and
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
-- Branch `feat/first-run-setup` — **Slice 1.2, first-run `/setup`**:
-  `AuthPort.setupRequired()` + `completeSetup()` (bcrypt outside the tx,
-  pre-generated workspace id, `withWorkspace` transaction with the
-  `maria_auth_global_admin` advisory lock + user-count re-check; creates
-  master `is_admin` + implicit org + first workspace + `admin`
-  membership atomically). `routes/setup.ts`: `GET /setup/status`
-  (`{setupRequired, tokenRequired}`) + `POST /setup` (single-use boot
-  token via `SETUP_TOKEN_REQUIRED`, sha256+`timingSafeEqual`, consumed
-  in-process; 403 bad/consumed token, 409 already-setup, 201 returns a
-  session token = auto-login). `server.ts` generates the token only when
-  the install is empty and logs the `/setup?token=…` URL after listen.
-  Web: public `/setup` route (token search param, manual token field
-  when required), `/login` `beforeLoad` redirects anonymous traffic to
-  `/setup` while `setupRequired`; Vite proxy bypasses page loads to
-  `/setup` but proxies `/setup/status` + `POST /setup`. Issue #76
-  (Ajv `allowUnionTypes` warning) remains open as separate cleanup.
-- Issue #76 tracks the pre-existing `strict mode: use allowUnionTypes`
-  Ajv warning (union `type: ["…","null"]` schemas) — separate cleanup,
-  not part of this slice.
+- Branch `feat/workspace-invitations` — **Slice 1.3, workspace
+  invitations** — PR #79 OPEN (commit `3dced3a` + merge of `origin/main`
+  incl. #78):
+  - Migration `0018_workspace_invitations.sql`: `token`→`token_hash`,
+    `used_at`→`consumed_at`, new `invited_by`, partial unique index on
+    `(workspace_id, email) WHERE consumed_at IS NULL` (one live invite),
+    and `invitations_scope` policy adds an `app.invite_token_hash` OR
+    clause — the token itself authorizes reading exactly its own row
+    (mirrors `memberships_scope`); `database.withInvitation(tokenHash)`
+    is the new scoping helper (`RouteDatabase` omits it).
+  - `@maria/auth`: `createInvitation` (revokes predecessors + partial
+    unique race → `conflict`; member → `already-member`; 24-byte
+    base64url token, sha256 hash stored, plaintext returned once;
+    7-day TTL), `listInvitations` (live only), `revokeInvitation`
+    (consume without membership), `previewInvitation` (token-scoped
+    read), `acceptInvitation` — identity checks first (leave invite
+    live), then workspace ctx + atomic consume inside the token-scoped
+    tx (row lock serializes racing acceptors), then user create or
+    attach + membership.
+  - `routes/invitations.ts`: `GET /members` (viewer+);
+    `POST|GET|DELETE /invitations` (manager+; grant must stay strictly
+    below inviter rank → 403; `admin` excluded in schema → 400);
+    public `GET /invitations/:token` (200 | 404 invalid | 410
+    consumed/expired) and `POST /invitations/:token/accept` (Bearer →
+    attach, else name+password → create + auto-login; 400 missing
+    fields, 403 email-mismatch, 409 user-exists).
+  - Web: public `/invite/$token` (preview, mismatch state with
+    switch-account, create-account form, lands on the invited
+    workspace); Settings → **Equipe** lists members (all roles) and
+    manages invites (manager+): create form, one-time copyable link,
+    revoke. Vite proxies `/members` + `/invitations`.
+  - Tests: auth integration 8 (hash-only storage, preview/accept/
+    replay, attach + mismatch, already-member, live-unique reissue,
+    scoped list/revoke, expiry, concurrent accept via independent
+    pools); API 6 (matrix, grant limits, statuses); migrate 0018 test
+    (prefix upgrade, renames, index, policy); web 3 (accept→inbox,
+    invalid/expired states, Equipe page).
 
 ## Memory model
 
@@ -48,6 +67,24 @@ gh pr status
 
 ## Verified state
 
+- `feat/workspace-invitations` (2026-09-18, Windows/pnpm):
+  - `@maria/auth` `AuthPort` +5 methods; token hash = sha256 over a
+    24-byte base64url secret; accept order = token-scoped read → identity
+    checks (failed checks leave the invite live) → workspace ctx → atomic
+    `consumed_at IS NULL` consume → user create/attach → membership insert
+    with `ON CONFLICT DO NOTHING`; result unions `"already-member"`,
+    `"conflict"`, `"invalid"`, `"unusable"`, `"user-exists"`,
+    `"email-mismatch"`, `"not-found"`, `"revoked"`.
+  - RLS: `invitations_scope` policy = workspace ctx OR
+    `app.invite_token_hash`; `withInvitation` sets only the hash.
+  - `RouteDatabase` excludes `close`/`withWorkspace`/`withUser`/
+    `withInvitation`; route deps accept the narrowed type.
+  - Tests green: auth invitations 8/8 (incl. independent-pool concurrent
+    accept → exactly one success), api invitations 6/6, migrate 0018
+    (renames, partial unique, `policyname` assertion), web 18/18.
+  - Post-`code-simplifier`: shared `hasWorkspaceRole` in settings,
+    `ReactNode` type import, single `tokenHash` per op; typecheck 6/6,
+    lint 0/0, fmt clean.
 - `feat/first-run-setup` (2026-09-18, Windows/pnpm):
   - `packages/auth`: `setupRequired()` (users empty) +
     `completeSetup()` — bcrypt before the tx; one `withWorkspace` tx
@@ -416,11 +453,8 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge the `docs/development-phases` documentation PR (ROADMAP.md,
-   ADR 0015 acceptance, README/AGENTS links).
-2. Start Phase 1.1 on a fresh feature branch: first map the exact route
-   capability table and migration/test surface.
-3. Then implement ranked roles, `requireWorkspaceRole`, `member`→`agent`,
-   and the required DB/API/auth tests.
-4. Reassess before Phase 1.2 `/setup`.
-5. Deferred alternative: attribute-based filtering in list views.
+1. Merge PR #79 (Slice 1.3 invitations) once checks pass.
+2. Reassess before Phase 1.4 — member management surface (change role,
+   suspend/remove beyond the current last-admin protection) or the
+   workspace onboarding checklist.
+3. Deferred alternative: attribute-based filtering in list views.
