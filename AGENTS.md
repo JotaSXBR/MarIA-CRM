@@ -193,6 +193,8 @@ mutable `latest` image tags. Exact versions belong in manifests and lockfiles.
 - **WhatsApp:** normalize WAHA/Meta payloads at adapters; verify webhook authenticity and preserve
   provider IDs for dedup/reconciliation.
 - **Git/CI:** every change reaches protected `main` through a PR with evidence and green required checks.
+  Apply repository labels to every PR (`bug`, `enhancement`, `documentation`, `chore`,
+  `refactor`, `dependencies`, domain labels as created) so history stays filterable.
 - **Security:** public repo baseline includes CodeQL, secret/dependency protections, frozen lockfile,
   reviewed dependency build scripts and protected production deployment.
 - **Human approval:** mandatory for architecture invariants, auth/authz, RLS/tenancy, destructive DB,
