@@ -3,6 +3,7 @@ import { Link, Outlet } from "@tanstack/react-router";
 const SETTINGS_NAV = [
   { to: "/settings/profile", label: "Perfil" },
   { to: "/settings/channels", label: "Canais" },
+  { to: "/settings/tags", label: "Tags" },
 ] as const;
 
 export function SettingsLayout() {

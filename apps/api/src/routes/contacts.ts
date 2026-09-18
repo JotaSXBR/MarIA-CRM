@@ -9,6 +9,7 @@ import {
   type AuthGuards,
   type RouteDatabase,
 } from "./shared.ts";
+import { registerEntityTagRoutes } from "./tags.ts";
 
 export function registerContactRoutes(
   app: FastifyInstance,
@@ -346,6 +347,18 @@ export function registerContactRoutes(
       });
       if (!task) return reply.code(404).send();
       return reply.code(201).send({ ...task, assigneeName: null });
+    },
+  );
+
+  registerEntityTagRoutes(
+    app,
+    { authorizeWorkspaceRequest },
+    {
+      path: "contacts",
+      getParent: (workspaceId, id) => database.getContact(workspaceId, id),
+      listTags: (workspaceId, id) => database.listContactTags(workspaceId, id),
+      setTags: (workspaceId, id, tagIds) =>
+        database.setContactTags(workspaceId, id, tagIds),
     },
   );
 

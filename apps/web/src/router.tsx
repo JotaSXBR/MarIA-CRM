@@ -19,6 +19,7 @@ import { AdminPage } from "./routes/admin.tsx";
 import { SettingsLayout } from "./routes/settings.tsx";
 import { SettingsProfilePage } from "./routes/settings-profile.tsx";
 import { SettingsChannelsPage } from "./routes/settings-channels.tsx";
+import { SettingsTagsPage } from "./routes/settings-tags.tsx";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -119,6 +120,12 @@ const settingsChannelsRoute = createRoute({
   component: SettingsChannelsPage,
 });
 
+const settingsTagsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/tags",
+  component: SettingsTagsPage,
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -135,6 +142,7 @@ export const routeTree = rootRoute.addChildren([
       settingsIndexRoute,
       settingsProfileRoute,
       settingsChannelsRoute,
+      settingsTagsRoute,
     ]),
   ]),
 ]);

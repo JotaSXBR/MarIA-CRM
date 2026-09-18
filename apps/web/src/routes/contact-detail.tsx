@@ -7,6 +7,7 @@ import { formatDate, formatDateTime, initials } from "@/lib/format";
 import type { Company, Contact, EntityDeal, Note, Task } from "@/lib/types";
 import { useWorkspace } from "@/lib/workspace";
 import { EntityDealList } from "@/components/entity-deal-list";
+import { TagPicker } from "@/components/tag-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -221,6 +222,11 @@ export function ContactDetailPage() {
           ) : null}
         </div>
       </header>
+
+      <TagPicker
+        workspaceId={workspaceId}
+        entityPath={`/contacts/${contactId}`}
+      />
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">

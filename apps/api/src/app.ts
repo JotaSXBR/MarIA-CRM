@@ -12,6 +12,7 @@ import { registerContactRoutes } from "./routes/contacts.ts";
 import { registerCompanyRoutes } from "./routes/companies.ts";
 import { registerPipelineRoutes } from "./routes/pipelines.ts";
 import { registerMessagingRoutes } from "./routes/messaging.ts";
+import { registerTagRoutes } from "./routes/tags.ts";
 
 export type AppDependencies = {
   media?: MediaStore;
@@ -78,6 +79,7 @@ export function buildApp(dependencies?: AppDependencies) {
     registerContactRoutes(app, scoped);
     registerCompanyRoutes(app, scoped);
     registerPipelineRoutes(app, scoped);
+    registerTagRoutes(app, scoped);
     registerMessagingRoutes(app, {
       ...scoped,
       waha,

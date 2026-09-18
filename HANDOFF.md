@@ -12,18 +12,16 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#67 merged (skill audit, lint → 0 warnings,
+- `main` — PRs #61–#68 merged (skill audit, lint → 0 warnings,
   NULL-distinct comments, code-simplifier per-slice, PR label rule,
-  contact↔company link + company detail page, pnpm 12.4.2 upgrade).
-- Branch `feat/deal-detail` (PR #68) — Slice 5 implemented and verified:
-  `GET /deals/:id` returns pipeline/stage/contact/company names; aggregate
-  routes `GET|POST /deals/:id/{notes,tasks}` with parent 404; deal detail
-  page `/deals/$dealId` (header, edit via `DealEditor`, tasks/notes CRUD);
-  kanban card click navigates to the detail page. `DealEditor` moved to
-  `components/deal-editor.tsx`; shared `EntityDealList` for contact/company
-  deal cards.
-- Next after this: tags/custom attributes, global search; company detail
-  write paths (`POST /companies/:id/{notes,tasks}`) for parity if wanted.
+  contact↔company link + company detail, pnpm 12.4.2 upgrade, deal detail
+  page with notes/tasks and entity links).
+- Branch `feat/entity-tags` — Slice 6 implemented and verified: workspace
+  tags on contacts, companies and deals (CRUD + atomic assignment
+  replace + chips/picker UI + settings management).
+- Next after this: custom attributes (deferred — needs typed
+  definition/value model), global search; company detail write paths
+  (`POST /companies/:id/{notes,tasks}`) for parity if wanted.
 
 ## Memory model
 
@@ -36,8 +34,45 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#67 merged; PR #68 (deal detail) open.
+- `main` (2026-09-18): PRs #61–#68 merged (#68 at `8649136`).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- Slice 6 on `feat/entity-tags` (2026-09-18, Windows/pnpm 12.4.2):
+  - `schema.ts` + migration `0015_entity_tags.sql`: `tags`
+    (workspace_id, name, color, soft-delete; partial unique
+    `(workspace_id, name)` on active rows) + `contact_tags`/
+    `company_tags`/`deal_tags` join tables (workspace_id carried on the
+    join row, composite PK `(tag_id, entity_id)`, entity index, cascade
+    FKs). All four tables FORCE RLS with workspace policies; runtime
+    grants `SELECT/INSERT/UPDATE` on `tags`, plus `DELETE` on the join
+    tables (wipe-and-rewrite needs it; `tags` itself is soft-delete).
+  - DB (`index.ts`): `tagColumns`; tag CRUD where `createTag`/`updateTag`
+    return `undefined` on active-name conflict (routes → 409; PATCH
+    resolves the tag first for 404 vs 409); `listXTags` via shared
+    `tagsForEntity` join helper; `setXTags` via shared `setEntityTags`
+    wipe-and-rewrite — dedupes input, validates every tag id is an active
+    workspace tag and the parent entity exists active in the scoped
+    transaction (`contactCompanyRefsValid`/`dealRefValid`), else
+    `undefined` → 404.
+  - API: `tagSchema`/`tagIdsBodySchema` in `routes/shared.ts`;
+    `routes/tags.ts` with CRUD (`PATCH` 409 on name conflict, `DELETE`
+    admin-only 403→404/204); `registerEntityTagRoutes` helper registers
+    `GET|PUT /{contacts,companies,deals}/:id/tags` from each entity module
+    (parent-checked 404, PUT replaces the whole set). `/tags` added to
+    the Vite proxy.
+  - Web: `components/tag-picker.tsx` — `TagChip` + `TagPicker`
+    (dropdown of workspace tags with checkbox items, inline create that
+    auto-assigns, `PUT` on every toggle); wired into contact/company/
+    deal detail headers. `routes/settings-tags.tsx` at `/settings/tags`
+    (create with color, rename, recolor, admin-only delete, live chip
+    preview). Note: `DropdownMenuLabel` must sit inside
+    `DropdownMenuGroup` — Base UI throws `MenuGroupContext is missing`
+    otherwise (caught by the new web test).
+- Checks (`feat/entity-tags` dirty tree, 2026-09-18): `pnpm fmt:check`
+  clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6; `pnpm test` all green
+  (web 10/10 incl. new tags test: chips, toggle→PUT, create→POST+PUT);
+  `pnpm test:integration` api 40/40 (tag CRUD 409/admin-delete +
+  entity-tag routes), database 23/23 (new tags RLS/refs/replace test,
+  privilege + FORCE-RLS lists extended), auth 5/5; `pnpm build` 6/6.
 - pnpm 12.4.2 merged via PR #67 (`chore/pnpm-12`): all pins moved
   (`package.json#packageManager`, `ci.yml`, `api.Dockerfile`,
   `AGENTS.md` baseline). pnpm 12 writes a two-document `pnpm-lock.yaml`:
@@ -211,8 +246,8 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 - Company detail is read-only for now — notes/tasks creation from the
   company context has no API route yet (notes accept `companyId` in the DB
   layer; add `POST /companies/:id/notes` when needed).
-- CRM domain gaps remain open work: no deal detail page, no tags/custom
-  attributes, no global search.
+- CRM domain gaps remain open work: no custom attributes (typed
+  definition/value model deferred), no global search.
 
 ## Deferred from the code-simplifier review
 
@@ -223,7 +258,8 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #68 (`feat/deal-detail`) once checks pass.
-2. Tags/custom attributes, then global search.
+1. Push `feat/entity-tags` and open the PR (label `enhancement`).
+2. Custom attributes (typed definitions + per-entity values), then
+   global search.
 3. Company detail write paths (`POST /companies/:id/{notes,tasks}`) if parity
    with the deal detail hub is wanted.
