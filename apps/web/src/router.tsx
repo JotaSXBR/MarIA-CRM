@@ -15,6 +15,7 @@ import { CompanyDetailPage } from "./routes/company-detail.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
 import { DealDetailPage } from "./routes/deal-detail.tsx";
 import { InboxPage } from "./routes/inbox.tsx";
+import { SearchPage } from "./routes/search.tsx";
 import { AdminPage } from "./routes/admin.tsx";
 import { SettingsLayout } from "./routes/settings.tsx";
 import { SettingsProfilePage } from "./routes/settings-profile.tsx";
@@ -89,6 +90,15 @@ const inboxRoute = createRoute({
   component: InboxPage,
 });
 
+const searchRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/search",
+  validateSearch: (search) => ({
+    q: typeof search.q === "string" ? search.q : undefined,
+  }),
+  component: SearchPage,
+});
+
 const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/admin",
@@ -144,6 +154,7 @@ export const routeTree = rootRoute.addChildren([
     companiesRoute,
     companyDetailRoute,
     inboxRoute,
+    searchRoute,
     adminRoute,
     settingsRoute.addChildren([
       settingsIndexRoute,

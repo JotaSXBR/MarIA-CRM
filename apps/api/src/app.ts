@@ -13,6 +13,7 @@ import { registerCompanyRoutes } from "./routes/companies.ts";
 import { registerPipelineRoutes } from "./routes/pipelines.ts";
 import { registerMessagingRoutes } from "./routes/messaging.ts";
 import { registerAttributeRoutes } from "./routes/attributes.ts";
+import { registerSearchRoutes } from "./routes/search.ts";
 import { registerTagRoutes } from "./routes/tags.ts";
 
 export type AppDependencies = {
@@ -82,6 +83,7 @@ export function buildApp(dependencies?: AppDependencies) {
     registerPipelineRoutes(app, scoped);
     registerTagRoutes(app, scoped);
     registerAttributeRoutes(app, scoped);
+    registerSearchRoutes(app, scoped);
     registerMessagingRoutes(app, {
       ...scoped,
       waha,

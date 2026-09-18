@@ -767,6 +767,78 @@ test("custom attributes stay workspace-scoped, validate refs and replace values"
   expect(await database.deleteAttribute(workspaceA, foreign!.id)).toBe(false);
 });
 
+test("global search matches entities case-insensitively and stays workspace-scoped", async () => {
+  const maria = await database.createContact(workspaceA, {
+    name: "Maria Silva",
+    email: "maria@example.com",
+    phone: "+5511999990001",
+  });
+  const joao = await database.createContact(workspaceA, {
+    name: "João Souza",
+    email: null,
+    phone: "+5511999990002",
+  });
+  const deleted = await database.createContact(workspaceA, {
+    name: "Maria Removida",
+  });
+  await database.deleteContact(workspaceA, deleted!.id);
+  const foreign = await database.createContact(workspaceB, {
+    name: "Maria Estrangeira",
+  });
+  const acme = await database.createCompany(workspaceA, { name: "ACME SA" });
+  const pipeline = await database.createPipeline(workspaceA, {
+    name: "Vendas",
+  });
+  const stage = await database.createStage(workspaceA, pipeline!.id, {
+    name: "Novo",
+  });
+  const deal = await database.createDeal(workspaceA, {
+    pipelineId: pipeline!.id,
+    stageId: stage!.id,
+    title: "Proposta ACME",
+  });
+
+  // Name, email and phone all match contacts; ordering is by name.
+  const byName = await database.searchEntities(workspaceA, "maria");
+  expect(byName.contacts.map((c) => c.id)).toEqual([maria!.id]);
+  expect(byName.companies).toEqual([]);
+  expect(byName.deals).toEqual([]);
+  expect(
+    (await database.searchEntities(workspaceA, "EXAMPLE.COM")).contacts.map(
+      (c) => c.id,
+    ),
+  ).toEqual([maria!.id]);
+  expect(
+    (await database.searchEntities(workspaceA, "99990002")).contacts.map(
+      (c) => c.id,
+    ),
+  ).toEqual([joao!.id]);
+
+  // Companies and deals match their own fields.
+  const byCompany = await database.searchEntities(workspaceA, "acme");
+  expect(byCompany.companies.map((c) => c.id)).toEqual([acme!.id]);
+  expect(byCompany.deals.map((d) => d.id)).toEqual([deal!.id]);
+
+  // Soft-deleted and foreign-workspace rows never surface.
+  expect(
+    (await database.searchEntities(workspaceA, "removida")).contacts,
+  ).toEqual([]);
+  expect(
+    (await database.searchEntities(workspaceA, "estrangeira")).contacts,
+  ).toEqual([]);
+  expect((await database.searchEntities(workspaceB, "maria")).contacts).toEqual(
+    [expect.objectContaining({ id: foreign!.id })],
+  );
+
+  // LIKE wildcards in the query are literal, not pattern characters.
+  expect(
+    (await database.searchEntities(workspaceA, "m%")).contacts.length,
+  ).toBe(0);
+  expect(
+    (await database.searchEntities(workspaceA, "_aria")).contacts.length,
+  ).toBe(0);
+});
+
 test("company CRUD stays workspace-scoped and soft-deletes under the runtime role", async () => {
   const created = await database.createCompany(workspaceA, {
     name: "Scoped Co",

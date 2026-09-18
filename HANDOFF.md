@@ -12,13 +12,14 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#70 merged (…pnpm 12.4.2, deal detail, workspace
-  tags, company detail write paths + shared entity activity cards).
-- Branch `feat/custom-attributes` — custom attributes implemented and
-  verified: typed `attribute_definitions` + EAV `entity_attribute_values`
-  (ADR 0014), CRUD + entity value replace + settings management +
-  attributes card on all three detail pages.
-- Next after this: global search.
+- `main` — PRs #61–#71 merged (…workspace tags, company write paths,
+  custom attributes via ADR 0014).
+- Branch `feat/global-search` — global search implemented and
+  verified: `GET /search?q=` across contacts/companies/deals +
+  `/search` page with grouped results and sidebar nav entry.
+- CRM domain gaps from the original roadmap are now closed (tags,
+  custom attributes, global search). Next slices: attribute-based
+  filtering in list views, or new product priorities.
 
 ## Memory model
 
@@ -31,8 +32,26 @@ gh pr status
 
 ## Verified state
 
-- `main` (2026-09-18): PRs #61–#70 merged (#70 at `b9cd5d4`).
+- `main` (2026-09-18): PRs #61–#71 merged (#71 at `d3f4f66` squash).
   Lint baseline is **0 warnings / 0 errors** — keep it clean.
+- Slice 9 on `feat/global-search` (2026-09-18, Windows/pnpm):
+  - DB `searchEntities`: three ILIKE substring queries in one
+    `withWorkspace` — contacts (name/email/phone), companies (name),
+    deals (title); `notDeleted`, name-ordered, `LIMIT 10` per group.
+    User input is escaped for LIKE's default backslash escape so
+    `%`/`_`/`\` stay literal.
+  - API `routes/search.ts`: `GET /search?q=` requires `workspaceId`
+    and non-empty `q` (400 otherwise), forwards the term to the db
+    after workspace authorization.
+  - Web: `/search` page — `?q=` search param (`validateSearch`),
+    input + submit navigates and refetches, results grouped in
+    Contatos/Empresas/Negócios cards linking to detail pages;
+    "Busca" added to the sidebar nav.
+- Checks (`feat/global-search` dirty tree, 2026-09-18):
+  `pnpm fmt:check` clean; `pnpm lint` 0/0; `pnpm typecheck` 6/6;
+  `pnpm test` web 12/12; `pnpm test:integration` api 43/43,
+  database RLS 10/10 (search scoping, matching, soft-delete,
+  wildcard escaping); `pnpm build` 6/6.
 - Slice 8 on `feat/custom-attributes` (2026-09-18, Windows/pnpm):
   - ADR 0014: typed `attribute_definitions` (`entity_type`, slug `key`,
     `label`, `type` ∈ text|number|date|boolean|select, `options`, soft
