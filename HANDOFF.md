@@ -35,10 +35,11 @@ gh pr status
 - pnpm 12.4.2 on `chore/pnpm-12` (2026-09-18, Windows): all pins moved
   (`package.json#packageManager`, `ci.yml`, `api.Dockerfile`,
   `AGENTS.md` baseline). pnpm 12 writes a two-document `pnpm-lock.yaml`:
-  doc 1 pins the package-manager itself (`packageManagerDependencies:
-  pnpm@12.4.2` + `@pnpm/exe.*` platform binaries with integrity), doc 2 is
-  the unchanged project lockfile — expected, not corruption; `--frozen-lockfile`
-  accepts it and adds a "supply-chain policies" verification step.
+  doc 1 pins the package-manager itself (`packageManagerDependencies` for
+  `pnpm@12.4.2` plus `@pnpm/exe.*` platform binaries with integrity), doc 2
+  is the unchanged project lockfile — expected, not corruption;
+  `--frozen-lockfile` accepts it and adds a "supply-chain policies"
+  verification step.
   Global install note: `npm i -g pnpm@12.4.2` needed a reinstall so the
   Windows `pnpm.exe` native shim materialized (JS launcher alone could not
   spawn turbo).
