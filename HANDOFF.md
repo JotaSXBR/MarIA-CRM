@@ -13,9 +13,9 @@ gh pr status
 ## Current objective
 
 - `main` — PR #66 merged (contact↔company link + company detail page).
-- Branch `chore/pnpm-12` — pnpm 11.26.0 → **12.4.2** upgrade, verified
-  locally; pins updated in `package.json`, `ci.yml`, `api.Dockerfile` and
-  `AGENTS.md`. Ready to commit; push/PR on request.
+- Branch `chore/pnpm-12` — pnpm 11.26.0 → **12.4.2** upgrade, PR #67 open.
+  Global install must NOT pass `--ignore-scripts` (see below); `ci.yml` and
+  `api.Dockerfile` updated accordingly. Merge #67 before PR #68.
 - Next after this: deal detail page, tags/custom attributes, global search.
 
 ## Memory model
@@ -40,9 +40,18 @@ gh pr status
   is the unchanged project lockfile — expected, not corruption;
   `--frozen-lockfile` accepts it and adds a "supply-chain policies"
   verification step.
-  Global install note: `npm i -g pnpm@12.4.2` needed a reinstall so the
-  Windows `pnpm.exe` native shim materialized (JS launcher alone could not
-  spawn turbo).
+  Global install note: pnpm 12 ships a shebang-less placeholder `pnpm` bin
+  that its `install.js` replaces with the native `@pnpm/exe` binary.
+  `npm i -g pnpm@12.4.2 --ignore-scripts` skips that step — the bin then
+  only works through a shell (bash ENOEXEC fallback) and any direct
+  `execvp` spawn (turbo tasks, `strace`) fails with
+  `Exec format error (os error 8)`. This broke PR #67 CI's `pnpm verify`
+  (turbo spawns `pnpm run typecheck` per package) until `--ignore-scripts`
+  was removed from the global-install lines in `ci.yml`/`api.Dockerfile`.
+  Keep `--ignore-scripts` on `pnpm install` itself (allowBuilds policy).
+  Verified via clean `node:24-bookworm-slim` clone:
+  `--ignore-scripts` reproduces the ENOEXEC, without it `/usr/local/bin/pnpm`
+  is ELF and `turbo run typecheck --force` passes 6/6 real spawns.
 - Checks (`chore/pnpm-12` dirty tree, 2026-09-18, Windows/pnpm 12.4.2):
   `pnpm install --frozen-lockfile --ignore-scripts` green; `pnpm fmt:check`
   clean; oxlint 0/0; `pnpm typecheck` 6/6; `pnpm test` all green;
