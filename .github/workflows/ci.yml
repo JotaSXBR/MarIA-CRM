@@ -25,7 +25,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - run: npm install --global pnpm@11.26.0 --ignore-scripts
+      - run: npm install --global pnpm@12.4.2 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Validate local Compose configuration
         run: docker compose -f docker/compose.yaml config --quiet

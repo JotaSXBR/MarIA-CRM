@@ -17,7 +17,7 @@ RUN node --input-type=module -e '\
 
 FROM node AS build
 WORKDIR /build
-RUN npm install --global pnpm@11.26.0 --ignore-scripts
+RUN npm install --global pnpm@12.4.2 --ignore-scripts
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json turbo.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/auth/package.json packages/auth/package.json

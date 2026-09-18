@@ -157,7 +157,7 @@ Before completion, run required gates for the touched scope, inspect the final d
 | Area | Baseline |
 |---|---|
 | Runtime / language | **Node.js 24 LTS** (`24.21.x`) + ESM · **TypeScript 7.0.x** strict |
-| Package / monorepo | **pnpm 11.26.0** + **Turborepo 2.10.x**; reassess pnpm 12 after adoption window |
+| Package / monorepo | **pnpm 12.4.2** + **Turborepo 2.10.x** |
 | Database | **PostgreSQL 18.6** + **pgvector 0.8.6** |
 | ORM / contracts | **Drizzle ORM 0.45.2 stable** + Drizzle Kit · **Zod 4.5.x** |
 | API / realtime | **Fastify 5.x** · REST/OpenAPI · SSE default; WebSocket only when full duplex is justified |
