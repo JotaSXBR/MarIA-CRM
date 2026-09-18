@@ -350,17 +350,18 @@ export function PipelinesPage() {
     return map;
   }, [deals]);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["pipelines", workspaceId],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["stages", workspaceId, selected?.id],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["deals", workspaceId, selected?.id],
-    });
-  };
+  const invalidate = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["pipelines", workspaceId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["stages", workspaceId, selected?.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["deals", workspaceId, selected?.id],
+      }),
+    ]);
 
   const createPipeline = useMutation({
     mutationFn: () =>
