@@ -20,7 +20,7 @@ gh pr status
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
 - Branch `feat/workspace-onboarding` — **Slice 1.5, workspace onboarding
-  wizard** (ADR 0015 item 6):
+  wizard** (ADR 0015 item 6), PR #81 open:
   - Migration `0019_workspace_onboarding.sql`: `workspaces` gains
     `onboarding_state` jsonb (default `'{}'`) + `onboarded_at`.
     `workspaces` is an identity table (no RLS; runtime holds
@@ -529,7 +529,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge the workspace-onboarding PR once checks pass — Phase 1
+1. Merge PR #81 (workspace onboarding) once checks pass — Phase 1
    (access foundation + onboarding) is then complete per ROADMAP.md.
 2. On resume: Phase 2 — human operator workflow (conversation
    ownership/queues is the first candidate), or reassess whether a
