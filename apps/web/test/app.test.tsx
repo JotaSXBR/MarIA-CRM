@@ -2081,3 +2081,191 @@ test("inbox composer sends internal notes and inserts quick replies", async () =
     "Olá! Como posso ajudar?",
   );
 });
+
+test("inbox context panel links a contact and shows CRM data", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const userId = "123e4567-e89b-12d3-a456-426614174001";
+  const conversationId = "123e4567-e89b-12d3-a456-426614174010";
+  const contactId = "123e4567-e89b-12d3-a456-426614174030";
+  const companyId = "123e4567-e89b-12d3-a456-426614174031";
+  let linked = false;
+  const calls: { url: string; method: string; body?: unknown }[] = [];
+  const conversation = () => ({
+    id: conversationId,
+    workspaceId,
+    channelInstanceId: "123e4567-e89b-12d3-a456-426614174012",
+    contactId: linked ? contactId : null,
+    contactName: linked ? "Ana" : null,
+    providerThreadId: "55119999@c.us",
+    assignedUserId: userId,
+    assignedUserName: "User",
+    assignedAt: "2026-01-01T00:00:00Z",
+    epoch: 1,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      calls.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            {
+              workspaceId,
+              workspaceName: "Workspace",
+              role: "agent",
+              onboarded: true,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/conversations/${conversationId}/contact`)) {
+        linked =
+          (init?.body ? JSON.parse(init.body as string) : {}).contactId !==
+          null;
+        return new Response(JSON.stringify(conversation()), { status: 200 });
+      }
+      if (url.includes(`/contacts/${contactId}/deals`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174040",
+              title: "Proposta anual",
+              valueCents: 120000,
+              stageName: "Negociação",
+              pipelineName: "Vendas",
+              contactName: "Ana",
+              companyName: "Empresa X",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}/tasks`)) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174041",
+              title: "Retornar ligação",
+              dueAt: "2026-01-02T00:00:00Z",
+              doneAt: null,
+              assigneeName: "User",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/companies/${companyId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: companyId,
+            name: "Empresa X",
+            createdAt: "2026-01-01T00:00:00Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/contacts/${contactId}`)) {
+        return new Response(
+          JSON.stringify({
+            id: contactId,
+            name: "Ana",
+            email: "ana@example.com",
+            phone: "+551199990001",
+            companyId,
+            createdAt: "2026-01-01T00:00:00Z",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/contacts")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: contactId,
+              name: "Ana",
+              email: "ana@example.com",
+              phone: "+551199990001",
+              companyId,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations")) {
+        return new Response(JSON.stringify([conversation()]), { status: 200 });
+      }
+      if (
+        url.includes("/members") ||
+        url.includes("/quick-replies") ||
+        url.includes("/messages")
+      ) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId,
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/inbox");
+  const user = userEvent.setup();
+  await user.click(await screen.findByText("55119999@c.us"));
+
+  // Unlinked conversation offers the attach flow.
+  expect(await screen.findByText("Nenhum contato vinculado.")).toBeDefined();
+  await user.click(screen.getByRole("button", { name: "Vincular contato" }));
+  await user.click(await screen.findByRole("button", { name: /Ana/ }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(
+          `/conversations/${conversationId}/contact`,
+        ),
+        method: "PATCH",
+        body: { contactId },
+      }),
+    ),
+  );
+
+  // Once linked, the panel surfaces contact, company, deals and tasks.
+  expect(await screen.findByText("ana@example.com")).toBeDefined();
+  expect(await screen.findByText("Empresa X")).toBeDefined();
+  expect(await screen.findByText("Proposta anual")).toBeDefined();
+  expect(await screen.findByText("Retornar ligação")).toBeDefined();
+
+  // Detaching clears the link through the same endpoint.
+  await user.click(screen.getByRole("button", { name: "Desvincular" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(
+          `/conversations/${conversationId}/contact`,
+        ),
+        method: "PATCH",
+        body: { contactId: null },
+      }),
+    ),
+  );
+});

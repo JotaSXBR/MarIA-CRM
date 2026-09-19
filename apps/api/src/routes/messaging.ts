@@ -394,6 +394,52 @@ export function registerMessagingRoutes(
     },
   );
 
+  // Attaches (or clears) the CRM contact behind a conversation. A contact
+  // outside the workspace validates inside the scoped transaction and maps
+  // to 404 — the same convention as foreign refs on contacts/deals.
+  app.patch(
+    "/conversations/:id/contact",
+    {
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["contactId"],
+          properties: {
+            contactId: { type: ["string", "null"], format: "uuid" },
+          },
+        },
+        response: {
+          200: conversationSchema,
+          401: { type: "null" },
+          403: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const { contactId } = request.body as { contactId: string | null };
+      const updated = await database.setConversationContact(
+        authorized.workspaceId,
+        id,
+        contactId,
+      );
+      if (!updated) return reply.code(404).send();
+      const conversation = await database.getConversation(
+        authorized.workspaceId,
+        id,
+      );
+      if (!conversation) return reply.code(404).send();
+      return conversation;
+    },
+  );
+
   app.post(
     "/conversations/:id/messages",
     {

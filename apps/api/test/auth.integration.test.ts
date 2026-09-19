@@ -99,6 +99,7 @@ function createDatabaseStub() {
     receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
     listConversations: vi.fn().mockResolvedValue([]),
     assignConversation: vi.fn().mockResolvedValue({ kind: "not-found" }),
+    setConversationContact: vi.fn().mockResolvedValue(undefined),
     listConversationAssignments: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
@@ -3496,6 +3497,104 @@ test("quick reply routes scope CRUD to the workspace and map conflicts", async (
     });
     expect(denied.statusCode).toBe(403);
     expect(database.deleteQuickReply).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+test("PATCH /conversations/:id/contact links only in-scope contacts", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const contactId = randomUUID();
+  const agentId = randomUUID();
+  const viewerId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const conversation = {
+    id: conversationId,
+    workspaceId,
+    channelInstanceId: randomUUID(),
+    contactId,
+    contactName: "Ana",
+    providerThreadId: "55119999@c.us",
+    assignedUserId: null,
+    assignedUserName: null,
+    assignedAt: null,
+    epoch: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const database = createDatabaseStub();
+  database.setConversationContact.mockResolvedValue({ id: conversationId });
+  database.getConversation.mockResolvedValue(conversation);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId: token === "viewer-token" ? viewerId : agentId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role: userId === viewerId ? "viewer" : "agent",
+    }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const unauthenticated = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/contact?workspaceId=${workspaceId}`,
+      payload: { contactId },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const viewer = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/contact?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer viewer-token" },
+      payload: { contactId },
+    });
+    expect(viewer.statusCode).toBe(403);
+    expect(database.setConversationContact).not.toHaveBeenCalled();
+
+    const linked = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/contact?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer agent-token" },
+      payload: { contactId },
+    });
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json()).toMatchObject({
+      id: conversationId,
+      contactId,
+      contactName: "Ana",
+    });
+    expect(database.setConversationContact).toHaveBeenCalledWith(
+      workspaceId,
+      conversationId,
+      contactId,
+    );
+
+    const detached = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/contact?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer agent-token" },
+      payload: { contactId: null },
+    });
+    expect(detached.statusCode).toBe(200);
+    expect(database.setConversationContact).toHaveBeenLastCalledWith(
+      workspaceId,
+      conversationId,
+      null,
+    );
+
+    // Missing conversation or out-of-workspace contact both surface as 404.
+    database.setConversationContact.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/contact?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer agent-token" },
+      payload: { contactId },
+    });
+    expect(missing.statusCode).toBe(404);
   } finally {
     await app.close();
   }

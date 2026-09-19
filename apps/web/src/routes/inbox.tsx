@@ -11,6 +11,7 @@ import type {
   WorkspaceMember,
 } from "@/lib/types";
 import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
+import { ConversationContext } from "@/components/conversation-context";
 
 type QueueFilter = "all" | "mine" | "unassigned";
 type ComposerMode = "reply" | "note";
@@ -345,7 +346,7 @@ export function InboxPage() {
   return (
     <section
       aria-labelledby="inbox-title"
-      className="mx-auto flex h-[calc(100vh-6rem)] max-w-6xl gap-4"
+      className="mx-auto flex h-[calc(100vh-6rem)] max-w-7xl gap-4"
     >
       <h1 id="inbox-title" className="sr-only">
         Caixa de entrada
@@ -842,6 +843,13 @@ export function InboxPage() {
           </div>
         )}
       </div>
+      {selected ? (
+        <ConversationContext
+          workspaceId={workspaceId}
+          conversation={selected}
+          canEdit={canEdit}
+        />
+      ) : null}
     </section>
   );
 }
