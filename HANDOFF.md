@@ -21,6 +21,37 @@ gh pr status
 - Product track: **Phase 2 — human operator workflow** per
   `ROADMAP.md`. Slices proceed one at a time; the next is chosen
   after each merge (see Next actions).
+- AI direction (user decision, 2026-09-19): interleave — build
+  observer-mode primitives as human features during Phase 2 (queues/
+  ownership → telemetry, editable knowledge base → later agent reads),
+  keep autonomous execution for Phase 4 once the Execution Plane
+  exists.
+- Branch `feat/conversation-ownership` — **Slice 2.1, conversation
+  ownership and queues** (ROADMAP Phase 2.1):
+  - Migration `0020_conversation_ownership.sql`: `conversations` gains
+    `assigned_user_id` (FK users, SET NULL) + `assigned_at`; new
+    append-only `conversation_assignments` audit table (FORCE RLS,
+    runtime holds SELECT/INSERT only); index `(workspace_id,
+assigned_user_id)`.
+  - `@maria/database`: `listConversations` takes `{filter:
+all|mine|unassigned, userId}`; `assignConversation` runs `FOR
+UPDATE` on the conversation row — `canDelegate` (route passes
+    manager+) sets any assignee, others may only claim an unassigned
+    conversation for self or release their own; assignee must hold a
+    membership with role >= agent (`viewer` cannot own) → result union
+    `ok|not-found|forbidden|not-member`; every change inserts an audit
+    row. `listConversationAssignments` joins both user sides (assignee
+    - actor names), newest first, cap 50.
+  - API `routes/messaging.ts`: `GET /conversations?queue=` (enum
+    all|mine|unassigned, forwards session userId), `PATCH
+/conversations/:id/assignment {assigneeId|null}` (agent+; 403
+    forbidden, 404 not-found, 409 not-member), `GET
+/conversations/:id/assignments` (viewer+, 404 missing). Schema
+    gains `assignedUserId/assignedUserName/assignedAt`.
+  - Web inbox: queue tabs (Todas/Minhas/Sem responsável), assignee line
+    per conversation, header control — manager+ gets a member `<select>`
+    (viewers excluded), agent gets Assumir/Liberar, viewer reads a
+    label; "Histórico de atribuição" toggle lists the audit rows.
 - Role-model note (user decision, 2026-09-19): keep the current
   capability matrix as-is for now; refine per-role specifics later,
   after more Phase 2 workflows exist. Route minimums are still chosen
@@ -128,6 +159,15 @@ gh pr status
 
 ## Verified state
 
+- `feat/conversation-ownership` (2026-09-19, Windows/pnpm):
+  - Ownership rules: `canDelegate` (manager+) → any transition;
+    otherwise only claim-unassigned-for-self or release-own; assignee
+    must be a member with role >= agent. All inside `FOR UPDATE` on the
+    conversation row + audit insert per change.
+  - Gates: fmt clean, lint 0/0, typecheck 6/6, unit web 23 + api 26 +
+    auth 9; integration api 62, auth 25, database 34 (ownership 5 incl.
+    concurrent claim → exactly one winner; migration 0020 prefix
+    upgrade + RLS/grants); e2e 2/2; build 6/6.
 - `feat/workspace-onboarding` (2026-09-19, Windows/pnpm):
   - Step status precedence: stored record > auto-resolve from facts
     (`channel`←channel_instances exist, `team`←members>1) > pending.
@@ -539,9 +579,11 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Choose the first Phase 2 slice — human operator workflow
-   (conversation ownership/queues is the first candidate), or reassess
-   whether a passive-observer/knowledge-base slice now outranks it.
+1. Merge the conversation-ownership PR once checks pass, then pick the
+   next Phase 2 slice — candidates in order: conversation
+   collaboration (internal notes, quick replies — quick replies double
+   as the first editable knowledge base for the future observer),
+   conversation→CRM links, operator work center, next action/follow-up.
    Research at `research/monitoring-mode-crms-2026-09-19.md` — key
    findings: Selliq's "Modo Monitoramento" (observer agent, read-only,
    suggests KB changes, telemetry before trust) and Score Duplo;

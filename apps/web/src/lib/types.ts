@@ -107,9 +107,22 @@ export type Conversation = {
   contactId: string | null;
   contactName: string | null;
   providerThreadId: string;
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  assignedAt: string | null;
   epoch: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ConversationAssignment = {
+  id: string;
+  conversationId: string;
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  assignedBy: string | null;
+  assignedByName: string | null;
+  createdAt: string;
 };
 
 export type Message = {

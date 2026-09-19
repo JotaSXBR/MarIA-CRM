@@ -1,5 +1,6 @@
 import { PassThrough } from "node:stream";
 import type { FastifyInstance } from "fastify";
+import { hasWorkspaceRole } from "@maria/auth";
 import type { Database } from "@maria/database";
 import type { MessagingProvider } from "@maria/messaging";
 import type { Dispatcher } from "../dispatch.ts";
@@ -111,6 +112,9 @@ export function registerMessagingRoutes(
       "contactId",
       "contactName",
       "providerThreadId",
+      "assignedUserId",
+      "assignedUserName",
+      "assignedAt",
       "epoch",
       "createdAt",
       "updatedAt",
@@ -122,9 +126,35 @@ export function registerMessagingRoutes(
       contactId: { type: ["string", "null"] },
       contactName: { type: ["string", "null"] },
       providerThreadId: { type: "string" },
+      assignedUserId: { type: ["string", "null"], format: "uuid" },
+      assignedUserName: { type: ["string", "null"] },
+      assignedAt: { type: ["string", "null"], format: "date-time" },
       epoch: { type: "integer" },
       createdAt: { type: "string", format: "date-time" },
       updatedAt: { type: "string", format: "date-time" },
+    },
+  } as const;
+
+  const assignmentSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "id",
+      "conversationId",
+      "assignedUserId",
+      "assignedUserName",
+      "assignedBy",
+      "assignedByName",
+      "createdAt",
+    ],
+    properties: {
+      id: { type: "string", format: "uuid" },
+      conversationId: { type: "string", format: "uuid" },
+      assignedUserId: { type: ["string", "null"], format: "uuid" },
+      assignedUserName: { type: ["string", "null"] },
+      assignedBy: { type: ["string", "null"], format: "uuid" },
+      assignedByName: { type: ["string", "null"] },
+      createdAt: { type: "string", format: "date-time" },
     },
   } as const;
 
@@ -243,7 +273,15 @@ export function registerMessagingRoutes(
     {
       config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
       schema: {
-        querystring: workspaceQuerySchema,
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["workspaceId"],
+          properties: {
+            workspaceId: { type: "string", format: "uuid" },
+            queue: { type: "string", enum: ["all", "mine", "unassigned"] },
+          },
+        },
         response: {
           200: { type: "array", items: conversationSchema },
           401: { type: "null" },
@@ -259,7 +297,91 @@ export function registerMessagingRoutes(
       // pending intent was never sent to the provider (ADR 0010 §2,§4).
       await database.reapExpiredDispatches(authorized.workspaceId);
       void dispatcher.dispatchPending(authorized.workspaceId);
-      return database.listConversations(authorized.workspaceId);
+      const { queue = "all" } = request.query as {
+        queue?: "all" | "mine" | "unassigned";
+      };
+      return database.listConversations(authorized.workspaceId, {
+        filter: queue,
+        userId: authorized.session.userId,
+      });
+    },
+  );
+
+  // Ownership: managers/admins assign to any inbox-capable member (role >=
+  // agent) or release anyone; agents only claim unassigned conversations for
+  // themselves or release their own — enforced atomically under the
+  // conversation row lock, with an audit row per change.
+  app.patch(
+    "/conversations/:id/assignment",
+    {
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["assigneeId"],
+          properties: {
+            assigneeId: { type: ["string", "null"], format: "uuid" },
+          },
+        },
+        response: {
+          200: conversationSchema,
+          401: { type: "null" },
+          403: { type: "null" },
+          404: { type: "null" },
+          409: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const { assigneeId } = request.body as { assigneeId: string | null };
+      const result = await database.assignConversation(authorized.workspaceId, {
+        conversationId: id,
+        assigneeId,
+        actorId: authorized.session.userId,
+        canDelegate: hasWorkspaceRole(authorized.membership.role, "manager"),
+      });
+      if (result.kind === "not-found") return reply.code(404).send();
+      if (result.kind === "forbidden") return reply.code(403).send();
+      if (result.kind === "not-member") return reply.code(409).send();
+      const conversation = await database.getConversation(
+        authorized.workspaceId,
+        id,
+      );
+      if (!conversation) return reply.code(404).send();
+      return conversation;
+    },
+  );
+
+  app.get(
+    "/conversations/:id/assignments",
+    {
+      config: { rateLimit: { max: 50, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          200: { type: "array", items: assignmentSchema },
+          401: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply);
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const conversation = await database.getConversation(
+        authorized.workspaceId,
+        id,
+      );
+      if (!conversation) return reply.code(404).send();
+      return database.listConversationAssignments(authorized.workspaceId, id);
     },
   );
 
