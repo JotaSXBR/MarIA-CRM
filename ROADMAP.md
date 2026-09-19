@@ -1,6 +1,6 @@
 # MarIA CRM product roadmap
 
-**Status:** living product direction · **Updated:** 2026-09-18
+**Status:** living product direction · **Updated:** 2026-09-19
 
 This roadmap records the current development sequence. It is not a fixed feature promise.
 Each implementation slice ends with a product and architecture review before the next slice is
@@ -109,6 +109,47 @@ auto`, read-only observer, `ai` inbox queue + handback), [0017](adr/0017-agent-t
 (domain-grouped tool catalog with risk tiers and journey packages) and
 [0018](adr/0018-ai-output-rationale.md) (every AI score/suggestion persists a written rationale;
 dual lead + human score).
+
+## Phase entry gates
+
+Risk assessment recorded 2026-09-19: the method (contract, skills, ADRs, small verified slices)
+makes delivery predictable, but the hardest engineering — durable agent execution, real deployment,
+provider behavior in the field and browser regression coverage — has not started. The gates below
+are prerequisites for entering the named phase, not backlog candidates. Each is its own slice with
+evidence in the PR; a phase does not start while its gate is open.
+
+### Before Phase 2 closes (density/empty-state pass)
+
+1. **Minimal browser E2E.** Playwright suite covering login → workspace selection → inbox → send a
+   reply, against the real API and database, wired into `pnpm test:e2e` or a sibling script and
+   CI. Every later UI slice adds at least one case. Until then DEVELOPMENT.md's manual checklist
+   remains mandatory and its gap explicit.
+
+### Before Phase 3
+
+2. **Staging deployment closed end to end.** Docker image → GHCR → Coolify staging on merge to
+   `main`, with the shared migration runner executed against the staging database, runtime role
+   provisioning, secret handling and the image smoke (`maria_runtime`, login, scoped CRUD, denied
+   access). Production promotion by digest may remain unwired, but the staging path must be real
+   before CRM surface area grows.
+3. **Provider reconciliation exercised against a live WAHA session.** Documented evidence for
+   `unknown`/`blocked` resolution, lease expiry under provider timeout and `message.ack`
+   reconciliation on a real session, not only Testcontainers. Meta Cloud API adapter scoped (ADR
+   or slice decision) before additional channels are considered.
+
+### Before Phase 4
+
+4. **Execution Plane skeleton without an LLM.** `agent_runs`/`agent_steps` tables (FORCE RLS,
+   runtime least privilege), durable checkpoints, worker lease/claim on independent connections,
+   crash-and-resume test, conversation `epoch` capture and the `StaleExecutionDiscarded` path
+   (AGENTS.md §4.3, §4.5). Proven with deterministic fake steps first.
+5. **Dedicated worker process.** Dispatch and future agent steps run outside request handlers,
+   with the PostgreSQL lease queue (ADR 0010) as the only queue; `maria-testing` stops listing
+   the worker as absent.
+6. **ADRs 0016–0018 accepted or superseded**, plus a `PolicyEngine` decision record covering tool
+   write authorization, effect keys and the `safe | attention | critical` tiers.
+7. **Cost and telemetry baseline.** Usage/cost recording per run and per workspace exists before
+   the first model call reaches a customer workspace.
 
 ## Decision criteria
 
