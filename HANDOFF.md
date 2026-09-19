@@ -567,10 +567,12 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 ## Blockers and risks
 
 - None blocking.
-- Testcontainer flake: `@maria/auth` `test:integration` hit PostgreSQL
-  `57P01` (connection terminated) twice in CI (#80, #81) — teardown or
-  startup race, not a regression. Re-run resolves it; if it recurs,
-  investigate pool teardown order.
+- Testcontainer flakes fixed at the root: `57P01` unhandled errors were
+  idle-client `error` events re-emitted by `pg.Pool` on container stop —
+  `silencePoolErrors()` in `@maria/database/testing` covers every test pool
+  (#86). Separately, the Vitest default `testTimeout` of 5s was too tight
+  under CI CPU contention (mock-only `setup.test.ts` timed out on #85) —
+  `test:integration`/`test:e2e` scripts now pass `--testTimeout=30000`.
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
