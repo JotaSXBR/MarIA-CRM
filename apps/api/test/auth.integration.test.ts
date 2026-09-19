@@ -98,6 +98,8 @@ function createDatabaseStub() {
     getChannelInstance: vi.fn().mockResolvedValue(undefined),
     receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
     listConversations: vi.fn().mockResolvedValue([]),
+    assignConversation: vi.fn().mockResolvedValue({ kind: "not-found" }),
+    listConversationAssignments: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
     createOutboundIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
@@ -2432,6 +2434,9 @@ test("inbox routes forward the authorized workspace to the database", async () =
     contactId: null,
     contactName: "55119999",
     providerThreadId: "55119999@c.us",
+    assignedUserId: null,
+    assignedUserName: null,
+    assignedAt: null,
     epoch: 1,
     createdAt: now,
     updatedAt: now,
@@ -2513,7 +2518,10 @@ test("inbox routes forward the authorized workspace to the database", async () =
       headers: { authorization: "Bearer token" },
     });
     expect(conversations.statusCode).toBe(200);
-    expect(database.listConversations).toHaveBeenCalledWith(workspaceId);
+    expect(database.listConversations).toHaveBeenCalledWith(workspaceId, {
+      filter: "all",
+      userId: "member-id",
+    });
 
     const messages = await app.inject({
       method: "GET",
@@ -2538,6 +2546,169 @@ test("inbox routes forward the authorized workspace to the database", async () =
       headers: { authorization: "Bearer token" },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("conversation ownership routes map queue filters and delegation outcomes", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const agentUserId = randomUUID();
+  const managerUserId = randomUUID();
+  const viewerUserId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const conversation = {
+    id: conversationId,
+    workspaceId,
+    channelInstanceId: randomUUID(),
+    contactId: null,
+    contactName: "55119999",
+    providerThreadId: "55119999@c.us",
+    assignedUserId: null,
+    assignedUserName: null,
+    assignedAt: null,
+    epoch: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const database = createDatabaseStub();
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId:
+        token === "manager-token"
+          ? managerUserId
+          : token === "viewer-token"
+            ? viewerUserId
+            : agentUserId,
+      email: "user@example.com",
+      name: "User",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (userId?: string) => ({
+      role:
+        userId === managerUserId
+          ? "manager"
+          : userId === viewerUserId
+            ? "viewer"
+            : "agent",
+    }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    // Queue filter forwards the acting user for "mine".
+    const mine = await app.inject({
+      method: "GET",
+      url: `/conversations?workspaceId=${workspaceId}&queue=mine`,
+      headers: { authorization: "Bearer agent-token" },
+    });
+    expect(mine.statusCode).toBe(200);
+    expect(database.listConversations).toHaveBeenCalledWith(workspaceId, {
+      filter: "mine",
+      userId: agentUserId,
+    });
+
+    // Viewers cannot mutate assignment at all.
+    const viewer = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/assignment?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer viewer-token" },
+      payload: { assigneeId: null },
+    });
+    expect(viewer.statusCode).toBe(403);
+    expect(database.assignConversation).not.toHaveBeenCalled();
+
+    // Agents act without delegation power; the DB enforces the rule inside
+    // the row lock, so the route forwards the actor identity.
+    database.assignConversation.mockResolvedValue({ kind: "ok" });
+    database.getConversation.mockResolvedValue(conversation);
+    const claim = await app.inject({
+      method: "PATCH",
+      url: `/conversations/${conversationId}/assignment?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer agent-token" },
+      payload: { assigneeId: agentUserId },
+    });
+    expect(claim.statusCode).toBe(200);
+    expect(database.assignConversation).toHaveBeenCalledWith(workspaceId, {
+      conversationId,
+      assigneeId: agentUserId,
+      actorId: agentUserId,
+      canDelegate: false,
+    });
+
+    database.assignConversation.mockResolvedValue({ kind: "forbidden" });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/conversations/${conversationId}/assignment?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer agent-token" },
+          payload: { assigneeId: managerUserId },
+        })
+      ).statusCode,
+    ).toBe(403);
+
+    database.assignConversation.mockResolvedValue({ kind: "not-member" });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/conversations/${conversationId}/assignment?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer manager-token" },
+          payload: { assigneeId: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(database.assignConversation).toHaveBeenLastCalledWith(workspaceId, {
+      conversationId,
+      assigneeId: expect.any(String),
+      actorId: managerUserId,
+      canDelegate: true,
+    });
+
+    database.assignConversation.mockResolvedValue({ kind: "not-found" });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/conversations/${randomUUID()}/assignment?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer manager-token" },
+          payload: { assigneeId: null },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    // Assignment history is readable by any member but 404s for missing or
+    // cross-tenant conversations.
+    const entry = {
+      id: randomUUID(),
+      conversationId,
+      assignedUserId: agentUserId,
+      assignedUserName: "Agente",
+      assignedBy: managerUserId,
+      assignedByName: "Gerente",
+      createdAt: now,
+    };
+    database.getConversation.mockResolvedValue(conversation);
+    database.listConversationAssignments.mockResolvedValue([entry]);
+    const history = await app.inject({
+      method: "GET",
+      url: `/conversations/${conversationId}/assignments?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer viewer-token" },
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()[0].assignedUserName).toBe("Agente");
+
+    database.getConversation.mockResolvedValue(undefined);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/conversations/${randomUUID()}/assignments?workspaceId=${workspaceId}`,
+          headers: { authorization: "Bearer viewer-token" },
+        })
+      ).statusCode,
+    ).toBe(404);
   } finally {
     await app.close();
   }

@@ -429,6 +429,84 @@ test("0019 adds onboarding state to workspaces on a prior-prefix database", asyn
   });
 }, 120000);
 
+test("0020 adds conversation ownership and a forced-RLS assignment ledger", async () => {
+  const all = await loadMigrations();
+  const ownership = all.find(
+    (migration) => migration.name === "0020_conversation_ownership.sql",
+  );
+  if (!ownership) throw new Error("0020_conversation_ownership.sql not found");
+  const prefix = all.filter((migration) => migration.name < ownership.name);
+  const directory = await migrationDirectory(
+    Object.fromEntries(
+      prefix.map((migration) => [migration.name, migration.sql]),
+    ),
+  );
+  await withEmptyDatabase(async (connectionString, admin) => {
+    try {
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toHaveLength(prefix.length);
+
+      await writeFile(join(directory, ownership.name), ownership.sql);
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toEqual([ownership.name]);
+
+      const { rows: columns } = await admin.query<{
+        column_name: string;
+        is_nullable: string;
+      }>(
+        "select column_name, is_nullable from information_schema.columns where table_name = 'conversations' and column_name in ('assigned_user_id', 'assigned_at') order by column_name",
+      );
+      expect(columns).toEqual([
+        { column_name: "assigned_at", is_nullable: "YES" },
+        { column_name: "assigned_user_id", is_nullable: "YES" },
+      ]);
+
+      const { rows: rls } = await admin.query<{
+        relforcerowsecurity: boolean;
+        relrowsecurity: boolean;
+      }>(
+        "select relforcerowsecurity, relrowsecurity from pg_class where relname = 'conversation_assignments'",
+      );
+      expect(rls).toEqual([
+        { relforcerowsecurity: true, relrowsecurity: true },
+      ]);
+
+      const { rows: policies } = await admin.query<{ policyname: string }>(
+        "select policyname from pg_policies where tablename = 'conversation_assignments'",
+      );
+      expect(policies).toEqual([
+        { policyname: "conversation_assignments_workspace_scope" },
+      ]);
+
+      const { rows: grants } = await admin.query<{
+        privilege_type: string;
+      }>(
+        `select privilege_type from information_schema.role_table_grants
+         where table_name = 'conversation_assignments' and grantee = 'maria_runtime'
+         order by privilege_type`,
+      );
+      expect(grants).toEqual([
+        { privilege_type: "INSERT" },
+        { privilege_type: "SELECT" },
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}, 120000);
+
 test("rejects changed checksums and untracked existing databases", async () => {
   const directory = await migrationDirectory({
     "0100_checksum.sql":

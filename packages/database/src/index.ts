@@ -1,3 +1,4 @@
+import { alias } from "drizzle-orm/pg-core";
 import {
   and,
   desc,
@@ -21,6 +22,7 @@ import {
   companyTags,
   contacts,
   contactTags,
+  conversationAssignments,
   conversations,
   deals,
   dealTags,
@@ -481,6 +483,9 @@ export function createDatabase(pool: Pool) {
     contactId: conversations.contactId,
     contactName: contacts.name,
     providerThreadId: conversations.providerThreadId,
+    assignedUserId: conversations.assignedUserId,
+    assignedUserName: users.name,
+    assignedAt: conversations.assignedAt,
     epoch: conversations.epoch,
     createdAt: conversations.createdAt,
     updatedAt: conversations.updatedAt,
@@ -1643,12 +1648,23 @@ export function createDatabase(pool: Pool) {
           ...(messageId ? { messageId } : {}),
         };
       }),
-    listConversations: (workspaceId: string) =>
+    listConversations: (
+      workspaceId: string,
+      queue: { filter?: "all" | "mine" | "unassigned"; userId?: string } = {},
+    ) =>
       withWorkspace(workspaceId, (tx) =>
         tx
           .select(conversationColumns)
           .from(conversations)
           .leftJoin(contacts, eq(conversations.contactId, contacts.id))
+          .leftJoin(users, eq(conversations.assignedUserId, users.id))
+          .where(
+            queue.filter === "unassigned"
+              ? isNull(conversations.assignedUserId)
+              : queue.filter === "mine" && queue.userId
+                ? eq(conversations.assignedUserId, queue.userId)
+                : undefined,
+          )
           // Inbox ordering: most recently active conversation first.
           .orderBy(desc(conversations.updatedAt), conversations.id),
       ),
@@ -1658,9 +1674,117 @@ export function createDatabase(pool: Pool) {
           .select(conversationColumns)
           .from(conversations)
           .leftJoin(contacts, eq(conversations.contactId, contacts.id))
+          .leftJoin(users, eq(conversations.assignedUserId, users.id))
           .where(eq(conversations.id, id))
           .limit(1);
         return rows[0];
+      }),
+    // Ownership transitions run under FOR UPDATE so a racing assign/unassign
+    // cannot interleave with the actor's rule check. Delegation rule:
+    // managers/admins set any assignee; agents may only claim an unassigned
+    // conversation for themselves or release their own. Assignees must be
+    // workspace members able to operate the inbox (role >= agent — a viewer
+    // cannot own a conversation). Every change appends an audit row.
+    assignConversation: (
+      workspaceId: string,
+      input: {
+        conversationId: string;
+        assigneeId: string | null;
+        actorId: string;
+        canDelegate: boolean;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: conversations.id,
+            assignedUserId: conversations.assignedUserId,
+          })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.id, input.conversationId),
+              eq(conversations.workspaceId, workspaceId),
+            ),
+          )
+          .for("update");
+        const conversation = rows[0];
+        if (!conversation) return { kind: "not-found" as const };
+        if (!input.canDelegate) {
+          const claim =
+            input.assigneeId === input.actorId &&
+            conversation.assignedUserId === null;
+          const release =
+            input.assigneeId === null &&
+            conversation.assignedUserId === input.actorId;
+          if (!claim && !release) return { kind: "forbidden" as const };
+        }
+        if (input.assigneeId) {
+          const member = await tx
+            .select({ id: memberships.id })
+            .from(memberships)
+            .where(
+              and(
+                eq(memberships.userId, input.assigneeId),
+                eq(memberships.workspaceId, workspaceId),
+                inArray(memberships.role, ["agent", "manager", "admin"]),
+              ),
+            )
+            .limit(1);
+          if (!member[0]) return { kind: "not-member" as const };
+        }
+        if (conversation.assignedUserId === input.assigneeId) {
+          return { kind: "ok" as const };
+        }
+        await tx
+          .update(conversations)
+          .set({
+            assignedUserId: input.assigneeId,
+            assignedAt: input.assigneeId ? new Date() : null,
+          })
+          .where(eq(conversations.id, conversation.id));
+        await tx.insert(conversationAssignments).values({
+          workspaceId,
+          conversationId: conversation.id,
+          assignedUserId: input.assigneeId,
+          assignedBy: input.actorId,
+        });
+        return { kind: "ok" as const };
+      }),
+    listConversationAssignments: (
+      workspaceId: string,
+      conversationId: string,
+    ) =>
+      withWorkspace(workspaceId, (tx) => {
+        const assignee = alias(users, "assignee");
+        const actor = alias(users, "actor");
+        return tx
+          .select({
+            id: conversationAssignments.id,
+            conversationId: conversationAssignments.conversationId,
+            assignedUserId: conversationAssignments.assignedUserId,
+            assignedUserName: assignee.name,
+            assignedBy: conversationAssignments.assignedBy,
+            assignedByName: actor.name,
+            createdAt: conversationAssignments.createdAt,
+          })
+          .from(conversationAssignments)
+          .leftJoin(
+            assignee,
+            eq(conversationAssignments.assignedUserId, assignee.id),
+          )
+          .leftJoin(actor, eq(conversationAssignments.assignedBy, actor.id))
+          .where(
+            and(
+              eq(conversationAssignments.conversationId, conversationId),
+              eq(conversationAssignments.workspaceId, workspaceId),
+            ),
+          )
+          .orderBy(
+            desc(conversationAssignments.createdAt),
+            conversationAssignments.id,
+          )
+          .limit(50);
       }),
     listMessages: (workspaceId: string, conversationId: string) =>
       withWorkspace(workspaceId, async (tx) => {

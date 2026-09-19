@@ -1746,3 +1746,159 @@ test("a viewer sees onboarding progress without edit controls", async () => {
     screen.queryByRole("button", { name: "Concluir e entrar" }),
   ).toBeNull();
 });
+
+test("inbox queues filter conversations and agents claim or release ownership", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const userId = "123e4567-e89b-12d3-a456-426614174001";
+  const conversationId = "123e4567-e89b-12d3-a456-426614174010";
+  const calls: { url: string; method: string; body?: unknown }[] = [];
+  let assigned: string | null = null;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      calls.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            {
+              workspaceId,
+              workspaceName: "Workspace",
+              role: "agent",
+              onboarded: true,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/assignment") && method === "PATCH") {
+        assigned = (init?.body ? JSON.parse(init.body as string) : {})
+          .assigneeId;
+        return new Response("{}", { status: 200 });
+      }
+      if (url.includes("/assignments")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174011",
+              conversationId,
+              assignedUserId: userId,
+              assignedUserName: "User",
+              assignedBy: "123e4567-e89b-12d3-a456-426614174002",
+              assignedByName: "Gerente",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: conversationId,
+              workspaceId,
+              channelInstanceId: "123e4567-e89b-12d3-a456-426614174012",
+              contactId: null,
+              contactName: "Maria",
+              providerThreadId: "55119999@c.us",
+              assignedUserId: assigned,
+              assignedUserName: assigned ? "User" : null,
+              assignedAt: assigned ? "2026-01-01T00:00:00Z" : null,
+              epoch: 1,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/members")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174013",
+              userId,
+              role: "agent",
+              email: "user@example.com",
+              name: "User",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId,
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/inbox");
+  const user = userEvent.setup();
+
+  // Queue tabs refetch with the filter in the query string.
+  await user.click(await screen.findByRole("tab", { name: "Minhas" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining("queue=mine"),
+      }),
+    ),
+  );
+  await user.click(screen.getByRole("tab", { name: "Sem responsável" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining("queue=unassigned"),
+      }),
+    ),
+  );
+  await user.click(screen.getByRole("tab", { name: "Todas" }));
+
+  // An agent sees "Assumir" on an unassigned conversation.
+  await user.click(await screen.findByText("Maria"));
+  await user.click(await screen.findByRole("button", { name: "Assumir" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(
+          `/conversations/${conversationId}/assignment`,
+        ),
+        method: "PATCH",
+        body: { assigneeId: userId },
+      }),
+    ),
+  );
+
+  // After claiming, the agent can release it.
+  await user.click(await screen.findByRole("button", { name: "Liberar" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "PATCH",
+        body: { assigneeId: null },
+      }),
+    ),
+  );
+
+  // The audit history renders behind the toggle.
+  await user.click(
+    screen.getByRole("button", { name: "Histórico de atribuição" }),
+  );
+  expect(await screen.findByText(/Atribuída a User por Gerente/)).toBeDefined();
+});

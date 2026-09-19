@@ -97,6 +97,8 @@ function createDatabaseStub() {
     getChannelInstance: vi.fn().mockResolvedValue(undefined),
     receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
     listConversations: vi.fn().mockResolvedValue([]),
+    assignConversation: vi.fn().mockResolvedValue({ kind: "not-found" }),
+    listConversationAssignments: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
     createOutboundIntent: vi.fn().mockResolvedValue({ kind: "missing" }),

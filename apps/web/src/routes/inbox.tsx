@@ -1,9 +1,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiBlob } from "@/lib/api";
+import { api, apiBlob, ApiError } from "@/lib/api";
 import { formatTime } from "@/lib/format";
-import type { Contact, Conversation, Message } from "@/lib/types";
+import type {
+  Contact,
+  Conversation,
+  ConversationAssignment,
+  Message,
+  WorkspaceMember,
+} from "@/lib/types";
 import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
+
+type QueueFilter = "all" | "mine" | "unassigned";
+
+const QUEUE_TABS: { key: QueueFilter; label: string }[] = [
+  { key: "all", label: "Todas" },
+  { key: "mine", label: "Minhas" },
+  { key: "unassigned", label: "Sem responsável" },
+];
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "enviando",
@@ -82,25 +96,46 @@ function MediaAttachment({
 }
 
 export function InboxPage() {
-  const { workspace } = useWorkspace();
+  const { workspace, session } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
   const canEdit = hasWorkspaceRole(workspace?.role, "agent");
+  const canDelegate = hasWorkspaceRole(workspace?.role, "manager");
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueFilter>("all");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const imageVideoInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
 
   const { data: conversations = [], isLoading: loadingConversations } =
     useQuery({
-      queryKey: ["conversations", workspaceId],
-      queryFn: () => api<Conversation[]>("/conversations", { workspaceId }),
+      queryKey: ["conversations", workspaceId, queue],
+      queryFn: () =>
+        api<Conversation[]>(`/conversations?queue=${queue}`, { workspaceId }),
       enabled: Boolean(workspaceId),
     });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ["members", workspaceId],
+    queryFn: () => api<WorkspaceMember[]>("/members", { workspaceId }),
+    enabled: Boolean(workspaceId),
+  });
+
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["assignments", workspaceId, selectedId],
+    queryFn: () =>
+      api<ConversationAssignment[]>(
+        `/conversations/${selectedId}/assignments`,
+        { workspaceId },
+      ),
+    enabled: Boolean(workspaceId && selectedId && historyOpen),
+  });
 
   const { data: messages = [], isLoading: loadingMessages } = useQuery({
     queryKey: ["messages", workspaceId, selectedId],
@@ -116,6 +151,33 @@ export function InboxPage() {
   });
 
   const selected = conversations.find((c) => c.id === selectedId);
+  const assignableMembers = members.filter((m) => m.role !== "viewer");
+
+  const assignConversation = useMutation({
+    mutationFn: (assigneeId: string | null) =>
+      api<Conversation>(`/conversations/${selectedId}/assignment`, {
+        method: "PATCH",
+        workspaceId,
+        body: { assigneeId },
+      }),
+    onSuccess: async () => {
+      setAssignError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["conversations", workspaceId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["assignments", workspaceId, selectedId],
+      });
+    },
+    onError: (error) =>
+      setAssignError(
+        error instanceof ApiError && error.status === 403
+          ? "Você não tem permissão para essa atribuição."
+          : error instanceof ApiError && error.status === 409
+            ? "Esse membro não pode assumir conversas."
+            : "Não foi possível atualizar o responsável.",
+      ),
+  });
 
   const sendMessage = useMutation({
     mutationFn: async (input: { body: string; file: File | null }) => {
@@ -243,6 +305,24 @@ export function InboxPage() {
       <div className="flex w-80 flex-col rounded-lg border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3">
           <h2 className="font-semibold text-slate-800">Conversas</h2>
+          <div className="mt-2 flex gap-1" role="tablist" aria-label="Fila">
+            {QUEUE_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={queue === tab.key}
+                onClick={() => setQueue(tab.key)}
+                className={`rounded-md px-2 py-1 text-xs ${
+                  queue === tab.key
+                    ? "bg-indigo-100 font-medium text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {loadingConversations ? (
@@ -254,7 +334,11 @@ export function InboxPage() {
               <button
                 key={conversation.id}
                 type="button"
-                onClick={() => setSelectedId(conversation.id)}
+                onClick={() => {
+                  setSelectedId(conversation.id);
+                  setHistoryOpen(false);
+                  setAssignError(null);
+                }}
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50 ${
                   selectedId === conversation.id
                     ? "bg-indigo-50 text-indigo-700"
@@ -267,6 +351,9 @@ export function InboxPage() {
                 <p className="text-xs text-slate-500">
                   {formatTime(conversation.updatedAt)}
                 </p>
+                <p className="text-xs text-slate-400">
+                  {conversation.assignedUserName ?? "Sem responsável"}
+                </p>
               </button>
             ))
           )}
@@ -275,14 +362,92 @@ export function InboxPage() {
       <div className="flex flex-1 flex-col rounded-lg border border-slate-200 bg-white">
         {selected ? (
           <>
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h2 className="font-semibold text-slate-800">
-                {selected.contactName ?? selected.providerThreadId}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {selected.providerThreadId}
-              </p>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div>
+                <h2 className="font-semibold text-slate-800">
+                  {selected.contactName ?? selected.providerThreadId}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {selected.providerThreadId}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen((open) => !open)}
+                  className="mt-1 text-xs text-slate-500 hover:underline"
+                >
+                  {historyOpen
+                    ? "Ocultar histórico"
+                    : "Histórico de atribuição"}
+                </button>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                {canDelegate ? (
+                  <select
+                    aria-label="Responsável"
+                    value={selected.assignedUserId ?? ""}
+                    disabled={assignConversation.isPending}
+                    onChange={(event) =>
+                      assignConversation.mutate(event.target.value || null)
+                    }
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                  >
+                    <option value="">Sem responsável</option>
+                    {assignableMembers.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : canEdit && !selected.assignedUserId ? (
+                  <button
+                    type="button"
+                    disabled={assignConversation.isPending}
+                    onClick={() =>
+                      session && assignConversation.mutate(session.userId)
+                    }
+                    className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    Assumir
+                  </button>
+                ) : canEdit && selected.assignedUserId === session?.userId ? (
+                  <button
+                    type="button"
+                    disabled={assignConversation.isPending}
+                    onClick={() => assignConversation.mutate(null)}
+                    className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Liberar
+                  </button>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Responsável:{" "}
+                    {selected.assignedUserName ?? "Sem responsável"}
+                  </p>
+                )}
+                {assignError ? (
+                  <p className="text-xs text-red-600">{assignError}</p>
+                ) : null}
+              </div>
             </div>
+            {historyOpen ? (
+              <div className="border-b border-slate-200 px-4 py-2 text-xs text-slate-600">
+                {assignments.length === 0 ? (
+                  <p>Nenhuma atribuição registrada.</p>
+                ) : (
+                  assignments.map((entry) => (
+                    <p key={entry.id}>
+                      {entry.assignedUserName
+                        ? `Atribuída a ${entry.assignedUserName}`
+                        : "Ficou sem responsável"}
+                      {entry.assignedByName
+                        ? ` por ${entry.assignedByName}`
+                        : ""}{" "}
+                      · {formatTime(entry.createdAt)}
+                    </p>
+                  ))
+                )}
+              </div>
+            ) : null}
             <div className="flex-1 space-y-3 overflow-y-auto p-4">
               {loadingMessages ? (
                 <p className="text-sm text-slate-500">

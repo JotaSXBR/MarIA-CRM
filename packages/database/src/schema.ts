@@ -510,6 +510,10 @@ export const conversations = pgTable(
       .notNull(),
     contactId: uuid("contact_id").references(() => contacts.id),
     providerThreadId: text("provider_thread_id").notNull(),
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
     epoch: integer().notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -520,10 +524,41 @@ export const conversations = pgTable(
   },
   (table) => [
     index("conversations_workspace_id_idx").on(table.workspaceId),
+    index("conversations_assigned_user_idx").on(
+      table.workspaceId,
+      table.assignedUserId,
+    ),
     uniqueIndex("conversations_thread_key_idx").on(
       table.channelInstanceId,
       table.providerThreadId,
     ),
+  ],
+);
+
+/** Append-only assignment audit: every assign/unassign/reassign writes one
+ * row (`assigned_user_id` null = unassigned). */
+export const conversationAssignments = pgTable(
+  "conversation_assignments",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assignedBy: uuid("assigned_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("conversation_assignments_conversation_idx").on(table.conversationId),
   ],
 );
 
