@@ -15,7 +15,7 @@ The product must remain:
 - Docker-first and portable: Coolify/VPS initially, separable later;
 - PostgreSQL-first for durable business state;
 - OpenAI-first but provider-decoupled at the domain boundary;
-- agent-friendly to develop with Codex and Claude Code as primary coding agents;
+- agent-friendly to develop, with Devin as the primary coding agent;
 - open source under `AGPL-3.0-only`.
 
 ## 2. Instruction precedence and trust
@@ -69,35 +69,20 @@ During work:
 Before completion, run required gates for the touched scope, inspect the final diff/status and report
 **evidence**: tests, migrations, risks, assumptions and manual checks.
 
-### Codex task routing
+### Task delegation
 
-- Default coordinator: `gpt-6-astra` with `low` effort; reserve its substantial work for
-  architecture, ambiguity, difficult problems and integrating results.
-- Do a single cheap search/check directly when delegation costs more. Batch substantial searches,
-  references, reading and documentation drafts through `explorer` (Luna LOW).
-- Use `worker` (Terra LOW) for scoped implementation, ordinary debugging and validation.
-  For mechanical edits/documentation, use the generic `default` agent with explicit Luna LOW
-  and a bounded writing assignment when delegation saves work.
-- Use `reviewer` (Sol LOW, read-only) for critical correctness/security review. Use `default`
-  with explicit Terra LOW and read-only scope for routine review when warranted. Complex
-  implementation may use `default` with explicit Sol LOW and exclusive file ownership.
-- Escalation is deliberate, never automatic: report the concrete uncertainty or failed check,
-  reuse the evidence, then choose the least costly capable model. Astra LOW resolves architecture
-  and remaining hard problems; do not increase effort or model merely to retry.
-- Spawn only with a concrete context, cost or elapsed-time benefit. Normally at most two active
-  subagents; three only for independent work with an explicit per-session concurrency override.
-  No nested delegation. Give each writer exclusive file ownership, including the coordinator.
-- Pass a bounded task, relevant paths, known findings and acceptance checks; prefer no history
-  fork when supported. Reuse an existing agent for related follow-up work.
-- Return concise findings with file/line references, changed files, check results and blockers;
+- Do a single cheap search/check directly when delegation costs more. Spawn a subagent only
+  with a concrete context, parallelism or elapsed-time benefit; normally at most two active
+  at once. No nested delegation.
+- Prefer the built-in read-only explore profile for bounded searches, references and dependency
+  mapping; use a write-capable profile for scoped implementation. Give each writer exclusive
+  file ownership.
+- Pass a bounded task, relevant paths, known findings and acceptance checks. Reuse an existing
+  subagent for related follow-up work.
+- Expect concise findings with file/line references, changed files, check results and blockers;
   no raw log dumps. Reuse discovered facts and do not reread unchanged files without a reason.
 - Start validation with the smallest relevant test/check. Run full suites only for cross-cutting
   changes, integration risk or required pre-PR/CI gates; this does not waive required gates.
-  The assigned worker runs checks; do not add a separate test-runner role without measured benefit.
-- Agent selection is a routing policy, not an enforced billing limit. Custom files pin model
-  and effort; explicit spawn choices override generic defaults, not these pins. Preserve each
-  role's sandbox and never silently fall back to a costly model. Live permission overrides can
-  supersede custom sandbox defaults; do not widen permissions for read-only roles.
 
 ## 4. Non-negotiable architecture invariants
 
@@ -216,9 +201,9 @@ mutable `latest` image tags. Exact versions belong in manifests and lockfiles.
 - `DEVELOPMENT.md` — reproducible setup, migrations and scope-specific verification matrix.
 - `LICENSE` — AGPL-3.0-only terms.
 
-Codex operation is configured in `.codex/config.toml` and `.codex/agents/`; this contract remains
-the shared instruction source. No override file is needed. Add a subsystem document only when
-it becomes necessary and update this contract at the same time.
+Devin project configuration lives in `.devin/` (project config, repository skills, optional
+gitignored local hooks); this contract remains the shared instruction source. Add a subsystem
+document only when it becomes necessary and update this contract at the same time.
 
 ## 8. Stable root commands
 

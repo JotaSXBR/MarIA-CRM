@@ -5,8 +5,8 @@ description: Reconcile MarIA CRM coding-agent workflows and repository-local ski
 
 # MarIA CRM agent adaptation
 
-Root AGENTS.md owns the shared contract and routing policy. Each coding tool retains its
-own model and sandbox configuration. Do not copy Codex model instructions into Devin.
+Root AGENTS.md owns the shared contract and delegation policy. Devin is the primary coding
+agent; model and permission settings live in Devin user/project config, not in this file.
 
 Shared skills are readable files at .devin/skills/<name>/SKILL.md, not assumed installed
 slash commands — list the directory and read only the ones relevant to the task.

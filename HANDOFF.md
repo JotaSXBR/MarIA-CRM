@@ -26,6 +26,11 @@ gh pr status
   ownership → telemetry, editable knowledge base → later agent reads),
   keep autonomous execution for Phase 4 once the Execution Plane
   exists.
+- Tooling track: branch `chore/devin-agent-contract` — Devin-only
+  contract cleanup: `.codex/` removed, `.claude/` local residue removed,
+  AGENTS.md routing section replaced by a tool-agnostic delegation
+  policy, `.devin/config.json` reduced to the valid project schema,
+  `.gitignore` consolidated. No product code touched.
 - Branch `feat/conversation-ownership` — **Slice 2.1, conversation
   ownership and queues** (ROADMAP Phase 2.1):
   - Migration `0020_conversation_ownership.sql`: `conversations` gains
@@ -150,7 +155,7 @@ UPDATE` on the conversation row — `canDelegate` (route passes
 
 ## Memory model
 
-- `AGENTS.md`: always-on normative invariants and routing rules.
+- `AGENTS.md`: always-on normative invariants and delegation policy.
 - `.devin/skills/`: focused procedures loaded only when relevant.
 - `adr/`: durable architectural decisions and tradeoffs.
 - `HANDOFF.md`: current branch, verified state, blockers, and immediate next actions only.
