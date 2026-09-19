@@ -9,6 +9,7 @@ export type WorkspaceMembership = {
   workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
+  onboarded: boolean;
 };
 
 const WORKSPACE_ROLE_RANK: Record<WorkspaceRole, number> = {
@@ -57,7 +58,7 @@ export type SessionUser = {
   isAdmin: boolean;
 };
 
-const WORKSPACE_KEY = "maria.workspace";
+export const WORKSPACE_KEY = "maria.workspace";
 
 type WorkspaceContextValue = {
   memberships: WorkspaceMembership[];

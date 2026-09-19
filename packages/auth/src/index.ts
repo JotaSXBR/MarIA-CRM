@@ -5,12 +5,14 @@ import { eq, and, gt, ne, sql, isNull, desc } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { Database } from "@maria/database";
 import {
+  channelInstances,
   invitations,
   memberships,
   organizations,
   sessions,
   users,
   workspaces,
+  type WorkspaceOnboardingState,
 } from "@maria/database/schema";
 
 export const WORKSPACE_ROLES = ["viewer", "agent", "manager", "admin"] as const;
@@ -43,6 +45,28 @@ export function canManageRole(
   );
 }
 
+/** Workspace onboarding wizard (ADR 0015 item 6). One ordered registry drives
+ * routing, progress and the review summary; `review` is closed by
+ * `completeOnboarding`, never by a direct step update. */
+export const ONBOARDING_STEPS = [
+  "basics",
+  "channel",
+  "team",
+  "review",
+] as const;
+export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
+export type OnboardingStepStatus = "pending" | "done" | "skipped";
+export type OnboardingStep = {
+  id: OnboardingStepId;
+  status: OnboardingStepStatus;
+  data?: Record<string, unknown> | undefined;
+};
+export type OnboardingView = {
+  workspaceName: string;
+  onboardedAt: Date | null;
+  steps: OnboardingStep[];
+};
+
 export type AuthPort = {
   login(
     email: string,
@@ -63,6 +87,7 @@ export type AuthPort = {
       workspaceId: string;
       workspaceName: string;
       role: WorkspaceRole;
+      onboarded: boolean;
     }[]
   >;
   createUser(input: {
@@ -183,6 +208,28 @@ export type AuthPort = {
     | "user-exists"
     | "email-mismatch"
   >;
+  /** Workspace onboarding wizard state (ADR 0015 item 6). A step's status is
+   * its stored record when present, otherwise auto-resolved from workspace
+   * facts — `channel` is done when a channel instance exists and `team` when
+   * the workspace has more than one member. */
+  getOnboarding(workspaceId: string): Promise<OnboardingView | undefined>;
+  /** Records a step as done/skipped with optional step data. `review` is not
+   * updatable — it closes through `completeOnboarding`. Mutations are frozen
+   * once the workspace is onboarded (ADR: reset only by workspace deletion). */
+  updateOnboardingStep(
+    workspaceId: string,
+    step: OnboardingStepId,
+    input: {
+      status: "done" | "skipped";
+      data?: Record<string, unknown> | undefined;
+    },
+  ): Promise<"updated" | "not-found" | "invalid-step" | "already-onboarded">;
+  /** Completing requires every registry step to be `done` or `skipped`; sets
+   * `onboarded_at` and marks `review` done under a workspace row lock.
+   * Idempotent: an already-onboarded workspace returns its `onboardedAt`. */
+  completeOnboarding(
+    workspaceId: string,
+  ): Promise<{ onboardedAt: Date } | "not-found" | "incomplete">;
   /** First-run gate: true while the `users` table is empty (ADR 0015). */
   setupRequired(): Promise<boolean>;
   /** Atomic first-run bootstrap: master `is_admin` user, implicit
@@ -309,17 +356,22 @@ export function createLocalAuth(
   };
 
   const listUserWorkspaces = async (userId: string) =>
-    database.withUser(userId, async (tx) =>
-      tx
+    database.withUser(userId, async (tx) => {
+      const rows = await tx
         .select({
           workspaceId: memberships.workspaceId,
           workspaceName: workspaces.name,
           role: memberships.role,
+          onboardedAt: workspaces.onboardedAt,
         })
         .from(memberships)
         .innerJoin(workspaces, eq(memberships.workspaceId, workspaces.id))
-        .where(eq(memberships.userId, userId)),
-    );
+        .where(eq(memberships.userId, userId));
+      return rows.map(({ onboardedAt, ...row }) => ({
+        ...row,
+        onboarded: onboardedAt !== null,
+      }));
+    });
 
   const createUser = async (input: {
     email: string;
@@ -835,6 +887,131 @@ export function createLocalAuth(
     });
   };
 
+  /** Stored step records win; otherwise auto-resolve from workspace facts so
+   * already-satisfied steps arrive done and the wizard can skip them. */
+  const resolveOnboardingSteps = async (
+    tx: Transaction,
+    state: WorkspaceOnboardingState,
+  ): Promise<OnboardingStep[]> => {
+    const stored = state.steps ?? {};
+    const channelRows = await tx
+      .select({ id: channelInstances.id })
+      .from(channelInstances)
+      .limit(1);
+    const memberRows = await tx
+      .select({ id: memberships.id })
+      .from(memberships);
+    const autoDone: Partial<Record<OnboardingStepId, boolean>> = {
+      channel: channelRows.length > 0,
+      team: memberRows.length > 1,
+    };
+    return ONBOARDING_STEPS.map((id) => {
+      const record = stored[id];
+      return {
+        id,
+        status: record?.status ?? (autoDone[id] ? "done" : "pending"),
+        data: record?.data,
+      };
+    });
+  };
+
+  const getOnboarding = async (
+    workspaceId: string,
+  ): Promise<OnboardingView | undefined> =>
+    database.withWorkspace(workspaceId, async (tx) => {
+      const rows = await tx
+        .select({
+          name: workspaces.name,
+          onboardingState: workspaces.onboardingState,
+          onboardedAt: workspaces.onboardedAt,
+        })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId));
+      const workspace = rows[0];
+      if (!workspace) return undefined;
+      return {
+        workspaceName: workspace.name,
+        onboardedAt: workspace.onboardedAt,
+        steps: await resolveOnboardingSteps(tx, workspace.onboardingState),
+      };
+    });
+
+  const updateOnboardingStep = async (
+    workspaceId: string,
+    step: OnboardingStepId,
+    input: {
+      status: "done" | "skipped";
+      data?: Record<string, unknown> | undefined;
+    },
+  ): Promise<
+    "updated" | "not-found" | "invalid-step" | "already-onboarded"
+  > => {
+    if (step === "review") return "invalid-step";
+    return database.withWorkspace(workspaceId, async (tx) => {
+      // FOR UPDATE serializes step writes against a concurrent completion —
+      // read-modify-write then merges on the latest committed state.
+      const rows = await tx
+        .select({
+          onboardingState: workspaces.onboardingState,
+          onboardedAt: workspaces.onboardedAt,
+        })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId))
+        .for("update");
+      const workspace = rows[0];
+      if (!workspace) return "not-found";
+      if (workspace.onboardedAt) return "already-onboarded";
+      const record = input.data
+        ? { status: input.status, data: input.data }
+        : { status: input.status };
+      const state = workspace.onboardingState ?? {};
+      await tx
+        .update(workspaces)
+        .set({
+          onboardingState: {
+            ...state,
+            steps: { ...state.steps, [step]: record },
+          },
+        })
+        .where(eq(workspaces.id, workspaceId));
+      return "updated";
+    });
+  };
+
+  const completeOnboarding = async (
+    workspaceId: string,
+  ): Promise<{ onboardedAt: Date } | "not-found" | "incomplete"> =>
+    database.withWorkspace(workspaceId, async (tx) => {
+      const rows = await tx
+        .select({
+          onboardingState: workspaces.onboardingState,
+          onboardedAt: workspaces.onboardedAt,
+        })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId))
+        .for("update");
+      const workspace = rows[0];
+      if (!workspace) return "not-found";
+      if (workspace.onboardedAt) return { onboardedAt: workspace.onboardedAt };
+      const steps = await resolveOnboardingSteps(tx, workspace.onboardingState);
+      if (steps.some((s) => s.id !== "review" && s.status === "pending")) {
+        return "incomplete";
+      }
+      const onboardedAt = new Date();
+      const state = workspace.onboardingState ?? {};
+      await tx
+        .update(workspaces)
+        .set({
+          onboardedAt,
+          onboardingState: {
+            ...state,
+            steps: { ...state.steps, review: { status: "done" } },
+          },
+        })
+        .where(eq(workspaces.id, workspaceId));
+      return { onboardedAt };
+    });
+
   const setupRequired = async (): Promise<boolean> => {
     const rows = await db.select({ id: users.id }).from(users).limit(1);
     return rows.length === 0;
@@ -920,6 +1097,9 @@ export function createLocalAuth(
     revokeInvitation,
     previewInvitation,
     acceptInvitation,
+    getOnboarding,
+    updateOnboardingStep,
+    completeOnboarding,
     setupRequired,
     completeSetup,
     seedAdmin,
