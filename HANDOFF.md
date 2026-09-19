@@ -485,7 +485,12 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge the `feat/member-management` PR (Slice 1.4) once checks pass.
-2. Phase 1.5 — workspace onboarding wizard (`onboarding_state` jsonb +
-   `onboarded_at`, step registry: basics → WhatsApp → invite → review).
-3. Deferred alternative: attribute-based filtering in list views.
+1. Merge PR #80 (Slice 1.4 member management) once checks pass.
+2. Development paused (2026-09-19): deep research on selliq.io /
+   synthor.cloud / helenacrm.com saved at
+   `research/monitoring-mode-crms-2026-09-19.md` — key finding: Selliq's
+   "Modo Monitoramento" (observer agent, read-only, suggests KB changes,
+   telemetry before trust) maps cleanly onto our "AI last" ordering.
+3. On resume: Phase 1.5 workspace onboarding wizard, or reassess whether
+   a passive-observer/knowledge-base slice now outranks it.
+4. Deferred alternative: attribute-based filtering in list views.
