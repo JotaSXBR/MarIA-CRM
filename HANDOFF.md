@@ -32,6 +32,21 @@ gh pr status
   lands with correct design; a dedicated density/empty-state pass
   closes Phase 2 rather than waiting for project end. The raw
   `slate-*` → semantic-token migration is done (#88).
+- Agent-tooling side change (local branch, 2026-09-19): added a lean, project-local
+  `task-observer` skill under `.devin/skills/`. It activates only on explicit/high-signal
+  reusable workflow corrections; no session-start scan, checkpoints, hooks, scheduler,
+  scripts, autonomous skill edits, or product-suite gate. Sanitized observations are stored
+  only when needed under gitignored `.devin/task-observer/`; skill changes still require
+  explicit approval and the normal `skill-creator`/PR workflow. Based on upstream v3.2.0
+  (`e72b1dc`) under CC BY 4.0 with attribution retained.
+- Gitignore audit (local branch, 2026-09-19): expanded shared rules for private-key
+  stores, data exports/backups, Node/Vite caches and diagnostics, runtime sidecars,
+  and Windows/editor residue; removed the blanket `docs/` rule so future shared
+  documentation remains trackable. Env examples, lockfiles, migrations, `.npmrc`,
+  and shared `.devin` config remain intentionally trackable. A path-only history
+  audit found only `docker/.env.example` among env/private-key patterns. GitHub
+  currently reports secret scanning and push protection enabled on the public repo;
+  switching to private later does not retract existing public clones or forks.
 - Slice 2.1 (merged in #83) — **conversation ownership and queues**
   (ROADMAP Phase 2.1):
   - Migration `0020_conversation_ownership.sql`: `conversations` gains
@@ -58,7 +73,25 @@ UPDATE` on the conversation row — `canDelegate` (route passes
     per conversation, header control — manager+ gets a member `<select>`
     (viewers excluded), agent gets Assumir/Liberar, viewer reads a
     label; "Histórico de atribuição" toggle lists the audit rows.
-- Slice 2.3 (branch `feat/conversation-crm-links`, in flight) —
+- Slice 2.4 (branch `feat/operator-work-center`, in flight) —
+  **operator work center** (ROADMAP Phase 2.4):
+  - `listWorkQueue` — one scoped read assembling five groups, oldest
+    first: `unassigned` (no assignee), `awaitingReply` (latest inbound
+    without a _delivered_ outbound after it — `sent`/`delivered`/`read`
+    only; failed/unknown/pending sends still count as waiting),
+    `sendIssues` (outbound `failed`/`unknown`, ADR 0010 resolution
+    path), `overdueTasks` (`dueAt < now`, open), `idleDeals` (active
+    deals with no open task — the next-action proxy until Phase 2.5).
+  - API `GET /work-queue` (viewer+) in `routes/work-queue.ts`.
+  - Web: `/` is now the Central do operador (was a redirect to
+    `/inbox`); sidebar gains "Central". Each section counts items and
+    links rows to the owning surface (`/inbox`, `/contacts/:id`,
+    `/deals/:id`).
+  - Flake fix: `leaseMs: -1` raced `now()` across the Node/Postgres
+    clock boundary (~1ms) — expired-lease assertions now use
+    `-60_000` so clock skew cannot flake them (surfaced under parallel
+    load in this branch's verify).
+- Slice 2.3 (merged in #91) —
   **conversation → CRM context panel** (ROADMAP Phase 2.3):
   - `setConversationContact` validates the contact inside the scoped tx
     (`contactCompanyRefsValid`) and clears/links via one UPDATE — missing

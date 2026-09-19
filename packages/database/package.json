@@ -26,7 +26,7 @@
     "db:migrate": "node src/migrate-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/database.test.ts",
-    "test:integration": "vitest run test/rls.integration.test.ts test/migrate.integration.test.ts test/messaging.integration.test.ts test/ownership.integration.test.ts test/collaboration.integration.test.ts --testTimeout=30000"
+    "test:integration": "vitest run test/rls.integration.test.ts test/migrate.integration.test.ts test/messaging.integration.test.ts test/ownership.integration.test.ts test/collaboration.integration.test.ts test/work-queue.integration.test.ts --testTimeout=30000"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

@@ -154,6 +154,48 @@ export type QuickReply = {
   updatedAt: string;
 };
 
+export type WorkQueueConversation = {
+  id: string;
+  contactName: string | null;
+  providerThreadId: string;
+  updatedAt?: string;
+  lastInboundAt?: string;
+};
+
+export type WorkQueueSendIssue = {
+  id: string;
+  conversationId: string;
+  contactName: string | null;
+  status: string;
+  createdAt: string;
+};
+
+export type WorkQueueTask = {
+  id: string;
+  title: string;
+  dueAt: string;
+  assigneeName: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  dealId: string | null;
+};
+
+export type WorkQueueDeal = {
+  id: string;
+  title: string;
+  stageName: string;
+  pipelineName: string;
+  valueCents: number | null;
+};
+
+export type WorkQueue = {
+  unassigned: WorkQueueConversation[];
+  awaitingReply: WorkQueueConversation[];
+  sendIssues: WorkQueueSendIssue[];
+  overdueTasks: WorkQueueTask[];
+  idleDeals: WorkQueueDeal[];
+};
+
 export type ChannelInstance = {
   id: string;
   provider: string;

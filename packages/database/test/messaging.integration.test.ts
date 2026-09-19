@@ -453,7 +453,7 @@ test("outbound dispatch ledger enforces claim fencing, expiry and tenancy", asyn
   const expiredClaim = await database.claimDispatchIntent(
     workspaceA,
     expired.intentId,
-    { leaseMs: -1 },
+    { leaseMs: -60_000 },
   );
   expect(expiredClaim.kind).toBe("claimed");
   const reaped = await database.reapExpiredDispatches(workspaceA);
@@ -601,7 +601,7 @@ test("recordDeliveryStatus reconciles outbound acks monotonically", async () => 
   const expiredClaim = await database.claimDispatchIntent(
     workspaceA,
     created.intentId,
-    { leaseMs: -1 },
+    { leaseMs: -60_000 },
   );
   if (expiredClaim.kind !== "claimed") throw new Error("not claimed");
   await database.reapExpiredDispatches(workspaceA);
@@ -660,7 +660,7 @@ test("resolveUnknownMessage only resolves unknown outbound messages", async () =
   const claimed = await database.claimDispatchIntent(
     workspaceA,
     created.intentId,
-    { leaseMs: -1 },
+    { leaseMs: -60_000 },
   );
   if (claimed.kind !== "claimed") throw new Error("not claimed");
   await database.reapExpiredDispatches(workspaceA);

@@ -1935,6 +1935,128 @@ export function createDatabase(pool: Pool) {
           .returning({ id: conversations.id });
         return rows[0];
       }),
+    // Operator work center: one scoped read assembling the actionable queue.
+    // "Awaiting reply" = the latest channel inbound has no delivered outbound
+    // after it — only `sent`/`delivered`/`read` prove the customer was
+    // answered, so failed/unknown/pending sends still leave the thread waiting
+    // (and surface separately under send issues). "Send issues" = outbound
+    // rows stuck in `failed`/`unknown` (ADR 0010); "idle deals" = active deals
+    // with no open task (the next-action proxy until Phase 2.5). Oldest
+    // first — the longest-waiting item is the most actionable.
+    listWorkQueue: (workspaceId: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const unassigned = await tx
+          .select({
+            id: conversations.id,
+            contactName: contacts.name,
+            providerThreadId: conversations.providerThreadId,
+            updatedAt: conversations.updatedAt,
+          })
+          .from(conversations)
+          .leftJoin(contacts, eq(conversations.contactId, contacts.id))
+          .where(isNull(conversations.assignedUserId))
+          .orderBy(conversations.updatedAt, conversations.id)
+          .limit(50);
+        const inboundActivity = sql<Date>`max(${messages.createdAt}) filter (where ${messages.direction} = 'inbound' and ${messages.kind} = 'message')`;
+        const awaitingReply = await tx
+          .select({
+            id: conversations.id,
+            contactName: contacts.name,
+            providerThreadId: conversations.providerThreadId,
+            lastInboundAt: inboundActivity,
+          })
+          .from(messages)
+          .innerJoin(
+            conversations,
+            eq(messages.conversationId, conversations.id),
+          )
+          .leftJoin(contacts, eq(conversations.contactId, contacts.id))
+          .groupBy(
+            conversations.id,
+            contacts.name,
+            conversations.providerThreadId,
+          )
+          .having(
+            sql`${inboundActivity} > coalesce(max(${messages.createdAt}) filter (where ${messages.direction} = 'outbound' and ${messages.kind} = 'message' and ${messages.status} in ('sent', 'delivered', 'read')), '-infinity'::timestamptz)`,
+          )
+          .orderBy(inboundActivity)
+          .limit(50);
+        const sendIssues = await tx
+          .select({
+            id: messages.id,
+            conversationId: messages.conversationId,
+            contactName: contacts.name,
+            status: messages.status,
+            createdAt: messages.createdAt,
+          })
+          .from(messages)
+          .innerJoin(
+            conversations,
+            eq(messages.conversationId, conversations.id),
+          )
+          .leftJoin(contacts, eq(conversations.contactId, contacts.id))
+          .where(
+            and(
+              eq(messages.direction, "outbound"),
+              inArray(messages.status, ["failed", "unknown"]),
+            ),
+          )
+          .orderBy(messages.createdAt, messages.id)
+          .limit(50);
+        const overdueTasks = await tx
+          .select({
+            id: tasks.id,
+            title: tasks.title,
+            dueAt: tasks.dueAt,
+            assigneeName: users.name,
+            contactId: tasks.contactId,
+            contactName: contacts.name,
+            dealId: tasks.dealId,
+          })
+          .from(tasks)
+          .leftJoin(users, eq(tasks.assigneeId, users.id))
+          .leftJoin(contacts, eq(tasks.contactId, contacts.id))
+          .where(
+            and(
+              notDeleted(tasks.deletedAt),
+              isNull(tasks.doneAt),
+              lt(tasks.dueAt, sql`now()`),
+            ),
+          )
+          .orderBy(tasks.dueAt, tasks.id)
+          .limit(50);
+        const idleDeals = await tx
+          .select({
+            id: deals.id,
+            title: deals.title,
+            stageName: stages.name,
+            pipelineName: pipelines.name,
+            valueCents: deals.valueCents,
+          })
+          .from(deals)
+          .innerJoin(stages, eq(deals.stageId, stages.id))
+          .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+          .where(
+            and(
+              notDeleted(deals.deletedAt),
+              sql`not exists (
+                select 1 from ${tasks} open_task
+                where open_task.deal_id = ${deals.id}
+                  and open_task.done_at is null
+                  and open_task.deleted_at is null
+              )`,
+            ),
+          )
+          .orderBy(deals.createdAt, deals.id)
+          .limit(50);
+        return {
+          unassigned,
+          awaitingReply,
+          sendIssues,
+          overdueTasks,
+          idleDeals,
+        };
+      }),
     listMessages: (workspaceId: string, conversationId: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const conversation = await tx
