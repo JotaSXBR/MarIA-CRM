@@ -35,12 +35,14 @@ function DealCard({ deal, canEdit }: { deal: Deal; canEdit: boolean }) {
         navigate({ to: "/deals/$dealId", params: { dealId: deal.id } })
       }
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm ${
+      className={`rounded-lg border border-border bg-white p-3 text-sm shadow-sm ${
         canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
       }`}
     >
       <p className="font-medium">{deal.title}</p>
-      {value ? <p className="mt-1 text-xs text-slate-500">{value}</p> : null}
+      {value ? (
+        <p className="mt-1 text-xs text-muted-foreground">{value}</p>
+      ) : null}
     </li>
   );
 }
@@ -85,7 +87,7 @@ function StageColumn({
   };
 
   return (
-    <div className="flex w-64 shrink-0 flex-col rounded-xl border border-slate-200 bg-slate-100">
+    <div className="flex w-64 shrink-0 flex-col rounded-xl border border-border bg-muted">
       <div className="flex items-center justify-between px-3 py-2">
         <h3 className="text-sm font-semibold">{stage.name}</h3>
         {canManage ? (
@@ -120,7 +122,7 @@ function StageColumn({
             placeholder="Novo negócio"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+            className="w-full rounded-lg border border-input px-2 py-1 text-sm"
           />
           <button
             type="submit"
@@ -290,7 +292,7 @@ export function PipelinesPage() {
             aria-label="Pipeline"
             value={selected?.id ?? ""}
             onChange={(event) => setPipelineId(event.target.value)}
-            className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+            className="rounded-lg border border-input px-2 py-1 text-sm"
           >
             {pipelines.map((pipeline) => (
               <option key={pipeline.id} value={pipeline.id}>
@@ -312,7 +314,7 @@ export function PipelinesPage() {
               placeholder="Novo pipeline"
               value={newPipeline}
               onChange={(event) => setNewPipeline(event.target.value)}
-              className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+              className="rounded-lg border border-input px-2 py-1 text-sm"
             />
             <button
               type="submit"
@@ -352,14 +354,14 @@ export function PipelinesPage() {
                   event.preventDefault();
                   if (newStage.trim()) createStage.mutate();
                 }}
-                className="flex w-64 shrink-0 flex-col gap-2 rounded-xl border border-dashed border-slate-300 p-3"
+                className="flex w-64 shrink-0 flex-col gap-2 rounded-xl border border-dashed border-input p-3"
               >
                 <input
                   aria-label="Nome da etapa"
                   placeholder="Nova etapa"
                   value={newStage}
                   onChange={(event) => setNewStage(event.target.value)}
-                  className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                  className="rounded-lg border border-input px-2 py-1 text-sm"
                 />
                 <button
                   type="submit"
@@ -372,7 +374,7 @@ export function PipelinesPage() {
           </div>
         </DndContext>
       ) : (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Nenhum pipeline ainda. Crie um para começar.
         </p>
       )}

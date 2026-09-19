@@ -69,7 +69,7 @@ export function CompaniesPage() {
       {canEdit ? (
         <form
           onSubmit={onSubmit}
-          className="mt-4 flex gap-3 rounded-xl border border-slate-200 bg-white p-4"
+          className="mt-4 flex gap-3 rounded-xl border border-border bg-white p-4"
         >
           <input
             required
@@ -77,7 +77,7 @@ export function CompaniesPage() {
             aria-label="Nome da empresa"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
           />
           <button
             type="submit"
@@ -93,7 +93,7 @@ export function CompaniesPage() {
                 setEditingId(null);
                 setName("");
               }}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-input px-3 py-2 text-sm"
             >
               Cancelar
             </button>
@@ -106,25 +106,25 @@ export function CompaniesPage() {
         </p>
       ) : null}
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="border-b border-border bg-muted text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Nome</th>
               <th className="px-4 py-3 font-medium">Criada em</th>
               <th className="px-4 py-3 font-medium" aria-label="Ações" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-slate-500">
+                <td colSpan={3} className="px-4 py-6 text-muted-foreground">
                   Carregando…
                 </td>
               </tr>
             ) : companies.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-slate-500">
+                <td colSpan={3} className="px-4 py-6 text-muted-foreground">
                   Nenhuma empresa ainda.
                 </td>
               </tr>
@@ -140,7 +140,7 @@ export function CompaniesPage() {
                       {company.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {new Date(company.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">

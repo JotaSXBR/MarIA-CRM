@@ -91,7 +91,7 @@ export function ContactsPage() {
       {canEdit ? (
         <form
           onSubmit={onSubmit}
-          className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-5"
+          className="mt-4 grid gap-3 rounded-xl border border-border bg-white p-4 sm:grid-cols-5"
         >
           <input
             required
@@ -99,7 +99,7 @@ export function ContactsPage() {
             aria-label="Nome"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-input px-3 py-2 text-sm"
           />
           <input
             type="email"
@@ -107,20 +107,20 @@ export function ContactsPage() {
             aria-label="Email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-input px-3 py-2 text-sm"
           />
           <input
             placeholder="Telefone"
             aria-label="Telefone"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-input px-3 py-2 text-sm"
           />
           <select
             aria-label="Empresa"
             value={form.companyId}
             onChange={(e) => setForm({ ...form, companyId: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-input px-3 py-2 text-sm"
           >
             <option value="">Sem empresa</option>
             {companies.map((company) => (
@@ -144,7 +144,7 @@ export function ContactsPage() {
                   setEditingId(null);
                   setForm(empty);
                 }}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-lg border border-input px-3 py-2 text-sm"
               >
                 Cancelar
               </button>
@@ -158,9 +158,9 @@ export function ContactsPage() {
         </p>
       ) : null}
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="border-b border-border bg-muted text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Nome</th>
               <th className="px-4 py-3 font-medium">Email</th>
@@ -169,16 +169,16 @@ export function ContactsPage() {
               <th className="px-4 py-3 font-medium" aria-label="Ações" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-muted-foreground">
                   Carregando…
                 </td>
               </tr>
             ) : contacts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-muted-foreground">
                   Nenhum contato ainda.
                 </td>
               </tr>
@@ -194,13 +194,13 @@ export function ContactsPage() {
                       {contact.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {contact.email ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {contact.phone ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {contact.companyId ? (
                       <Link
                         to="/companies/$companyId"

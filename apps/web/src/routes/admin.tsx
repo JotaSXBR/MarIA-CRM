@@ -38,7 +38,7 @@ type Member = {
 };
 
 const input =
-  "rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-60";
+  "rounded-lg border border-input px-3 py-2 text-sm disabled:opacity-60";
 const button =
   "rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60";
 
@@ -58,8 +58,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
+    <section className="rounded-xl border border-border bg-white p-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h2>
       <div className="mt-3">{children}</div>
@@ -238,7 +238,7 @@ export function AdminPage() {
     fn();
   };
 
-  if (!sessionLoaded) return <p className="text-sm text-slate-500">…</p>;
+  if (!sessionLoaded) return <p className="text-sm text-muted-foreground">…</p>;
   if (!session?.isAdmin) {
     return (
       <p role="alert" className="text-sm text-red-600">
@@ -338,7 +338,7 @@ export function AdminPage() {
           ) : null}
 
           <table className="mt-3 w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
+            <thead className="border-b border-border text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="py-2 font-medium">Email</th>
                 <th className="py-2 font-medium">Nome</th>
@@ -347,7 +347,7 @@ export function AdminPage() {
                 <th className="py-2 font-medium" aria-label="Ações" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {users.map((user) => (
                 <tr key={user.id}>
                   <td className="py-2">{user.email}</td>
@@ -392,7 +392,7 @@ export function AdminPage() {
           </form>
           <ul className="mt-3 space-y-1 text-sm">
             {orgs.map((org) => (
-              <li key={org.id} className="rounded-lg bg-slate-50 px-3 py-2">
+              <li key={org.id} className="rounded-lg bg-muted px-3 py-2">
                 {org.name}
               </li>
             ))}
@@ -438,10 +438,10 @@ export function AdminPage() {
             {workspaces.map((ws) => (
               <li
                 key={ws.id}
-                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
+                className="flex items-center justify-between rounded-lg bg-muted px-3 py-2"
               >
                 <span>{ws.name}</span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted-foreground">
                   {orgNameById.get(ws.orgId) ?? "—"}
                 </span>
               </li>
@@ -464,7 +464,7 @@ export function AdminPage() {
           </select>
 
           <table className="mt-3 w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
+            <thead className="border-b border-border text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="py-2 font-medium">Email</th>
                 <th className="py-2 font-medium">Nome</th>
@@ -472,7 +472,7 @@ export function AdminPage() {
                 <th className="py-2 font-medium" aria-label="Ações" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {members.map((member) => (
                 <tr key={member.id}>
                   <td className="py-2">{member.email}</td>
@@ -487,7 +487,7 @@ export function AdminPage() {
                           role: e.target.value as WorkspaceRole,
                         })
                       }
-                      className="rounded border border-slate-300 px-2 py-1 text-xs"
+                      className="rounded border border-input px-2 py-1 text-xs"
                     >
                       {roleOptions}
                     </select>
