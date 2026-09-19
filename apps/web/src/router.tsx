@@ -25,6 +25,7 @@ import { SettingsLayout } from "./routes/settings.tsx";
 import { SettingsProfilePage } from "./routes/settings-profile.tsx";
 import { SettingsChannelsPage } from "./routes/settings-channels.tsx";
 import { SettingsTagsPage } from "./routes/settings-tags.tsx";
+import { SettingsRepliesPage } from "./routes/settings-replies.tsx";
 import { SettingsAttributesPage } from "./routes/settings-attributes.tsx";
 import { SettingsMembersPage } from "./routes/settings-members.tsx";
 
@@ -183,6 +184,12 @@ const settingsTagsRoute = createRoute({
   component: SettingsTagsPage,
 });
 
+const settingsRepliesRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/replies",
+  component: SettingsRepliesPage,
+});
+
 const settingsAttributesRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/attributes",
@@ -217,6 +224,7 @@ export const routeTree = rootRoute.addChildren([
       settingsMembersRoute,
       settingsChannelsRoute,
       settingsTagsRoute,
+      settingsRepliesRoute,
       settingsAttributesRoute,
     ]),
   ]),

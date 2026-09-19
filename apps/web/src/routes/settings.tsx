@@ -5,6 +5,7 @@ const SETTINGS_NAV = [
   { to: "/settings/members", label: "Equipe" },
   { to: "/settings/channels", label: "Canais" },
   { to: "/settings/tags", label: "Tags" },
+  { to: "/settings/replies", label: "Respostas rápidas" },
   { to: "/settings/attributes", label: "Atributos" },
 ] as const;
 

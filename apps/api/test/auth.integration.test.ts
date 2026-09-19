@@ -103,8 +103,14 @@ function createDatabaseStub() {
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
     createOutboundIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
+    createConversationNote: vi.fn().mockResolvedValue({ kind: "missing" }),
     getMessage: vi.fn().mockResolvedValue(undefined),
     resolveUnknownMessage: vi.fn().mockResolvedValue({ kind: "missing" }),
+    listQuickReplies: vi.fn().mockResolvedValue([]),
+    getQuickReply: vi.fn().mockResolvedValue(undefined),
+    createQuickReply: vi.fn().mockResolvedValue(undefined),
+    updateQuickReply: vi.fn().mockResolvedValue(undefined),
+    deleteQuickReply: vi.fn().mockResolvedValue(false),
     claimDispatchIntent: vi.fn().mockResolvedValue({ kind: "missing" }),
     settleDispatch: vi.fn().mockResolvedValue({ kind: "settled" }),
     reapExpiredDispatches: vi.fn().mockResolvedValue({ reaped: 0 }),
@@ -2446,8 +2452,11 @@ test("inbox routes forward the authorized workspace to the database", async () =
     workspaceId,
     conversationId,
     providerMessageId: "msg-1",
+    kind: "message",
     direction: "inbound",
     status: "received",
+    authorUserId: null,
+    authorName: null,
     contentType: "text",
     body: "hello",
     mediaKey: null,
@@ -2719,14 +2728,18 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
   const conversationId = randomUUID();
   const intentId = randomUUID();
   const messageId = randomUUID();
+  const senderId = randomUUID();
   const now = new Date("2026-01-01T00:00:00Z");
   const sentMessage = {
     id: messageId,
     workspaceId,
     conversationId,
     providerMessageId: "waha-msg-1",
+    kind: "message",
     direction: "outbound",
     status: "sent",
+    authorUserId: senderId,
+    authorName: "User",
     contentType: "text",
     body: "hi there",
     mediaKey: null,
@@ -2761,7 +2774,7 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
   database.getMessage.mockResolvedValue(sentMessage);
   const auth = createAuthStub({
     verifySession: async () => ({
-      userId: randomUUID(),
+      userId: senderId,
       email: "user@example.com",
       name: "User",
       isAdmin: false,
@@ -2815,6 +2828,7 @@ test("POST /conversations/:id/messages commits the intent and settles dispatch",
     });
     expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
       conversationId,
+      authorUserId: senderId,
       body: "hi there",
       contentType: "text",
       media: null,
@@ -2921,8 +2935,11 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
         workspaceId,
         conversationId,
         providerMessageId: null,
+        kind: "message",
         direction: "outbound",
         status: "unknown",
+        authorUserId: null,
+        authorName: null,
         contentType: "text",
         body: "hello",
         mediaKey: null,
@@ -2936,8 +2953,11 @@ test("POST /conversations/:id/messages 404s for a missing conversation and maps 
       workspaceId,
       conversationId,
       providerMessageId: null,
+      kind: "message",
       direction: "outbound",
       status: "unknown",
+      authorUserId: null,
+      authorName: null,
       contentType: "text",
       body: "hello",
       mediaKey: null,
@@ -2981,8 +3001,11 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
     workspaceId,
     conversationId,
     providerMessageId: null,
+    kind: "message",
     direction: "outbound",
     status: "failed",
+    authorUserId: null,
+    authorName: null,
     contentType: "text",
     body: "retry me",
     mediaKey: null,
@@ -3008,9 +3031,10 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
     intentId,
     messageId: retriedMessageId,
   });
+  const retrierId = randomUUID();
   const auth = createAuthStub({
     verifySession: async () => ({
-      userId: randomUUID(),
+      userId: retrierId,
       email: "user@example.com",
       name: "User",
       isAdmin: false,
@@ -3039,6 +3063,7 @@ test("POST /messages/:id/retry creates a new intent for failed sends only", asyn
     // The retry is a brand-new intent carrying the same body (ADR 0010).
     expect(database.createOutboundIntent).toHaveBeenCalledWith(workspaceId, {
       conversationId,
+      authorUserId: retrierId,
       body: "retry me",
       contentType: "text",
       media: null,
@@ -3078,8 +3103,11 @@ test("POST /messages/:id/resolve confirms the outcome of unknown sends", async (
     workspaceId,
     conversationId: randomUUID(),
     providerMessageId: null,
+    kind: "message",
     direction: "outbound",
     status: "sent",
+    authorUserId: null,
+    authorName: null,
     contentType: "text",
     body: "hello",
     mediaKey: null,
@@ -3287,6 +3315,187 @@ test("POST /webhooks/waha resolves lid senders to a real phone", async () => {
       workspaceId,
       expect.objectContaining({ senderPhone: "5516999887766" }),
     );
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /conversations/:id/notes records an internal note without dispatch", async () => {
+  const workspaceId = randomUUID();
+  const conversationId = randomUUID();
+  const noteId = randomUUID();
+  const authorId = randomUUID();
+  const note = {
+    id: noteId,
+    workspaceId,
+    conversationId,
+    providerMessageId: null,
+    kind: "note",
+    direction: "internal",
+    status: "note",
+    authorUserId: authorId,
+    authorName: "Agente",
+    contentType: "text",
+    body: "Cliente pediu retorno às 15h.",
+    mediaKey: null,
+    mediaMime: null,
+    mediaFilename: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  const database = createDatabaseStub();
+  database.createConversationNote.mockResolvedValue({
+    kind: "created",
+    message: note,
+  });
+  database.getMessage.mockResolvedValue(note);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: authorId,
+      email: "agent@example.com",
+      name: "Agente",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "agent" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/notes?workspaceId=${workspaceId}`,
+      payload: { body: "x" },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: note.body },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      id: noteId,
+      kind: "note",
+      direction: "internal",
+      authorUserId: authorId,
+      authorName: "Agente",
+      body: note.body,
+    });
+    expect(database.createConversationNote).toHaveBeenCalledWith(workspaceId, {
+      conversationId,
+      authorUserId: authorId,
+      body: note.body,
+    });
+    // Notes never reach the dispatch path.
+    expect(database.createOutboundIntent).not.toHaveBeenCalled();
+
+    database.createConversationNote.mockResolvedValue({ kind: "missing" });
+    const missing = await app.inject({
+      method: "POST",
+      url: `/conversations/${conversationId}/notes?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "x" },
+    });
+    expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("quick reply routes scope CRUD to the workspace and map conflicts", async () => {
+  const workspaceId = randomUUID();
+  const replyId = randomUUID();
+  const now = new Date("2026-01-01T00:00:00Z");
+  const reply = {
+    id: replyId,
+    title: "Boas-vindas",
+    shortcut: "saudacao",
+    body: "Olá! Como posso ajudar?",
+    createdBy: "member-id",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const database = createDatabaseStub();
+  database.listQuickReplies.mockResolvedValue([reply]);
+  database.getQuickReply.mockResolvedValue(reply);
+  database.createQuickReply.mockResolvedValue(reply);
+  database.updateQuickReply.mockResolvedValue(reply);
+  database.deleteQuickReply.mockResolvedValue(true);
+  const auth = createAuthStub({
+    verifySession: async (token?: string) => ({
+      userId: token === "admin-token" ? "admin-id" : "member-id",
+      email: "member@example.com",
+      name: "Member",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async (_userId?: string, _ws?: string) =>
+      ({ role: "agent" }) as never,
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const list = await app.inject({
+      method: "GET",
+      url: `/quick-replies?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual([
+      expect.objectContaining({ id: replyId, shortcut: "saudacao" }),
+    ]);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/quick-replies?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { title: "Boas-vindas", shortcut: "/Saudacao", body: "Olá!" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(database.createQuickReply).toHaveBeenCalledWith(workspaceId, {
+      title: "Boas-vindas",
+      shortcut: "/Saudacao",
+      body: "Olá!",
+      createdBy: "member-id",
+    });
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/quick-replies/${replyId}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "Oi!" },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(database.updateQuickReply).toHaveBeenCalledWith(
+      workspaceId,
+      replyId,
+      { body: "Oi!" },
+    );
+
+    database.createQuickReply.mockResolvedValue(undefined);
+    const conflict = await app.inject({
+      method: "POST",
+      url: `/quick-replies?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { title: "x", shortcut: "saudacao", body: "y" },
+    });
+    expect(conflict.statusCode).toBe(409);
+
+    database.getQuickReply.mockResolvedValue(undefined);
+    const missing = await app.inject({
+      method: "PATCH",
+      url: `/quick-replies/${replyId}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+      payload: { body: "y" },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    // Deletes require manager — agents get 403.
+    const denied = await app.inject({
+      method: "DELETE",
+      url: `/quick-replies/${replyId}?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer token" },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(database.deleteQuickReply).not.toHaveBeenCalled();
   } finally {
     await app.close();
   }

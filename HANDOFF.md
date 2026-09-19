@@ -12,7 +12,7 @@ gh pr status
 
 ## Current objective
 
-- `main` at `3013dff` — PRs #61–#88 merged (…global search, accepted ADR 0015,
+- `main` at `1fb5747` — PRs #61–#89 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
   `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
   invitations, delegated member management, workspace onboarding
@@ -58,6 +58,36 @@ UPDATE` on the conversation row — `canDelegate` (route passes
     per conversation, header control — manager+ gets a member `<select>`
     (viewers excluded), agent gets Assumir/Liberar, viewer reads a
     label; "Histórico de atribuição" toggle lists the audit rows.
+- Slice 2.2 (branch `feat/conversation-collaboration`, in flight) —
+  **conversation collaboration: internal notes + quick replies**
+  (ROADMAP Phase 2.2):
+  - Migration `0021_conversation_collaboration.sql`: `messages` gains
+    `kind` (`message`|`note`, default `message`) + `author_user_id`
+    (FK users, SET NULL); new `quick_replies` table (workspace-scoped,
+    soft-delete, unique active `shortcut` per workspace, FORCE RLS,
+    runtime SELECT/INSERT/UPDATE — delete is `deleted_at`).
+  - Internal notes are `messages` rows (`kind=note`,
+    `direction=internal`): they share the unified timeline, never
+    create a dispatch intent and never reach the provider. Outbound
+    replies now persist `author_user_id` from the session.
+  - `@maria/database`: `messageColumns` gains `kind/authorUserId`;
+    both message reads join `users` for `authorName`;
+    `createConversationNote` validates the conversation inside the
+    scoped transaction; quick-reply CRUD normalizes `shortcut`
+    (lowercase, no leading `/`) and maps active duplicates to a
+    `duplicate` result (route → 409).
+  - API: `POST /conversations/:id/notes` (agent+, 404 missing
+    conversation, max body length enforced); new `quick-replies.ts`
+    plugin — `GET /quick-replies` (viewer+), `POST`/`PATCH` (agent+,
+    empty PATCH → 400), `DELETE` (manager+); message response schemas
+    expose `kind/authorUserId/authorName`.
+  - Web inbox: composer tabs `Responder | Nota interna` (Synthor model;
+    the third `✨Sugestão` tab stays deferred to ADR 0016); quick-reply
+    picker inserts into the reply draft without sending; attachment
+    actions hidden in note mode; notes render as warm full-width cards
+    via new `--note` tokens (light + dark) — never as channel bubbles.
+  - New settings page `/settings/replies` (list/create/edit/delete
+    quick replies; delete gated to manager+ in UI — server enforces).
 - Role-model note (user decision, 2026-09-19): keep the current
   capability matrix as-is for now; refine per-role specifics later,
   after more Phase 2 workflows exist. Route minimums are still chosen
@@ -594,10 +624,11 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Pick the next Phase 2 slice — candidates in order: conversation
-   collaboration (internal notes, quick replies — quick replies double
-   as the first editable knowledge base for the future observer),
-   conversation→CRM links, operator work center, next action/follow-up.
+1. Pick the next Phase 2 slice — candidates in order:
+   conversation→CRM links (right-side context panel, Synthor model),
+   operator work center, next action/follow-up. Quick replies from
+   slice 2.2 already seed the editable knowledge base the future
+   observer (ADR 0016) will read and suggest.
    Research is reorganized by theme under `research/` (local-only,
    gitignored): `competitive/` (feature inventory + monitoring-mode/UI
    study), `product/` (onboarding/roles — implemented), `sources/`,

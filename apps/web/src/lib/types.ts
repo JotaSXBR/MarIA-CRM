@@ -130,14 +130,28 @@ export type Message = {
   workspaceId: string;
   conversationId: string;
   providerMessageId: string | null;
+  /** `message` = channel traffic; `note` = workspace-internal note. */
+  kind: string;
   direction: string;
   status: string;
+  authorUserId: string | null;
+  authorName: string | null;
   contentType: string;
   body: string | null;
   hasMedia: boolean;
   mediaMime: string | null;
   mediaFilename: string | null;
   createdAt: string;
+};
+
+export type QuickReply = {
+  id: string;
+  title: string;
+  shortcut: string;
+  body: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ChannelInstance = {

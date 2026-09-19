@@ -1902,3 +1902,182 @@ test("inbox queues filter conversations and agents claim or release ownership", 
   );
   expect(await screen.findByText(/Atribuída a User por Gerente/)).toBeDefined();
 });
+
+test("inbox composer sends internal notes and inserts quick replies", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const userId = "123e4567-e89b-12d3-a456-426614174001";
+  const conversationId = "123e4567-e89b-12d3-a456-426614174010";
+  const calls: { url: string; method: string; body?: unknown }[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      calls.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            {
+              workspaceId,
+              workspaceName: "Workspace",
+              role: "agent",
+              onboarded: true,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/notes") && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "123e4567-e89b-12d3-a456-426614174020",
+            workspaceId,
+            conversationId,
+            providerMessageId: null,
+            kind: "note",
+            direction: "internal",
+            status: "note",
+            authorUserId: userId,
+            authorName: "User",
+            contentType: "text",
+            body: "Cliente pediu retorno às 15h.",
+            hasMedia: false,
+            mediaMime: null,
+            mediaFilename: null,
+            createdAt: "2026-01-01T00:00:00Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (url.includes("/quick-replies")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174021",
+              title: "Boas-vindas",
+              shortcut: "saudacao",
+              body: "Olá! Como posso ajudar?",
+              createdBy: userId,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/messages")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174022",
+              workspaceId,
+              conversationId,
+              providerMessageId: "waha-1",
+              kind: "message",
+              direction: "inbound",
+              status: "received",
+              authorUserId: null,
+              authorName: null,
+              contentType: "text",
+              body: "oi",
+              hasMedia: false,
+              mediaMime: null,
+              mediaFilename: null,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+            {
+              id: "123e4567-e89b-12d3-a456-426614174023",
+              workspaceId,
+              conversationId,
+              providerMessageId: null,
+              kind: "note",
+              direction: "internal",
+              status: "note",
+              authorUserId: userId,
+              authorName: "User",
+              contentType: "text",
+              body: "Verificar endereço antes de enviar.",
+              hasMedia: false,
+              mediaMime: null,
+              mediaFilename: null,
+              createdAt: "2026-01-01T00:01:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: conversationId,
+              workspaceId,
+              channelInstanceId: "123e4567-e89b-12d3-a456-426614174012",
+              contactId: null,
+              contactName: "Maria",
+              providerThreadId: "55119999@c.us",
+              assignedUserId: userId,
+              assignedUserName: "User",
+              assignedAt: "2026-01-01T00:00:00Z",
+              epoch: 1,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/members")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId,
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/inbox");
+  const user = userEvent.setup();
+  await user.click(await screen.findByText("Maria"));
+
+  // The existing note renders as a distinct card, not a channel bubble.
+  expect(await screen.findByText("Nota interna · User")).toBeDefined();
+  expect(screen.getByText("Verificar endereço antes de enviar.")).toBeDefined();
+
+  // The note tab posts to /notes instead of the channel send path.
+  await user.click(screen.getByRole("tab", { name: "Nota interna" }));
+  const noteInput = await screen.findByLabelText("Nota interna");
+  await user.type(noteInput, "Cliente pediu retorno às 15h.");
+  await user.click(screen.getByRole("button", { name: "Adicionar nota" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(`/conversations/${conversationId}/notes`),
+        method: "POST",
+        body: { body: "Cliente pediu retorno às 15h." },
+      }),
+    ),
+  );
+
+  // Back in reply mode, the quick-reply picker fills the draft.
+  await user.click(screen.getByRole("tab", { name: "Responder" }));
+  await user.click(screen.getByRole("button", { name: "Resposta rápida" }));
+  await user.click(await screen.findByText("Boas-vindas"));
+  expect((screen.getByLabelText("Mensagem") as HTMLInputElement).value).toBe(
+    "Olá! Como posso ajudar?",
+  );
+});

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -505,6 +506,132 @@ test("0020 adds conversation ownership and a forced-RLS assignment ledger", asyn
         { privilege_type: "INSERT" },
         { privilege_type: "SELECT" },
       ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}, 120000);
+
+test("0021 adds message kind/author and a forced-RLS quick replies table", async () => {
+  const all = await loadMigrations();
+  const collaboration = all.find(
+    (migration) => migration.name === "0021_conversation_collaboration.sql",
+  );
+  if (!collaboration) {
+    throw new Error("0021_conversation_collaboration.sql not found");
+  }
+  const prefix = all.filter((migration) => migration.name < collaboration.name);
+  const directory = await migrationDirectory(
+    Object.fromEntries(
+      prefix.map((migration) => [migration.name, migration.sql]),
+    ),
+  );
+  await withEmptyDatabase(async (connectionString, admin) => {
+    try {
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toHaveLength(prefix.length);
+
+      await writeFile(join(directory, collaboration.name), collaboration.sql);
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toEqual([collaboration.name]);
+
+      const { rows: columns } = await admin.query<{
+        column_name: string;
+        is_nullable: string;
+        column_default: string | null;
+      }>(
+        `select column_name, is_nullable, column_default from information_schema.columns
+         where table_name = 'messages' and column_name in ('kind', 'author_user_id')
+         order by column_name`,
+      );
+      expect(columns).toEqual([
+        {
+          column_name: "author_user_id",
+          is_nullable: "YES",
+          column_default: null,
+        },
+        {
+          column_name: "kind",
+          is_nullable: "NO",
+          column_default: "'message'::text",
+        },
+      ]);
+
+      const { rows: rls } = await admin.query<{
+        relforcerowsecurity: boolean;
+        relrowsecurity: boolean;
+      }>(
+        "select relforcerowsecurity, relrowsecurity from pg_class where relname = 'quick_replies'",
+      );
+      expect(rls).toEqual([
+        { relforcerowsecurity: true, relrowsecurity: true },
+      ]);
+
+      const { rows: policies } = await admin.query<{ policyname: string }>(
+        "select policyname from pg_policies where tablename = 'quick_replies'",
+      );
+      expect(policies).toEqual([
+        { policyname: "quick_replies_workspace_scope" },
+      ]);
+
+      const { rows: grants } = await admin.query<{
+        privilege_type: string;
+      }>(
+        `select privilege_type from information_schema.role_table_grants
+         where table_name = 'quick_replies' and grantee = 'maria_runtime'
+         order by privilege_type`,
+      );
+      expect(grants).toEqual([
+        { privilege_type: "INSERT" },
+        { privilege_type: "SELECT" },
+        { privilege_type: "UPDATE" },
+      ]);
+
+      // The live-shortcut unique index dedupes only active rows: deleting a
+      // reply frees its shortcut for reuse.
+      const org = randomUUID();
+      const ws = randomUUID();
+      await admin.query(
+        "insert into organizations (id, name) values ($1, 'O')",
+        [org],
+      );
+      await admin.query(
+        "insert into workspaces (id, org_id, name) values ($1, $2, 'W')",
+        [ws, org],
+      );
+      await admin.query(
+        `insert into quick_replies (workspace_id, title, shortcut, body)
+         values ($1, 'Oi', 'oi', 'Olá!')`,
+        [ws],
+      );
+      await expect(
+        admin.query(
+          `insert into quick_replies (workspace_id, title, shortcut, body)
+           values ($1, 'Oi 2', 'oi', 'Oi de novo')`,
+          [ws],
+        ),
+      ).rejects.toThrow(/duplicate key/);
+      await admin.query(
+        "update quick_replies set deleted_at = now() where workspace_id = $1",
+        [ws],
+      );
+      await admin.query(
+        `insert into quick_replies (workspace_id, title, shortcut, body)
+         values ($1, 'Oi 3', 'oi', 'Oi de novo')`,
+        [ws],
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

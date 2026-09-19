@@ -7,11 +7,13 @@ import type {
   Conversation,
   ConversationAssignment,
   Message,
+  QuickReply,
   WorkspaceMember,
 } from "@/lib/types";
 import { hasWorkspaceRole, useWorkspace } from "@/lib/workspace";
 
 type QueueFilter = "all" | "mine" | "unassigned";
+type ComposerMode = "reply" | "note";
 
 const QUEUE_TABS: { key: QueueFilter; label: string }[] = [
   { key: "all", label: "Todas" },
@@ -95,6 +97,21 @@ function MediaAttachment({
   }
 }
 
+/** Internal notes render as warm full-width cards — visually distinct from
+ * channel bubbles so an operator never mistakes one for a sent message. */
+function NoteCard({ message }: { message: Message }) {
+  return (
+    <div className="rounded-lg border border-note-border bg-note px-3 py-2 text-sm text-note-foreground">
+      <p className="text-xs font-medium">
+        Nota interna
+        {message.authorName ? ` · ${message.authorName}` : ""}
+      </p>
+      <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
+      <p className="mt-1 text-xs opacity-70">{formatTime(message.createdAt)}</p>
+    </div>
+  );
+}
+
 export function InboxPage() {
   const { workspace, session } = useWorkspace();
   const workspaceId = workspace?.workspaceId;
@@ -105,8 +122,11 @@ export function InboxPage() {
   const [queue, setQueue] = useState<QueueFilter>("all");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [repliesOpen, setRepliesOpen] = useState(false);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
@@ -148,6 +168,12 @@ export function InboxPage() {
     queryKey: ["contacts", workspaceId],
     queryFn: () => api<Contact[]>("/contacts", { workspaceId }),
     enabled: Boolean(workspaceId && contactPickerOpen),
+  });
+
+  const { data: quickReplies = [] } = useQuery({
+    queryKey: ["quick-replies", workspaceId],
+    queryFn: () => api<QuickReply[]>("/quick-replies", { workspaceId }),
+    enabled: Boolean(workspaceId && canEdit),
   });
 
   const selected = conversations.find((c) => c.id === selectedId);
@@ -231,11 +257,38 @@ export function InboxPage() {
     onError: () => setSendError("Não foi possível enviar o contato."),
   });
 
+  const invalidateMessages = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["messages", workspaceId, selectedId],
+    });
+
+  const sendNote = useMutation({
+    mutationFn: (body: string) =>
+      api<Message>(`/conversations/${selectedId}/notes`, {
+        method: "POST",
+        workspaceId,
+        body: { body },
+      }),
+    onSuccess: async () => {
+      setNoteDraft("");
+      setSendError(null);
+      await invalidateMessages();
+    },
+    onError: () => setSendError("Não foi possível registrar a nota."),
+  });
+
   const onSend = (event: FormEvent) => {
     event.preventDefault();
     const body = draft.trim();
     if (!selectedId || (!body && !attachment)) return;
     sendMessage.mutate({ body, file: attachment });
+  };
+
+  const onSendNote = (event: FormEvent) => {
+    event.preventDefault();
+    const body = noteDraft.trim();
+    if (!selectedId || !body) return;
+    sendNote.mutate(body);
   };
 
   const onAttach = (input: React.RefObject<HTMLInputElement | null>) => () => {
@@ -248,11 +301,6 @@ export function InboxPage() {
     if (file) setAttachment(file);
     event.target.value = "";
   };
-
-  const invalidateMessages = () =>
-    queryClient.invalidateQueries({
-      queryKey: ["messages", workspaceId, selectedId],
-    });
 
   // ADR 0010: retrying creates a NEW message+intent; the failed bubble stays
   // as history. `unknown` is never resent blindly — it must be resolved first
@@ -458,92 +506,100 @@ export function InboxPage() {
               ) : messages.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sem mensagens.</p>
               ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${
-                      message.direction === "inbound"
-                        ? "justify-start"
-                        : "justify-end"
-                    }`}
-                  >
+                messages.map((message) =>
+                  message.kind === "note" ? (
+                    <NoteCard key={message.id} message={message} />
+                  ) : (
                     <div
-                      className={`max-w-md rounded-lg px-3 py-2 text-sm ${
+                      key={message.id}
+                      className={`flex ${
                         message.direction === "inbound"
-                          ? "bg-muted text-foreground"
-                          : "bg-indigo-600 text-white"
+                          ? "justify-start"
+                          : "justify-end"
                       }`}
                     >
-                      <MediaAttachment
-                        message={message}
-                        workspaceId={workspaceId}
-                      />
-                      {message.body ? <p>{message.body}</p> : null}
-                      {!message.body && !message.hasMedia ? (
-                        <p>(mídia)</p>
-                      ) : null}
-                      <p
-                        className={`mt-1 text-right text-xs ${
+                      <div
+                        className={`max-w-md rounded-lg px-3 py-2 text-sm ${
                           message.direction === "inbound"
-                            ? "text-muted-foreground"
-                            : "text-indigo-100"
+                            ? "bg-muted text-foreground"
+                            : "bg-indigo-600 text-white"
                         }`}
                       >
-                        {formatTime(message.createdAt)}
-                        {message.direction === "outbound"
-                          ? ` · ${STATUS_LABELS[message.status] ?? message.status}`
-                          : ""}
-                      </p>
-                      {canEdit &&
-                      message.direction === "outbound" &&
-                      ["failed", "cancelled"].includes(message.status) ? (
-                        <button
-                          type="button"
-                          disabled={actionPending}
-                          onClick={() => retryMessage.mutate(message.id)}
-                          className="mt-1 text-xs font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
+                        <MediaAttachment
+                          message={message}
+                          workspaceId={workspaceId}
+                        />
+                        {message.body ? <p>{message.body}</p> : null}
+                        {!message.body && !message.hasMedia ? (
+                          <p>(mídia)</p>
+                        ) : null}
+                        <p
+                          className={`mt-1 text-right text-xs ${
+                            message.direction === "inbound"
+                              ? "text-muted-foreground"
+                              : "text-indigo-100"
+                          }`}
                         >
-                          Reenviar
-                        </button>
-                      ) : null}
-                      {canEdit &&
-                      message.direction === "outbound" &&
-                      message.status === "unknown" ? (
-                        <div className="mt-1 flex items-center justify-end gap-2 text-xs">
+                          {formatTime(message.createdAt)}
+                          {message.direction === "outbound" &&
+                          message.authorName
+                            ? ` · ${message.authorName}`
+                            : ""}
+                          {message.direction === "outbound"
+                            ? ` · ${STATUS_LABELS[message.status] ?? message.status}`
+                            : ""}
+                        </p>
+                        {canEdit &&
+                        message.direction === "outbound" &&
+                        ["failed", "cancelled"].includes(message.status) ? (
                           <button
                             type="button"
                             disabled={actionPending}
-                            onClick={() =>
-                              resolveUnknown.mutate({
-                                messageId: message.id,
-                                resolution: "sent",
-                              })
-                            }
-                            className="text-indigo-100 underline hover:text-white disabled:opacity-50"
-                          >
-                            Foi entregue
-                          </button>
-                          <button
-                            type="button"
-                            disabled={actionPending}
-                            onClick={() =>
-                              resolveUnknown.mutate({
-                                messageId: message.id,
-                                resolution: "not_sent",
-                              })
-                            }
-                            className="font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
+                            onClick={() => retryMessage.mutate(message.id)}
+                            className="mt-1 text-xs font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
                           >
                             Reenviar
                           </button>
-                        </div>
-                      ) : null}
+                        ) : null}
+                        {canEdit &&
+                        message.direction === "outbound" &&
+                        message.status === "unknown" ? (
+                          <div className="mt-1 flex items-center justify-end gap-2 text-xs">
+                            <button
+                              type="button"
+                              disabled={actionPending}
+                              onClick={() =>
+                                resolveUnknown.mutate({
+                                  messageId: message.id,
+                                  resolution: "sent",
+                                })
+                              }
+                              className="text-indigo-100 underline hover:text-white disabled:opacity-50"
+                            >
+                              Foi entregue
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionPending}
+                              onClick={() =>
+                                resolveUnknown.mutate({
+                                  messageId: message.id,
+                                  resolution: "not_sent",
+                                })
+                              }
+                              className="font-medium text-indigo-100 underline hover:text-white disabled:opacity-50"
+                            >
+                              Reenviar
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ),
+                )
               )}
             </div>
-            {canEdit && attachment ? (
+            {canEdit && attachment && composerMode === "reply" ? (
               <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
                 <span className="truncate">
                   Anexo: {attachment.name} ({Math.ceil(attachment.size / 1024)}{" "}
@@ -559,82 +615,186 @@ export function InboxPage() {
               </div>
             ) : null}
             {canEdit ? (
-              <form
-                onSubmit={onSend}
-                className="flex items-center gap-2 border-t border-border p-3"
-              >
-                <div className="relative">
+              <div className="border-t border-border">
+                <div
+                  className="flex gap-1 px-3 pt-2"
+                  role="tablist"
+                  aria-label="Modo do composer"
+                >
                   <button
                     type="button"
-                    aria-label="Anexar"
-                    onClick={() => {
-                      setContactPickerOpen(false);
-                      setAttachMenuOpen((open) => !open);
-                    }}
-                    className="rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+                    role="tab"
+                    aria-selected={composerMode === "reply"}
+                    onClick={() => setComposerMode("reply")}
+                    className={`rounded-md px-2 py-1 text-xs ${
+                      composerMode === "reply"
+                        ? "bg-indigo-100 font-medium text-indigo-700"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
                   >
-                    +
+                    Responder
                   </button>
-                  {attachMenuOpen ? (
-                    <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-border bg-white py-1 shadow-lg">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={composerMode === "note"}
+                    onClick={() => setComposerMode("note")}
+                    className={`rounded-md px-2 py-1 text-xs ${
+                      composerMode === "note"
+                        ? "bg-note font-medium text-note-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Nota interna
+                  </button>
+                </div>
+                {composerMode === "reply" ? (
+                  <form
+                    onSubmit={onSend}
+                    className="flex items-center gap-2 p-3"
+                  >
+                    <div className="relative">
                       <button
                         type="button"
-                        onClick={onAttach(imageVideoInput)}
-                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                        aria-label="Anexar"
+                        onClick={() => {
+                          setContactPickerOpen(false);
+                          setRepliesOpen(false);
+                          setAttachMenuOpen((open) => !open);
+                        }}
+                        className="rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
                       >
-                        Fotos e vídeos
+                        +
                       </button>
+                      {attachMenuOpen ? (
+                        <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-border bg-white py-1 shadow-lg">
+                          <button
+                            type="button"
+                            onClick={onAttach(imageVideoInput)}
+                            className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                          >
+                            Fotos e vídeos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onAttach(documentInput)}
+                            className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                          >
+                            Documento
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAttachMenuOpen(false);
+                              setContactPickerOpen(true);
+                            }}
+                            className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                          >
+                            Contato
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="relative">
                       <button
                         type="button"
-                        onClick={onAttach(documentInput)}
-                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
-                      >
-                        Documento
-                      </button>
-                      <button
-                        type="button"
+                        aria-label="Resposta rápida"
+                        title="Resposta rápida"
                         onClick={() => {
                           setAttachMenuOpen(false);
-                          setContactPickerOpen(true);
+                          setContactPickerOpen(false);
+                          setRepliesOpen((open) => !open);
                         }}
-                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                        className="rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
                       >
-                        Contato
+                        ⚡
                       </button>
+                      {repliesOpen ? (
+                        <div className="absolute bottom-11 left-0 w-72 rounded-lg border border-border bg-white py-1 shadow-lg">
+                          {quickReplies.length === 0 ? (
+                            <p className="px-4 py-2 text-xs text-muted-foreground">
+                              Nenhuma resposta rápida — crie em Configurações →
+                              Respostas rápidas.
+                            </p>
+                          ) : (
+                            quickReplies.map((reply) => (
+                              <button
+                                key={reply.id}
+                                type="button"
+                                onClick={() => {
+                                  setDraft(reply.body);
+                                  setRepliesOpen(false);
+                                }}
+                                className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
+                              >
+                                <span className="font-medium">
+                                  {reply.title}
+                                </span>{" "}
+                                <span className="text-xs text-muted-foreground">
+                                  /{reply.shortcut}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-                <input
-                  ref={imageVideoInput}
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={onFilePicked}
-                />
-                <input
-                  ref={documentInput}
-                  type="file"
-                  className="hidden"
-                  onChange={onFilePicked}
-                />
-                <input
-                  type="text"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder={
-                    attachment ? "Legenda (opcional)…" : "Escreva uma mensagem…"
-                  }
-                  aria-label="Mensagem"
-                  className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={sendMessage.isPending || !sendable}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  Enviar
-                </button>
-              </form>
+                    <input
+                      ref={imageVideoInput}
+                      type="file"
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={onFilePicked}
+                    />
+                    <input
+                      ref={documentInput}
+                      type="file"
+                      className="hidden"
+                      onChange={onFilePicked}
+                    />
+                    <input
+                      type="text"
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder={
+                        attachment
+                          ? "Legenda (opcional)…"
+                          : "Escreva uma mensagem…"
+                      }
+                      aria-label="Mensagem"
+                      className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={sendMessage.isPending || !sendable}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      Enviar
+                    </button>
+                  </form>
+                ) : (
+                  <form
+                    onSubmit={onSendNote}
+                    className="flex items-center gap-2 p-3"
+                  >
+                    <input
+                      type="text"
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="Nota visível apenas para a equipe…"
+                      aria-label="Nota interna"
+                      className="flex-1 rounded-lg border border-note-border bg-note px-3 py-2 text-sm text-note-foreground placeholder:text-note-foreground/60"
+                    />
+                    <button
+                      type="submit"
+                      disabled={sendNote.isPending || !noteDraft.trim()}
+                      className="rounded-lg border border-note-border bg-note px-4 py-2 text-sm font-medium text-note-foreground disabled:opacity-50"
+                    >
+                      Adicionar nota
+                    </button>
+                  </form>
+                )}
+              </div>
             ) : null}
             {canEdit && contactPickerOpen ? (
               <div className="max-h-48 overflow-y-auto border-t border-border">

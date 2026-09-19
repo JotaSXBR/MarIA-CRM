@@ -166,8 +166,11 @@ export function registerMessagingRoutes(
       "workspaceId",
       "conversationId",
       "providerMessageId",
+      "kind",
       "direction",
       "status",
+      "authorUserId",
+      "authorName",
       "contentType",
       "body",
       "hasMedia",
@@ -180,8 +183,11 @@ export function registerMessagingRoutes(
       workspaceId: { type: "string", format: "uuid" },
       conversationId: { type: "string", format: "uuid" },
       providerMessageId: { type: ["string", "null"] },
+      kind: { type: "string" },
       direction: { type: "string" },
       status: { type: "string" },
+      authorUserId: { type: ["string", "null"], format: "uuid" },
+      authorName: { type: ["string", "null"] },
       contentType: { type: "string" },
       body: { type: ["string", "null"] },
       hasMedia: { type: "boolean" },
@@ -198,8 +204,11 @@ export function registerMessagingRoutes(
     workspaceId: message.workspaceId,
     conversationId: message.conversationId,
     providerMessageId: message.providerMessageId,
+    kind: message.kind,
     direction: message.direction,
     status: message.status,
+    authorUserId: message.authorUserId,
+    authorName: message.authorName ?? null,
     contentType: message.contentType,
     body: message.body,
     hasMedia: message.mediaKey !== null,
@@ -508,13 +517,63 @@ export function registerMessagingRoutes(
       // `pending` message and status advances asynchronously.
       const created = await database.createOutboundIntent(
         authorized.workspaceId,
-        { conversationId: id, body: messageBody, contentType, media },
+        {
+          conversationId: id,
+          authorUserId: authorized.session.userId,
+          body: messageBody,
+          contentType,
+          media,
+        },
       );
       if (created.kind === "missing") return reply.code(404).send();
       void dispatcher.dispatchPending(authorized.workspaceId);
       const message = await database.getMessage(
         authorized.workspaceId,
         created.messageId,
+      );
+      if (!message) return reply.code(404).send();
+      return reply.code(201).send(messageJson(message));
+    },
+  );
+
+  // Internal notes are thread-visible rows that never reach the provider:
+  // the DB layer writes them without a dispatch intent (kind `note`).
+  app.post(
+    "/conversations/:id/notes",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        params: idParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["body"],
+          properties: {
+            body: { type: "string", minLength: 1, maxLength: 4096 },
+          },
+        },
+        response: {
+          201: messageSchema,
+          401: { type: "null" },
+          403: { type: "null" },
+          404: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply, "agent");
+      if (!authorized) return;
+      const { id } = request.params as { id: string };
+      const { body } = request.body as { body: string };
+      const created = await database.createConversationNote(
+        authorized.workspaceId,
+        { conversationId: id, authorUserId: authorized.session.userId, body },
+      );
+      if (created.kind === "missing") return reply.code(404).send();
+      const message = await database.getMessage(
+        authorized.workspaceId,
+        created.message.id,
       );
       if (!message) return reply.code(404).send();
       return reply.code(201).send(messageJson(message));
@@ -598,6 +657,7 @@ export function registerMessagingRoutes(
         authorized.workspaceId,
         {
           conversationId: original.conversationId,
+          authorUserId: authorized.session.userId,
           body: original.body,
           contentType: original.contentType,
           media: original.mediaKey
