@@ -575,7 +575,10 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
   `test:integration`/`test:e2e` scripts now pass `--testTimeout=30000`.
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
-- Old route pages still use raw `slate-*` classes; token migration is incremental.
+- Raw `slate-*` classes were fully migrated to design tokens (`border-input`,
+  `border-border`, `text-muted-foreground`, `text-foreground`, `bg-muted`,
+  `divide-border`, `bg-black/40` scrim) — zero raw palette classes remain in
+  `apps/web/src`.
 
 ## Deferred from the code-simplifier review
 

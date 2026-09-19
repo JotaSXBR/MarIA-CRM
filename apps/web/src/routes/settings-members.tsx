@@ -134,8 +134,8 @@ function InvitePanel({
           </Button>
         </form>
         {inviteLink ? (
-          <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-3">
-            <code className="min-w-0 flex-1 truncate text-xs text-slate-700">
+          <div className="flex items-center gap-2 rounded-md border border-dashed border-input bg-muted p-3">
+            <code className="min-w-0 flex-1 truncate text-xs text-foreground">
               {inviteLink}
             </code>
             <Button

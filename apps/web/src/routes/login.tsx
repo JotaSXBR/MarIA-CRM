@@ -28,16 +28,16 @@ export function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-muted p-4">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+        className="w-full max-w-sm rounded-xl border border-border bg-white p-8 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600">
           MarIA CRM
         </p>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">Entrar</h1>
-        <label className="mt-6 block text-sm font-medium text-slate-700">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">Entrar</h1>
+        <label className="mt-6 block text-sm font-medium text-foreground">
           Email
           <input
             type="email"
@@ -45,10 +45,10 @@ export function LoginPage() {
             autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
+        <label className="mt-4 block text-sm font-medium text-foreground">
           Senha
           <input
             type="password"
@@ -56,7 +56,7 @@ export function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
         {error ? (

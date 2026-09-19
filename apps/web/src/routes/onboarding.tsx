@@ -54,13 +54,15 @@ function StepCard({
               <CheckIcon className="size-3.5" aria-hidden />
             </span>
           ) : (
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-slate-300 text-xs font-medium text-slate-600">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-input text-xs font-medium text-muted-foreground">
               {index + 1}
             </span>
           )}
           <CardTitle className="text-base">{STEP_TITLES[step.id]}</CardTitle>
           {step.status === "skipped" ? (
-            <span className="ml-auto text-xs text-slate-500">Pulado</span>
+            <span className="ml-auto text-xs text-muted-foreground">
+              Pulado
+            </span>
           ) : null}
         </div>
       </CardHeader>
@@ -155,15 +157,17 @@ export function OnboardingPage() {
 
   if (memberships.isPending || (workspaceId && onboarding.isPending)) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <p className="text-sm text-slate-500">Carregando configuração…</p>
+      <main className="flex min-h-screen items-center justify-center bg-muted p-4">
+        <p className="text-sm text-muted-foreground">
+          Carregando configuração…
+        </p>
       </main>
     );
   }
 
   if (!workspace || onboarding.isError || !onboarding.data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+      <main className="flex min-h-screen items-center justify-center bg-muted p-4">
         <p role="alert" className="text-sm text-red-600">
           Não foi possível carregar a configuração do workspace.
         </p>
@@ -205,14 +209,14 @@ export function OnboardingPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
+    <main className="min-h-screen bg-muted px-4 py-10">
       <div className="mx-auto w-full max-w-xl space-y-6">
         <header className="space-y-1">
-          <p className="text-sm font-medium text-slate-500">MarIA CRM</p>
-          <h1 className="text-2xl font-semibold text-slate-900">
+          <p className="text-sm font-medium text-muted-foreground">MarIA CRM</p>
+          <h1 className="text-2xl font-semibold text-foreground">
             Configure {onboarding.data.workspaceName}
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             Quatro etapas e o workspace está pronto para operar.
           </p>
         </header>
@@ -248,7 +252,7 @@ export function OnboardingPage() {
                 </Button>
               </form>
             ) : (
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 {savedNiche
                   ? `Nicho: ${savedNiche}`
                   : "Nome e nicho do workspace."}
@@ -259,7 +263,7 @@ export function OnboardingPage() {
           <StepCard index={1} step={step("channel")}>
             {canConfigure && step("channel").status === "pending" ? (
               <div className="space-y-3">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-muted-foreground">
                   Conecte uma sessão do WhatsApp para receber conversas neste
                   workspace. Você também pode fazer isso depois.
                 </p>
@@ -282,7 +286,7 @@ export function OnboardingPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 {step("channel").status === "done"
                   ? "Canal conectado."
                   : "Conexão de canal adiada."}
@@ -293,7 +297,7 @@ export function OnboardingPage() {
           <StepCard index={2} step={step("team")}>
             {canConfigure && step("team").status === "pending" ? (
               <div className="space-y-3">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-muted-foreground">
                   Gere um link de convite e envie por qualquer canal.
                 </p>
                 <form onSubmit={submitInvite} className="space-y-3">
@@ -312,7 +316,7 @@ export function OnboardingPage() {
                       <Label htmlFor="onboarding-invite-role">Papel</Label>
                       <select
                         id="onboarding-invite-role"
-                        className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+                        className="h-9 rounded-md border border-input bg-white px-2 text-sm"
                         value={inviteRole}
                         onChange={(e) =>
                           setInviteRole(
@@ -345,8 +349,8 @@ export function OnboardingPage() {
                   </div>
                 </form>
                 {inviteLink ? (
-                  <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-700">
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
                       {inviteLink}
                     </span>
                     <Button
@@ -366,7 +370,7 @@ export function OnboardingPage() {
                 ) : null}
               </div>
             ) : (
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 {step("team").status === "done"
                   ? "Equipe convidada."
                   : "Convites adiados."}
@@ -376,7 +380,7 @@ export function OnboardingPage() {
 
           <StepCard index={3} step={step("review")}>
             <div className="space-y-3">
-              <ul className="space-y-1 text-sm text-slate-600">
+              <ul className="space-y-1 text-sm text-muted-foreground">
                 <li>Workspace: {onboarding.data.workspaceName}</li>
                 <li>Nicho: {savedNiche ?? "não informado"}</li>
                 <li>
@@ -401,7 +405,7 @@ export function OnboardingPage() {
                 </Button>
               ) : null}
               {canConfigure && pending.length > 0 ? (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Conclua ou pule cada etapa para finalizar.
                 </p>
               ) : null}

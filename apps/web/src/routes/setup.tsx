@@ -27,15 +27,15 @@ export function SetupPage() {
 
   if (status.isPending) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <p className="text-sm text-slate-500">Verificando instalação…</p>
+      <main className="flex min-h-screen items-center justify-center bg-muted p-4">
+        <p className="text-sm text-muted-foreground">Verificando instalação…</p>
       </main>
     );
   }
 
   if (status.isError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+      <main className="flex min-h-screen items-center justify-center bg-muted p-4">
         <p role="alert" className="text-sm text-red-600">
           Não foi possível verificar a instalação. Confira se a API está no ar.
         </p>
@@ -81,21 +81,21 @@ export function SetupPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-muted p-4">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+        className="w-full max-w-sm rounded-xl border border-border bg-white p-8 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600">
           MarIA CRM
         </p>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">
           Criar a conta mestre
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted-foreground">
           Primeiro acesso: crie o administrador e o primeiro workspace.
         </p>
-        <label className="mt-6 block text-sm font-medium text-slate-700">
+        <label className="mt-6 block text-sm font-medium text-foreground">
           Nome
           <input
             type="text"
@@ -103,10 +103,10 @@ export function SetupPage() {
             autoComplete="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
+        <label className="mt-4 block text-sm font-medium text-foreground">
           Email
           <input
             type="email"
@@ -114,10 +114,10 @@ export function SetupPage() {
             autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
+        <label className="mt-4 block text-sm font-medium text-foreground">
           Senha
           <input
             type="password"
@@ -126,23 +126,25 @@ export function SetupPage() {
             autoComplete="new-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
-        <p className="mt-1 text-xs text-slate-500">Mínimo de 8 caracteres.</p>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
+        <p className="mt-1 text-xs text-muted-foreground">
+          Mínimo de 8 caracteres.
+        </p>
+        <label className="mt-4 block text-sm font-medium text-foreground">
           Nome do workspace
           <input
             type="text"
             required
             value={workspaceName}
             onChange={(event) => setWorkspaceName(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
         {tokenRequired && !urlToken ? (
           <>
-            <label className="mt-4 block text-sm font-medium text-slate-700">
+            <label className="mt-4 block text-sm font-medium text-foreground">
               Token de instalação
               <input
                 type="text"
@@ -150,10 +152,10 @@ export function SetupPage() {
                 autoComplete="off"
                 value={manualToken}
                 onChange={(event) => setManualToken(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </label>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               Mostrado nos logs do servidor no primeiro boot.
             </p>
           </>

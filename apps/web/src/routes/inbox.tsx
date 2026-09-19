@@ -302,9 +302,9 @@ export function InboxPage() {
       <h1 id="inbox-title" className="sr-only">
         Caixa de entrada
       </h1>
-      <div className="flex w-80 flex-col rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="font-semibold text-slate-800">Conversas</h2>
+      <div className="flex w-80 flex-col rounded-lg border border-border bg-white">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="font-semibold text-foreground">Conversas</h2>
           <div className="mt-2 flex gap-1" role="tablist" aria-label="Fila">
             {QUEUE_TABS.map((tab) => (
               <button
@@ -316,7 +316,7 @@ export function InboxPage() {
                 className={`rounded-md px-2 py-1 text-xs ${
                   queue === tab.key
                     ? "bg-indigo-100 font-medium text-indigo-700"
-                    : "text-slate-600 hover:bg-slate-100"
+                    : "text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {tab.label}
@@ -326,9 +326,11 @@ export function InboxPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {loadingConversations ? (
-            <p className="p-2 text-sm text-slate-500">Carregando...</p>
+            <p className="p-2 text-sm text-muted-foreground">Carregando...</p>
           ) : conversations.length === 0 ? (
-            <p className="p-2 text-sm text-slate-500">Nenhuma conversa.</p>
+            <p className="p-2 text-sm text-muted-foreground">
+              Nenhuma conversa.
+            </p>
           ) : (
             conversations.map((conversation) => (
               <button
@@ -339,19 +341,19 @@ export function InboxPage() {
                   setHistoryOpen(false);
                   setAssignError(null);
                 }}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted ${
                   selectedId === conversation.id
                     ? "bg-indigo-50 text-indigo-700"
-                    : "text-slate-700"
+                    : "text-foreground"
                 }`}
               >
                 <p className="font-medium">
                   {conversation.contactName ?? conversation.providerThreadId}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   {formatTime(conversation.updatedAt)}
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   {conversation.assignedUserName ?? "Sem responsável"}
                 </p>
               </button>
@@ -359,21 +361,21 @@ export function InboxPage() {
           )}
         </div>
       </div>
-      <div className="flex flex-1 flex-col rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-1 flex-col rounded-lg border border-border bg-white">
         {selected ? (
           <>
-            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
               <div>
-                <h2 className="font-semibold text-slate-800">
+                <h2 className="font-semibold text-foreground">
                   {selected.contactName ?? selected.providerThreadId}
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   {selected.providerThreadId}
                 </p>
                 <button
                   type="button"
                   onClick={() => setHistoryOpen((open) => !open)}
-                  className="mt-1 text-xs text-slate-500 hover:underline"
+                  className="mt-1 text-xs text-muted-foreground hover:underline"
                 >
                   {historyOpen
                     ? "Ocultar histórico"
@@ -389,7 +391,7 @@ export function InboxPage() {
                     onChange={(event) =>
                       assignConversation.mutate(event.target.value || null)
                     }
-                    className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                    className="rounded-md border border-input px-2 py-1 text-xs text-foreground"
                   >
                     <option value="">Sem responsável</option>
                     {assignableMembers.map((member) => (
@@ -414,12 +416,12 @@ export function InboxPage() {
                     type="button"
                     disabled={assignConversation.isPending}
                     onClick={() => assignConversation.mutate(null)}
-                    className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-md border border-input px-3 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
                   >
                     Liberar
                   </button>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Responsável:{" "}
                     {selected.assignedUserName ?? "Sem responsável"}
                   </p>
@@ -430,7 +432,7 @@ export function InboxPage() {
               </div>
             </div>
             {historyOpen ? (
-              <div className="border-b border-slate-200 px-4 py-2 text-xs text-slate-600">
+              <div className="border-b border-border px-4 py-2 text-xs text-muted-foreground">
                 {assignments.length === 0 ? (
                   <p>Nenhuma atribuição registrada.</p>
                 ) : (
@@ -450,11 +452,11 @@ export function InboxPage() {
             ) : null}
             <div className="flex-1 space-y-3 overflow-y-auto p-4">
               {loadingMessages ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   Carregando mensagens...
                 </p>
               ) : messages.length === 0 ? (
-                <p className="text-sm text-slate-500">Sem mensagens.</p>
+                <p className="text-sm text-muted-foreground">Sem mensagens.</p>
               ) : (
                 messages.map((message) => (
                   <div
@@ -468,7 +470,7 @@ export function InboxPage() {
                     <div
                       className={`max-w-md rounded-lg px-3 py-2 text-sm ${
                         message.direction === "inbound"
-                          ? "bg-slate-100 text-slate-800"
+                          ? "bg-muted text-foreground"
                           : "bg-indigo-600 text-white"
                       }`}
                     >
@@ -483,7 +485,7 @@ export function InboxPage() {
                       <p
                         className={`mt-1 text-right text-xs ${
                           message.direction === "inbound"
-                            ? "text-slate-500"
+                            ? "text-muted-foreground"
                             : "text-indigo-100"
                         }`}
                       >
@@ -542,7 +544,7 @@ export function InboxPage() {
               )}
             </div>
             {canEdit && attachment ? (
-              <div className="flex items-center gap-2 border-t border-slate-200 px-3 py-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
                 <span className="truncate">
                   Anexo: {attachment.name} ({Math.ceil(attachment.size / 1024)}{" "}
                   KB)
@@ -559,7 +561,7 @@ export function InboxPage() {
             {canEdit ? (
               <form
                 onSubmit={onSend}
-                className="flex items-center gap-2 border-t border-slate-200 p-3"
+                className="flex items-center gap-2 border-t border-border p-3"
               >
                 <div className="relative">
                   <button
@@ -569,23 +571,23 @@ export function InboxPage() {
                       setContactPickerOpen(false);
                       setAttachMenuOpen((open) => !open);
                     }}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                    className="rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
                   >
                     +
                   </button>
                   {attachMenuOpen ? (
-                    <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    <div className="absolute bottom-11 left-0 w-48 rounded-lg border border-border bg-white py-1 shadow-lg">
                       <button
                         type="button"
                         onClick={onAttach(imageVideoInput)}
-                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
                       >
                         Fotos e vídeos
                       </button>
                       <button
                         type="button"
                         onClick={onAttach(documentInput)}
-                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
                       >
                         Documento
                       </button>
@@ -595,7 +597,7 @@ export function InboxPage() {
                           setAttachMenuOpen(false);
                           setContactPickerOpen(true);
                         }}
-                        className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                        className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted"
                       >
                         Contato
                       </button>
@@ -623,7 +625,7 @@ export function InboxPage() {
                     attachment ? "Legenda (opcional)…" : "Escreva uma mensagem…"
                   }
                   aria-label="Mensagem"
-                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
                 />
                 <button
                   type="submit"
@@ -635,21 +637,21 @@ export function InboxPage() {
               </form>
             ) : null}
             {canEdit && contactPickerOpen ? (
-              <div className="max-h-48 overflow-y-auto border-t border-slate-200">
+              <div className="max-h-48 overflow-y-auto border-t border-border">
                 <div className="flex items-center justify-between px-4 py-2">
-                  <p className="text-xs font-medium text-slate-600">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Enviar contato
                   </p>
                   <button
                     type="button"
                     onClick={() => setContactPickerOpen(false)}
-                    className="text-xs text-slate-500 hover:underline"
+                    className="text-xs text-muted-foreground hover:underline"
                   >
                     Fechar
                   </button>
                 </div>
                 {phoneContacts.length === 0 ? (
-                  <p className="px-4 pb-3 text-xs text-slate-500">
+                  <p className="px-4 pb-3 text-xs text-muted-foreground">
                     Nenhum contato com telefone.
                   </p>
                 ) : (
@@ -659,10 +661,10 @@ export function InboxPage() {
                       type="button"
                       disabled={sendContact.isPending}
                       onClick={() => sendContact.mutate(contact)}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="block w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted disabled:opacity-50"
                     >
                       {contact.name}{" "}
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-muted-foreground">
                         {contact.phone}
                       </span>
                     </button>
@@ -675,7 +677,7 @@ export function InboxPage() {
             ) : null}
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
+          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             Selecione uma conversa para visualizar as mensagens.
           </div>
         )}

@@ -7,8 +7,8 @@ import { WORKSPACE_ROLE_LABELS, type SessionUser } from "@/lib/workspace";
 
 function InviteShell({ children }: { children: ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-screen items-center justify-center bg-muted p-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-white p-8 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600">
           MarIA CRM
         </p>
@@ -90,7 +90,9 @@ export function InvitePage() {
   if (preview.isPending || (getToken() && session.isPending)) {
     return (
       <InviteShell>
-        <p className="mt-4 text-sm text-slate-500">Verificando convite…</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Verificando convite…
+        </p>
       </InviteShell>
     );
   }
@@ -99,10 +101,10 @@ export function InvitePage() {
     const status = preview.error instanceof ApiError ? preview.error.status : 0;
     return (
       <InviteShell>
-        <h1 className="mt-2 text-xl font-semibold text-slate-900">
+        <h1 className="mt-2 text-xl font-semibold text-foreground">
           Convite indisponível
         </h1>
-        <p role="alert" className="mt-2 text-sm text-slate-600">
+        <p role="alert" className="mt-2 text-sm text-muted-foreground">
           {status === 410
             ? "Este convite expirou ou já foi utilizado. Peça um novo link ao administrador do workspace."
             : "Este link de convite é inválido. Confira o endereço ou peça um novo link."}
@@ -116,10 +118,10 @@ export function InvitePage() {
 
   return (
     <InviteShell>
-      <h1 className="mt-2 text-xl font-semibold text-slate-900">
+      <h1 className="mt-2 text-xl font-semibold text-foreground">
         Convite para {invite.workspaceName}
       </h1>
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-sm text-muted-foreground">
         {invite.email} foi convidado como {WORKSPACE_ROLE_LABELS[invite.role]}{" "}
         neste workspace.
       </p>
@@ -142,7 +144,7 @@ export function InvitePage() {
           </>
         ) : (
           <>
-            <p className="mt-4 text-sm text-slate-600">
+            <p className="mt-4 text-sm text-muted-foreground">
               Você está conectado como {currentUser.email}. Este convite é para{" "}
               {invite.email}.
             </p>
@@ -152,7 +154,7 @@ export function InvitePage() {
                 setToken(null);
                 window.location.reload();
               }}
-              className="mt-6 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="mt-6 w-full rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               Sair e usar outra conta
             </button>
@@ -160,7 +162,7 @@ export function InvitePage() {
         )
       ) : (
         <form onSubmit={createAccount}>
-          <label className="mt-6 block text-sm font-medium text-slate-700">
+          <label className="mt-6 block text-sm font-medium text-foreground">
             Nome
             <input
               type="text"
@@ -168,10 +170,10 @@ export function InvitePage() {
               autoComplete="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </label>
-          <label className="mt-4 block text-sm font-medium text-slate-700">
+          <label className="mt-4 block text-sm font-medium text-foreground">
             Senha
             <input
               type="password"
@@ -180,10 +182,10 @@ export function InvitePage() {
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              className="mt-1 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </label>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             Mínimo de 8 caracteres. Uma conta será criada para {invite.email}.
           </p>
           {error ? (

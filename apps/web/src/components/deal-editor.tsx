@@ -65,7 +65,7 @@ export function DealEditor({
     <div
       role="dialog"
       aria-label={`Editar ${deal.title}`}
-      className="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <form
@@ -83,7 +83,7 @@ export function DealEditor({
           placeholder="Título"
           value={form.title}
           onChange={(event) => setForm({ ...form, title: event.target.value })}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-input px-3 py-2 text-sm"
         />
         <input
           type="number"
@@ -93,7 +93,7 @@ export function DealEditor({
           placeholder="Valor (R$)"
           value={form.value}
           onChange={(event) => setForm({ ...form, value: event.target.value })}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-input px-3 py-2 text-sm"
         />
         <select
           aria-label="Contato"
@@ -101,7 +101,7 @@ export function DealEditor({
           onChange={(event) =>
             setForm({ ...form, contactId: event.target.value })
           }
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-input px-3 py-2 text-sm"
         >
           <option value="">Sem contato</option>
           {contacts.map((contact) => (
@@ -116,7 +116,7 @@ export function DealEditor({
           onChange={(event) =>
             setForm({ ...form, companyId: event.target.value })
           }
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-input px-3 py-2 text-sm"
         >
           <option value="">Sem empresa</option>
           {companies.map((company) => (
@@ -141,7 +141,7 @@ export function DealEditor({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-input px-3 py-2 text-sm"
           >
             Cancelar
           </button>
