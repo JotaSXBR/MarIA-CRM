@@ -1916,6 +1916,25 @@ export function createDatabase(pool: Pool) {
           )
           .limit(50);
       }),
+    // Links the conversation to a CRM contact (or clears it). undefined when
+    // the conversation is missing/out of scope or the contact is not an
+    // active row in this workspace — callers map both to 404, matching the
+    // updateContact foreign-ref convention.
+    setConversationContact: (
+      workspaceId: string,
+      conversationId: string,
+      contactId: string | null,
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        if (contactId && !(await contactCompanyRefsValid(tx, { contactId })))
+          return undefined;
+        const rows = await tx
+          .update(conversations)
+          .set({ contactId, updatedAt: new Date() })
+          .where(eq(conversations.id, conversationId))
+          .returning({ id: conversations.id });
+        return rows[0];
+      }),
     listMessages: (workspaceId: string, conversationId: string) =>
       withWorkspace(workspaceId, async (tx) => {
         const conversation = await tx

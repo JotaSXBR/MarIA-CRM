@@ -214,3 +214,60 @@ test("quick replies are workspace-scoped with normalized unique shortcuts", asyn
   const list = await database.listQuickReplies(workspaceA);
   expect(list.map((row) => row.shortcut)).toEqual(["preco", "saudacao"]);
 });
+
+test("conversations link only to contacts in the same workspace", async () => {
+  const contactA = await database.createContact(workspaceA, {
+    name: "Ana",
+    phone: "+55119990001",
+  });
+  const contactB = await database.createContact(workspaceB, {
+    name: "Bruno",
+    phone: "+55119990002",
+  });
+  if (!contactA || !contactB) throw new Error("contact seed failed");
+
+  // Missing conversation and cross-tenant contact both resolve to undefined.
+  expect(
+    await database.setConversationContact(
+      workspaceA,
+      randomUUID(),
+      contactA.id,
+    ),
+  ).toBeUndefined();
+  expect(
+    await database.setConversationContact(
+      workspaceA,
+      conversationId,
+      contactB.id,
+    ),
+  ).toBeUndefined();
+  expect(
+    await database.setConversationContact(
+      workspaceB,
+      conversationId,
+      contactA.id,
+    ),
+  ).toBeUndefined();
+
+  expect(
+    await database.setConversationContact(
+      workspaceA,
+      conversationId,
+      contactA.id,
+    ),
+  ).toEqual({ id: conversationId });
+  expect(
+    await database.getConversation(workspaceA, conversationId),
+  ).toMatchObject({ contactId: contactA.id, contactName: "Ana" });
+
+  // Detaching clears the link and keeps the contact row intact.
+  expect(
+    await database.setConversationContact(workspaceA, conversationId, null),
+  ).toEqual({ id: conversationId });
+  expect(
+    await database.getConversation(workspaceA, conversationId),
+  ).toMatchObject({ contactId: null, contactName: null });
+  expect(await database.getContact(workspaceA, contactA.id)).toMatchObject({
+    name: "Ana",
+  });
+});

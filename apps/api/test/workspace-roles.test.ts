@@ -98,6 +98,7 @@ function createDatabaseStub() {
     receiveInboundMessage: vi.fn().mockResolvedValue({ kind: "duplicate" }),
     listConversations: vi.fn().mockResolvedValue([]),
     assignConversation: vi.fn().mockResolvedValue({ kind: "not-found" }),
+    setConversationContact: vi.fn().mockResolvedValue(undefined),
     listConversationAssignments: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),

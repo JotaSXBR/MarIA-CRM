@@ -12,7 +12,7 @@ gh pr status
 
 ## Current objective
 
-- `main` at `1fb5747` — PRs #61–#89 merged (…global search, accepted ADR 0015,
+- `main` at `057f250` — PRs #61–#90 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
   `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
   invitations, delegated member management, workspace onboarding
@@ -58,7 +58,24 @@ UPDATE` on the conversation row — `canDelegate` (route passes
     per conversation, header control — manager+ gets a member `<select>`
     (viewers excluded), agent gets Assumir/Liberar, viewer reads a
     label; "Histórico de atribuição" toggle lists the audit rows.
-- Slice 2.2 (branch `feat/conversation-collaboration`, in flight) —
+- Slice 2.3 (branch `feat/conversation-crm-links`, in flight) —
+  **conversation → CRM context panel** (ROADMAP Phase 2.3):
+  - `setConversationContact` validates the contact inside the scoped tx
+    (`contactCompanyRefsValid`) and clears/links via one UPDATE — missing
+    conversation or out-of-workspace contact → undefined → 404.
+  - API `PATCH /conversations/:id/contact {contactId|null}` (agent+) returns
+    the conversation projection; entity reads reuse existing
+    `GET /contacts/:id{,/deals,/tasks}` and `GET /companies/:id`.
+  - Web `components/conversation-context.tsx`: right-side `w-80` panel
+    (`hidden lg:flex`, container `max-w-7xl`) with Contato (info, company
+    link, attach/detach picker, create-and-link mini form), Negócios
+    (`EntityDealList`) and Tarefas (compact add/toggle over the contacts
+    routes). UI visibility is cosmetic — the route enforces agent+.
+  - Deferred from the roadmap item: deal creation inside the panel (needs
+    pipeline/stage pickers — operators still create deals from
+    `/pipelines`); entity notes stay on the contact page (internal notes
+    already cover the thread).
+- Slice 2.2 (merged in #90) —
   **conversation collaboration: internal notes + quick replies**
   (ROADMAP Phase 2.2):
   - Migration `0021_conversation_collaboration.sql`: `messages` gains
@@ -624,11 +641,12 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Pick the next Phase 2 slice — candidates in order:
-   conversation→CRM links (right-side context panel, Synthor model),
-   operator work center, next action/follow-up. Quick replies from
-   slice 2.2 already seed the editable knowledge base the future
-   observer (ADR 0016) will read and suggest.
+1. Pick the next Phase 2 slice — candidates in order: operator work
+   center (one actionable queue: unassigned, overdue tasks, failed
+   sends, deals without next action), next action/follow-up, deal
+   creation inside the conversation panel. Quick replies from 2.2 and
+   the context panel from 2.3 seed the surfaces the future observer
+   (ADR 0016) will read and annotate.
    Research is reorganized by theme under `research/` (local-only,
    gitignored): `competitive/` (feature inventory + monitoring-mode/UI
    study), `product/` (onboarding/roles — implemented), `sources/`,
