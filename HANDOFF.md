@@ -26,14 +26,14 @@ gh pr status
     `workspaces` is an identity table (no RLS; runtime holds
     SELECT/INSERT/UPDATE) — access gated by membership at route level.
   - `@maria/auth`: `ONBOARDING_STEPS` registry (`basics → channel → team
-    → review`), `getOnboarding` (stored status wins; else auto-resolve —
+→ review`), `getOnboarding` (stored status wins; else auto-resolve —
     `channel` done when a channel instance exists, `team` when members
     > 1), `updateOnboardingStep` (manager-facing write; `review` is
-    `invalid-step`; frozen after `onboarded_at`), `completeOnboarding`
-    (requires every non-review step done|skipped; sets `onboarded_at` +
-    marks `review` done; idempotent). Both mutations take `FOR UPDATE`
-    on the workspace row — read-modify-write merge, no lost updates.
-    `listUserWorkspaces` now returns `onboarded: boolean`.
+    > `invalid-step`; frozen after `onboarded_at`), `completeOnboarding`
+    > (requires every non-review step done|skipped; sets `onboarded_at` +
+    > marks `review` done; idempotent). Both mutations take `FOR UPDATE`
+    > on the workspace row — read-modify-write merge, no lost updates.
+    > `listUserWorkspaces` now returns `onboarded: boolean`.
   - API `routes/onboarding.ts`: `GET /onboarding` (viewer+),
     `PATCH /onboarding/steps/:step` (manager+; `review` excluded from
     the params enum → 400), `POST /onboarding/complete` (manager+; 409
