@@ -12,12 +12,14 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#81 merged (…global search, accepted ADR 0015,
+- `main` at `3013dff` — PRs #61–#88 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
   `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
   invitations, delegated member management, workspace onboarding
-  wizard). **Phase 1 (access foundation + onboarding) is complete**
-  per ROADMAP.md / ADR 0015.
+  wizard, conversation ownership/queues, ADRs 0016–0018, Devin-only
+  agent contract, testcontainer flake fixes, web token pass).
+  **Phase 1 (access foundation + onboarding) is complete** per
+  ROADMAP.md / ADR 0015.
 - Product track: **Phase 2 — human operator workflow** per
   `ROADMAP.md`. Slices proceed one at a time; the next is chosen
   after each merge (see Next actions).
@@ -26,13 +28,12 @@ gh pr status
   ownership → telemetry, editable knowledge base → later agent reads),
   keep autonomous execution for Phase 4 once the Execution Plane
   exists.
-- Tooling track: branch `chore/devin-agent-contract` — Devin-only
-  contract cleanup: `.codex/` removed, `.claude/` local residue removed,
-  AGENTS.md routing section replaced by a tool-agnostic delegation
-  policy, `.devin/config.json` reduced to the valid project schema,
-  `.gitignore` consolidated. No product code touched.
-- Branch `feat/conversation-ownership` — **Slice 2.1, conversation
-  ownership and queues** (ROADMAP Phase 2.1):
+- UI strategy (user decision, 2026-09-19): hybrid — each new feature
+  lands with correct design; a dedicated density/empty-state pass
+  closes Phase 2 rather than waiting for project end. The raw
+  `slate-*` → semantic-token migration is done (#88).
+- Slice 2.1 (merged in #83) — **conversation ownership and queues**
+  (ROADMAP Phase 2.1):
   - Migration `0020_conversation_ownership.sql`: `conversations` gains
     `assigned_user_id` (FK users, SET NULL) + `assigned_at`; new
     append-only `conversation_assignments` audit table (FORCE RLS,
@@ -573,6 +574,10 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
   (#86). Separately, the Vitest default `testTimeout` of 5s was too tight
   under CI CPU contention (mock-only `setup.test.ts` timed out on #85) —
   `test:integration`/`test:e2e` scripts now pass `--testTimeout=30000`.
+  Third flake type seen on #88: `invitations.integration.test.ts`
+  concurrent-accept raced to zero winners once in CI (passes locally);
+  transient `pnpm audit` 503s also occur — rerun first, investigate
+  only on repeat.
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Raw `slate-*` classes were fully migrated to design tokens (`border-input`,
@@ -589,8 +594,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge the conversation-ownership PR once checks pass, then pick the
-   next Phase 2 slice — candidates in order: conversation
+1. Pick the next Phase 2 slice — candidates in order: conversation
    collaboration (internal notes, quick replies — quick replies double
    as the first editable knowledge base for the future observer),
    conversation→CRM links, operator work center, next action/follow-up.
