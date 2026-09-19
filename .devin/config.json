@@ -1,22 +1,7 @@
 {
-  "project": "MarIA CRM",
-  "license": "AGPL-3.0-only",
-  "sources": {
-    "contract": "AGENTS.md",
-    "architecture": "ARCHITECTURE.md",
-    "decisions": "adr/README.md",
-    "setupAndVerification": "DEVELOPMENT.md",
-    "checkpoint": "HANDOFF.md",
-    "commandsAndVersions": "package.json",
-    "resolvedDependencies": "pnpm-lock.yaml"
-  },
-  "devinSkills": [
-    "maria-dev-setup",
-    "maria-database-rls",
-    "maria-api-development",
-    "maria-testing",
-    "maria-devin-adaptation"
-  ],
-  "skillPath": ".devin/skills/<name>/SKILL.md",
-  "localOptionalHooks": [".devin/hooks.v1.json", ".devin/rtk-pretooluse.mjs"]
+  "read_config_from": {
+    "cursor": false,
+    "windsurf": false,
+    "claude": false
+  }
 }
