@@ -12,15 +12,21 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#80 merged (…global search, accepted ADR 0015,
+- `main` — PRs #61–#81 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
   `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
-  invitations, delegated member management).
-- Product track: **onboarding + workspace roles** per `ROADMAP.md` and
-  ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
-  after each merge.
-- Branch `feat/workspace-onboarding` — **Slice 1.5, workspace onboarding
-  wizard** (ADR 0015 item 6), PR #81 open:
+  invitations, delegated member management, workspace onboarding
+  wizard). **Phase 1 (access foundation + onboarding) is complete**
+  per ROADMAP.md / ADR 0015.
+- Product track: **Phase 2 — human operator workflow** per
+  `ROADMAP.md`. Slices proceed one at a time; the next is chosen
+  after each merge (see Next actions).
+- Role-model note (user decision, 2026-09-19): keep the current
+  capability matrix as-is for now; refine per-role specifics later,
+  after more Phase 2 workflows exist. Route minimums are still chosen
+  per slice.
+- Slice 1.5 detail (merged in #81, merge commit `e0225a6`) —
+  workspace onboarding wizard (ADR 0015 item 6):
   - Migration `0019_workspace_onboarding.sql`: `workspaces` gains
     `onboarding_state` jsonb (default `'{}'`) + `onboarded_at`.
     `workspaces` is an identity table (no RLS; runtime holds
@@ -516,6 +522,10 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 ## Blockers and risks
 
 - None blocking.
+- Testcontainer flake: `@maria/auth` `test:integration` hit PostgreSQL
+  `57P01` (connection terminated) twice in CI (#80, #81) — teardown or
+  startup race, not a regression. Re-run resolves it; if it recurs,
+  investigate pool teardown order.
 - `components.json` reports `"style": "base-nova"` — works; revisit if the CLI
   complains on future `add` runs.
 - Old route pages still use raw `slate-*` classes; token migration is incremental.
@@ -529,14 +539,14 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #81 (workspace onboarding) once checks pass — Phase 1
-   (access foundation + onboarding) is then complete per ROADMAP.md.
-2. On resume: Phase 2 — human operator workflow (conversation
-   ownership/queues is the first candidate), or reassess whether a
-   passive-observer/knowledge-base slice now outranks it. Research at
-   `research/monitoring-mode-crms-2026-09-19.md` — key findings:
-   Selliq's "Modo Monitoramento" (observer agent, read-only, suggests KB
-   changes, telemetry before trust) and Score Duplo; deskcomm's
-   62-tool/9-domain MCP catalog with risk-tiered bundles is the model
-   for the future Execution Plane.
+1. Choose the first Phase 2 slice — human operator workflow
+   (conversation ownership/queues is the first candidate), or reassess
+   whether a passive-observer/knowledge-base slice now outranks it.
+   Research at `research/monitoring-mode-crms-2026-09-19.md` — key
+   findings: Selliq's "Modo Monitoramento" (observer agent, read-only,
+   suggests KB changes, telemetry before trust) and Score Duplo;
+   deskcomm's 62-tool/9-domain MCP catalog with risk-tiered bundles is
+   the model for the future Execution Plane.
+2. Consolidated permission-matrix review after enough Phase 2
+   functionality exists (route minimums continue to be set per slice).
 3. Deferred alternative: attribute-based filtering in list views.
