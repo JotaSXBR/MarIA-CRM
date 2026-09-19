@@ -103,6 +103,13 @@ AI-specific onboarding, `/setup-mariacrm`, machine identities, agent tools and a
 remain out of scope until this phase. Earlier phases should expose reusable workspace-scoped domain
 contracts, not speculative AI abstractions.
 
+The product directions adopted for this phase from competitive research are recorded in proposed
+ADRs [0016](adr/0016-ai-observation-modes.md) (observation-mode ladder: `off → observe → suggest →
+auto`, read-only observer, `ai` inbox queue + handback), [0017](adr/0017-agent-tool-catalog.md)
+(domain-grouped tool catalog with risk tiers and journey packages) and
+[0018](adr/0018-ai-output-rationale.md) (every AI score/suggestion persists a written rationale;
+dual lead + human score).
+
 ## Decision criteria
 
 At every reassessment, prefer the candidate that best combines:

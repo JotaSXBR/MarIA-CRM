@@ -26,3 +26,8 @@ ADR 0009 defines the record lifecycle.
 | 0011 | [Concurrent administrator protection](0011-admin-invariant-concurrency.md)                      | accepted                                    |
 | 0012 | [Transactional migration history](0012-transactional-migration-history.md)                      | accepted                                    |
 | 0013 | [WhatsApp interaction choreography and LID identity](0013-whatsapp-interaction-choreography.md) | accepted; implemented (PRs #51–#54)         |
+| 0014 | [Custom attributes model](0014-custom-attributes-model.md)                                      | accepted                                    |
+| 0015 | [Workspace roles and onboarding](0015-workspace-roles-and-onboarding.md)                        | accepted; implemented (PRs #75–#81)         |
+| 0016 | [AI observation modes](0016-ai-observation-modes.md)                                            | proposed                                    |
+| 0017 | [Agent tool catalog](0017-agent-tool-catalog.md)                                                | proposed                                    |
+| 0018 | [AI output carries rationale](0018-ai-output-rationale.md)                                      | proposed                                    |
