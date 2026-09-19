@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { Pool } from "pg";
 import { createDatabase } from "@maria/database";
-import { startTestDatabase } from "@maria/database/testing";
+import { silencePoolErrors, startTestDatabase } from "@maria/database/testing";
 import { createLocalAuth } from "../src/index.ts";
 
 let admin: Pool;
@@ -33,7 +33,9 @@ async function createIndependentRuntimeAuth(applicationName: string) {
   uri.username = "maria_runtime";
   uri.password = "runtime";
   uri.searchParams.set("application_name", applicationName);
-  const pool = new Pool({ connectionString: uri.toString(), max: 1 });
+  const pool = silencePoolErrors(
+    new Pool({ connectionString: uri.toString(), max: 1 }),
+  );
   concurrentPools.push(pool);
   await pool.query("select 1");
   return createLocalAuth(pool, createDatabase(pool), {});

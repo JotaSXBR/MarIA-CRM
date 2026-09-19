@@ -589,11 +589,17 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
    collaboration (internal notes, quick replies — quick replies double
    as the first editable knowledge base for the future observer),
    conversation→CRM links, operator work center, next action/follow-up.
-   Research at `research/monitoring-mode-crms-2026-09-19.md` — key
-   findings: Selliq's "Modo Monitoramento" (observer agent, read-only,
-   suggests KB changes, telemetry before trust) and Score Duplo;
-   deskcomm's 62-tool/9-domain MCP catalog with risk-tiered bundles is
-   the model for the future Execution Plane.
+   Research is reorganized by theme under `research/` (local-only,
+   gitignored): `competitive/` (feature inventory + monitoring-mode/UI
+   study), `product/` (onboarding/roles — implemented), `sources/`,
+   `evidence/`, plus `INDEX.md`. Directions adopted from the monitoring
+   research are recorded as proposed ADRs **0016** (AI observation modes:
+   `off → observe → suggest → auto`, read-only observer producing
+   human-reviewed suggestions, `ai` queue + handback UX), **0017** (agent
+   tool catalog: domains, `safe|attention|critical` risk, journey
+   packages, per-agent ceiling, propose-then-confirm writes) and **0018**
+   (every AI score/suggestion persists a written `rationale`; dual
+   lead+human score is the observer's report).
 2. Consolidated permission-matrix review after enough Phase 2
    functionality exists (route minimums continue to be set per slice).
 3. Deferred alternative: attribute-based filtering in list views.

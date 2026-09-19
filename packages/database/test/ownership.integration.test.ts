@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { createDatabase } from "../src/index.ts";
-import { startTestDatabase } from "@maria/database/testing";
+import { silencePoolErrors, startTestDatabase } from "@maria/database/testing";
 
 const workspaceA = randomUUID();
 const workspaceB = randomUUID();
@@ -21,7 +21,9 @@ let conversationId: string;
 const concurrentPools: Pool[] = [];
 
 function createIndependentDatabase() {
-  const pool = new Pool({ connectionString: runtimeUri, max: 1 });
+  const pool = silencePoolErrors(
+    new Pool({ connectionString: runtimeUri, max: 1 }),
+  );
   concurrentPools.push(pool);
   return createDatabase(pool);
 }
@@ -95,7 +97,7 @@ test("assignment table forces RLS and history stays workspace-scoped", async () 
   );
   expect(rls.rows[0]?.relforcerowsecurity).toBe(true);
 
-  const runtime = new Pool({ connectionString: runtimeUri });
+  const runtime = silencePoolErrors(new Pool({ connectionString: runtimeUri }));
   try {
     await expect(
       runtime.query("select * from conversation_assignments"),

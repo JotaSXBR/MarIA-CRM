@@ -9,7 +9,11 @@ import {
   applyMigrations,
   loadMigrations,
 } from "../src/migrate.ts";
-import { startTestDatabase, type TestDatabase } from "./utils/postgres.ts";
+import {
+  silencePoolErrors,
+  startTestDatabase,
+  type TestDatabase,
+} from "./utils/postgres.ts";
 
 let database: TestDatabase;
 
@@ -90,7 +94,7 @@ async function withEmptyDatabase(
     "postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af",
   ).start();
   const connectionString = container.getConnectionUri();
-  const admin = new Pool({ connectionString });
+  const admin = silencePoolErrors(new Pool({ connectionString }));
   try {
     await callback(connectionString, admin);
   } finally {
