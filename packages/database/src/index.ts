@@ -34,6 +34,7 @@ import {
   notes,
   organizations,
   pipelines,
+  quickReplies,
   stages,
   tags,
   tasks,
@@ -281,6 +282,20 @@ export function createDatabase(pool: Pool) {
     createdAt: tags.createdAt,
   };
 
+  const quickReplyColumns = {
+    id: quickReplies.id,
+    title: quickReplies.title,
+    shortcut: quickReplies.shortcut,
+    body: quickReplies.body,
+    createdBy: quickReplies.createdBy,
+    createdAt: quickReplies.createdAt,
+    updatedAt: quickReplies.updatedAt,
+  };
+
+  /** `/saudacao` → `saudacao`: lowercase, no leading slash, collapsed spaces. */
+  const normalizeShortcut = (input: string) =>
+    input.trim().toLowerCase().replace(/^\/+/, "").replace(/\s+/g, "-");
+
   type EntityTagTable =
     typeof contactTags | typeof companyTags | typeof dealTags;
   type EntityTagColumn =
@@ -496,8 +511,10 @@ export function createDatabase(pool: Pool) {
     workspaceId: messages.workspaceId,
     conversationId: messages.conversationId,
     providerMessageId: messages.providerMessageId,
+    kind: messages.kind,
     direction: messages.direction,
     status: messages.status,
+    authorUserId: messages.authorUserId,
     contentType: messages.contentType,
     body: messages.body,
     mediaKey: messages.mediaKey,
@@ -505,6 +522,14 @@ export function createDatabase(pool: Pool) {
     mediaFilename: messages.mediaFilename,
     createdAt: messages.createdAt,
   };
+
+  /** Message rows + the author's display name (null for provider-authored
+   * inbound). Both message reads share the join. */
+  const messagesWithAuthor = (tx: DrizzleTx) =>
+    tx
+      .select({ ...messageColumns, authorName: users.name })
+      .from(messages)
+      .leftJoin(users, eq(messages.authorUserId, users.id));
 
   type EntityFilter = {
     contactId?: string | undefined;
@@ -1247,6 +1272,111 @@ export function createDatabase(pool: Pool) {
           .returning({ id: tags.id });
         return rows.length > 0;
       }),
+    listQuickReplies: (workspaceId: string) =>
+      withWorkspace(workspaceId, (tx) =>
+        tx
+          .select(quickReplyColumns)
+          .from(quickReplies)
+          .where(notDeleted(quickReplies.deletedAt))
+          .orderBy(quickReplies.shortcut, quickReplies.id),
+      ),
+    getQuickReply: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select(quickReplyColumns)
+          .from(quickReplies)
+          .where(
+            and(eq(quickReplies.id, id), notDeleted(quickReplies.deletedAt)),
+          )
+          .limit(1);
+        return rows[0];
+      }),
+    // undefined when another active reply already uses the shortcut (→ 409).
+    createQuickReply: (
+      workspaceId: string,
+      input: {
+        title: string;
+        shortcut: string;
+        body: string;
+        createdBy?: string | null;
+      },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const shortcut = normalizeShortcut(input.shortcut);
+        const existing = await tx
+          .select({ id: quickReplies.id })
+          .from(quickReplies)
+          .where(
+            and(
+              eq(quickReplies.shortcut, shortcut),
+              notDeleted(quickReplies.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) return undefined;
+        const rows = await tx
+          .insert(quickReplies)
+          .values({
+            workspaceId,
+            title: input.title,
+            shortcut,
+            body: input.body,
+            createdBy: input.createdBy ?? null,
+          })
+          .returning(quickReplyColumns);
+        const row = rows[0];
+        if (!row) throw new Error("quick reply insert returned no row");
+        return row;
+      }),
+    // undefined when another active reply already uses the shortcut — callers
+    // resolve the row first for 404 vs 409.
+    updateQuickReply: (
+      workspaceId: string,
+      id: string,
+      input: { title?: string; shortcut?: string; body?: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const patch = {
+          ...input,
+          ...(input.shortcut !== undefined
+            ? { shortcut: normalizeShortcut(input.shortcut) }
+            : {}),
+          updatedAt: new Date(),
+        };
+        if (patch.shortcut !== undefined) {
+          const conflict = await tx
+            .select({ id: quickReplies.id })
+            .from(quickReplies)
+            .where(
+              and(
+                eq(quickReplies.shortcut, patch.shortcut),
+                ne(quickReplies.id, id),
+                notDeleted(quickReplies.deletedAt),
+              ),
+            )
+            .limit(1);
+          if (conflict[0]) return undefined;
+        }
+        const rows = await tx
+          .update(quickReplies)
+          .set(patch)
+          .where(
+            and(eq(quickReplies.id, id), notDeleted(quickReplies.deletedAt)),
+          )
+          .returning(quickReplyColumns);
+        return rows[0];
+      }),
+    deleteQuickReply: (workspaceId: string, id: string) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .update(quickReplies)
+          .set({ deletedAt: new Date() })
+          .where(
+            and(eq(quickReplies.id, id), notDeleted(quickReplies.deletedAt)),
+          )
+          .returning({ id: quickReplies.id });
+        return rows.length > 0;
+      }),
     listContactTags: (workspaceId: string, contactId: string) =>
       withWorkspace(workspaceId, (tx) =>
         tagsForEntity(tx, contactTags, contactTags.contactId, contactId),
@@ -1799,17 +1929,13 @@ export function createDatabase(pool: Pool) {
           )
           .limit(1);
         if (!conversation[0]) return [];
-        return tx
-          .select(messageColumns)
-          .from(messages)
+        return messagesWithAuthor(tx)
           .where(eq(messages.conversationId, conversationId))
           .orderBy(messages.createdAt, messages.id);
       }),
     getMessage: (workspaceId: string, messageId: string) =>
       withWorkspace(workspaceId, async (tx) => {
-        const rows = await tx
-          .select(messageColumns)
-          .from(messages)
+        const rows = await messagesWithAuthor(tx)
           .where(
             and(
               eq(messages.id, messageId),
@@ -1818,6 +1944,37 @@ export function createDatabase(pool: Pool) {
           )
           .limit(1);
         return rows[0];
+      }),
+    /**
+     * Internal note: a thread-visible row that never leaves the workspace —
+     * `kind`/`direction` keep it out of the dispatch path entirely (no intent
+     * row is written), so no provider ever sees it.
+     */
+    createConversationNote: (
+      workspaceId: string,
+      input: { conversationId: string; authorUserId: string; body: string },
+    ) =>
+      withWorkspace(workspaceId, async (tx) => {
+        const rows = await tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, input.conversationId))
+          .limit(1);
+        if (!rows[0]) return { kind: "missing" } as const;
+        const [note] = await tx
+          .insert(messages)
+          .values({
+            workspaceId,
+            conversationId: rows[0].id,
+            kind: "note",
+            direction: "internal",
+            status: "note",
+            authorUserId: input.authorUserId,
+            contentType: "text",
+            body: input.body,
+          })
+          .returning(messageColumns);
+        return { kind: "created" as const, message: note! };
       }),
     /**
      * ADR 0010 operator resolution for `unknown` sends: the provider may have
@@ -1860,6 +2017,7 @@ export function createDatabase(pool: Pool) {
       workspaceId: string,
       input: {
         conversationId: string;
+        authorUserId?: string | null;
         body?: string | null;
         contentType?: string;
         media?: { key: string; mime: string; filename?: string | null } | null;
@@ -1885,6 +2043,7 @@ export function createDatabase(pool: Pool) {
             conversationId: conversation.id,
             direction: "outbound",
             status: "pending",
+            authorUserId: input.authorUserId ?? null,
             contentType: input.contentType ?? "text",
             body: input.body ?? null,
             mediaKey: input.media?.key ?? null,

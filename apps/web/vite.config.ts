@@ -51,6 +51,7 @@ export default defineConfig({
       "/notes": api,
       "/tasks": api,
       "/tags": api,
+      "/quick-replies": api,
       "/attributes": api,
       "/search": api,
       "/channel-instances": api,

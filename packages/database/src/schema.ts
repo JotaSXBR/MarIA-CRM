@@ -573,8 +573,15 @@ export const messages = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" })
       .notNull(),
     providerMessageId: text("provider_message_id"),
+    /** `message` flows through the channel; `note` is workspace-internal
+     * (direction `internal`, never dispatched to a provider). */
+    kind: text().notNull().default("message"),
     direction: text().notNull(),
     status: text().notNull().default("received"),
+    /** Human author of outbound messages and internal notes. */
+    authorUserId: uuid("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     contentType: text("content_type").notNull().default("text"),
     body: text(),
     /** Object-store key of the attachment bytes (MediaStore), when present. */
@@ -587,12 +594,44 @@ export const messages = pgTable(
   },
   (table) => [
     index("messages_conversation_id_idx").on(table.conversationId),
+    index("messages_author_user_idx").on(table.authorUserId),
     // NULLs-distinct is intended here: local messages without a provider id
     // may coexist; only provider-identified messages deduplicate.
     uniqueIndex("messages_provider_id_idx").on(
       table.conversationId,
       table.providerMessageId,
     ),
+  ],
+);
+
+/** Workspace-scoped reply templates; the first editable knowledge surface. */
+export const quickReplies = pgTable(
+  "quick_replies",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    title: text().notNull(),
+    /** Operator trigger, e.g. `/saudacao` — unique per workspace while active. */
+    shortcut: text().notNull(),
+    body: text().notNull(),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("quick_replies_workspace_id_idx").on(table.workspaceId),
+    uniqueIndex("quick_replies_workspace_shortcut_active_idx")
+      .on(table.workspaceId, table.shortcut)
+      .where(sql`${table.deletedAt} is null`),
   ],
 );
 
