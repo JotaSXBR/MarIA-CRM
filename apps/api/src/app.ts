@@ -17,6 +17,7 @@ import { registerAttributeRoutes } from "./routes/attributes.ts";
 import { registerSearchRoutes } from "./routes/search.ts";
 import { registerTagRoutes } from "./routes/tags.ts";
 import { registerQuickReplyRoutes } from "./routes/quick-replies.ts";
+import { registerWorkQueueRoutes } from "./routes/work-queue.ts";
 import { registerInvitationRoutes } from "./routes/invitations.ts";
 import { registerOnboardingRoutes } from "./routes/onboarding.ts";
 
@@ -99,6 +100,7 @@ export function buildApp(dependencies?: AppDependencies) {
     registerPipelineRoutes(app, scoped);
     registerTagRoutes(app, scoped);
     registerQuickReplyRoutes(app, scoped);
+    registerWorkQueueRoutes(app, scoped);
     registerAttributeRoutes(app, scoped);
     registerSearchRoutes(app, scoped);
     registerInvitationRoutes(app, {

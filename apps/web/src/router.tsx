@@ -19,6 +19,7 @@ import { CompanyDetailPage } from "./routes/company-detail.tsx";
 import { PipelinesPage } from "./routes/pipelines.tsx";
 import { DealDetailPage } from "./routes/deal-detail.tsx";
 import { InboxPage } from "./routes/inbox.tsx";
+import { WorkCenterPage } from "./routes/work-center.tsx";
 import { SearchPage } from "./routes/search.tsx";
 import { AdminPage } from "./routes/admin.tsx";
 import { SettingsLayout } from "./routes/settings.tsx";
@@ -90,9 +91,7 @@ const appRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/inbox" });
-  },
+  component: WorkCenterPage,
 });
 
 const pipelinesRoute = createRoute({

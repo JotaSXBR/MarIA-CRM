@@ -2269,3 +2269,105 @@ test("inbox context panel links a contact and shows CRM data", async () => {
     ),
   );
 });
+
+test("work center renders the actionable queue sections", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const userId = "123e4567-e89b-12d3-a456-426614174001";
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          {
+            workspaceId,
+            workspaceName: "Workspace",
+            role: "agent",
+            onboarded: true,
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/work-queue")) {
+      return new Response(
+        JSON.stringify({
+          unassigned: [
+            {
+              id: "123e4567-e89b-12d3-a456-426614174010",
+              contactName: "Ana",
+              providerThreadId: "55119999@c.us",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+          awaitingReply: [
+            {
+              id: "123e4567-e89b-12d3-a456-426614174011",
+              contactName: null,
+              providerThreadId: "55118888@c.us",
+              lastInboundAt: "2026-01-01T01:00:00Z",
+            },
+          ],
+          sendIssues: [
+            {
+              id: "123e4567-e89b-12d3-a456-426614174012",
+              conversationId: "123e4567-e89b-12d3-a456-426614174010",
+              contactName: "Ana",
+              status: "failed",
+              createdAt: "2026-01-01T02:00:00Z",
+            },
+          ],
+          overdueTasks: [
+            {
+              id: "123e4567-e89b-12d3-a456-426614174013",
+              title: "Retornar ligação",
+              dueAt: "2026-01-01T03:00:00Z",
+              assigneeName: "User",
+              contactId: "123e4567-e89b-12d3-a456-426614174030",
+              contactName: "Ana",
+              dealId: null,
+            },
+          ],
+          idleDeals: [
+            {
+              id: "123e4567-e89b-12d3-a456-426614174014",
+              title: "Proposta anual",
+              stageName: "Negociação",
+              pipelineName: "Vendas",
+              valueCents: 120000,
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith("/me")) {
+      return new Response(
+        JSON.stringify({
+          userId,
+          email: "user@example.com",
+          name: "User",
+          isAdmin: false,
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/");
+
+  expect(
+    await screen.findByRole("heading", { name: "Central do operador" }),
+  ).toBeDefined();
+  expect(await screen.findByText("Aguardando resposta")).toBeDefined();
+  expect(screen.getByText("Sem responsável")).toBeDefined();
+  expect(screen.getByText("Envios para revisar")).toBeDefined();
+  expect(screen.getByText("Tarefas vencidas")).toBeDefined();
+  expect(screen.getByText("Negócios sem próxima ação")).toBeDefined();
+  expect(screen.getByText("55118888@c.us")).toBeDefined();
+  expect(screen.getByText("Retornar ligação")).toBeDefined();
+  expect(screen.getByText("Proposta anual")).toBeDefined();
+  expect(screen.getByText("Falhou")).toBeDefined();
+});

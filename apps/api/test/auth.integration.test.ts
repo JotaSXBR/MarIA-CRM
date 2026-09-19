@@ -100,6 +100,13 @@ function createDatabaseStub() {
     listConversations: vi.fn().mockResolvedValue([]),
     assignConversation: vi.fn().mockResolvedValue({ kind: "not-found" }),
     setConversationContact: vi.fn().mockResolvedValue(undefined),
+    listWorkQueue: vi.fn().mockResolvedValue({
+      unassigned: [],
+      awaitingReply: [],
+      sendIssues: [],
+      overdueTasks: [],
+      idleDeals: [],
+    }),
     listConversationAssignments: vi.fn().mockResolvedValue([]),
     getConversation: vi.fn().mockResolvedValue(undefined),
     listMessages: vi.fn().mockResolvedValue([]),
@@ -3595,6 +3602,56 @@ test("PATCH /conversations/:id/contact links only in-scope contacts", async () =
       payload: { contactId },
     });
     expect(missing.statusCode).toBe(404);
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /work-queue returns the workspace queue to any member", async () => {
+  const workspaceId = randomUUID();
+  const viewerId = randomUUID();
+  const queue = {
+    unassigned: [
+      {
+        id: randomUUID(),
+        contactName: "Ana",
+        providerThreadId: "55119999@c.us",
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+      },
+    ],
+    awaitingReply: [],
+    sendIssues: [],
+    overdueTasks: [],
+    idleDeals: [],
+  };
+  const database = createDatabaseStub();
+  database.listWorkQueue.mockResolvedValue(queue);
+  const auth = createAuthStub({
+    verifySession: async () => ({
+      userId: viewerId,
+      email: "viewer@example.com",
+      name: "Viewer",
+      isAdmin: false,
+    }),
+    authorizeWorkspace: async () => ({ role: "viewer" }),
+  });
+  const app = buildApp({ database, auth });
+  try {
+    const unauthenticated = await app.inject({
+      method: "GET",
+      url: `/work-queue?workspaceId=${workspaceId}`,
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(database.listWorkQueue).not.toHaveBeenCalled();
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/work-queue?workspaceId=${workspaceId}`,
+      headers: { authorization: "Bearer viewer-token" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().unassigned).toHaveLength(1);
+    expect(database.listWorkQueue).toHaveBeenCalledWith(workspaceId);
   } finally {
     await app.close();
   }

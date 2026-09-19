@@ -5,6 +5,7 @@ import {
   ChevronsUpDown,
   Inbox,
   Kanban,
+  ListChecks,
   LogOut,
   Search,
   Settings,
@@ -38,6 +39,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const NAV_ITEMS = [
+  { to: "/", label: "Central", icon: ListChecks },
   { to: "/inbox", label: "Caixa de entrada", icon: Inbox },
   { to: "/search", label: "Busca", icon: Search },
   { to: "/contacts", label: "Contatos", icon: Users },
