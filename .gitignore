@@ -3,39 +3,73 @@
 .env.*
 !.env.example
 !.env.*.example
+.direnv/
 *.pem
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
 
-# Dependencies and build output
+# Dependencies, caches, and build output
 node_modules/
 .pnpm-store/
 .turbo/
 dist/
 build/
 coverage/
+.nyc_output/
+*.lcov
 .cache/
+.vite/
+.eslintcache
+.stylelintcache
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+*.tsbuildinfo
+*.tgz
 
 # Test and runtime output
 playwright-report/
 test-results/
+logs/
 *.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+pids/
 *.pid
+*.pid.lock
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
 *.db
+*.db-shm
+*.db-wal
 
-# Local tooling and operating-system files
+# Local tooling, editors, and operating-system files
 .codex/
 .claude/
 .devin/hooks.v1.json
 .devin/rtk-pretooluse.mjs
+.devin/task-observer/
 .idea/
+.history/
 .DS_Store
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.stackdump
 *.swp
 *.swo
+*~
+*.orig
+*.rej
+AGENTS.local.md
+.devin/config.local.json
+.devin/mcp_config.local.json
 
 # Local infrastructure state
 .docker-data/
@@ -44,14 +78,16 @@ data/
 tmp/
 temp/
 
-# Local backups
+# Local backups and data exports
 Backups/
+*.bak
+*.backup
+*.dump
+*.sql.gz
 
-# Local-only documentation and agent configuration
-docs/
+# Local-only research and agent configuration
 research/
 CLAUDE.md
 CODEX.md
 AGENTS.md.old
 STACK-REVIEW-2026-09-09.md
-*.tsbuildinfo

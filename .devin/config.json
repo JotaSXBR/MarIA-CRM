@@ -3,5 +3,15 @@
     "cursor": false,
     "windsurf": false,
     "claude": false
+  },
+  "permissions": {
+    "deny": [
+      "Exec(git push --force)",
+      "Exec(git push -f)",
+      "Exec(drizzle-kit push)",
+      "Exec(pnpm drizzle-kit push)",
+      "Exec(docker volume rm)",
+      "Exec(docker compose down -v)"
+    ]
   }
 }

@@ -45,13 +45,18 @@ During work:
 - make reversible assumptions only for low-risk ambiguity and record them in the PR;
 - keep scope and commits small, coherent and reviewable;
 - never work directly on `main`.
-- Read the relevant repository skill at `.devin/skills/<name>/SKILL.md`: `maria-dev-setup`
-  for environment work, `maria-database-rls` for persistence, `maria-api-development` for API
-  work, `maria-shadcn` for vendored UI components, `maria-frontend-design` for visual and
-  copy direction in `apps/web`, and `maria-testing` for validation. Read
-  `maria-devin-adaptation` only for agent setup.
-  These are shared, repository-local instructions; they do not require an installed slash command.
-  They defer to this contract and do not carry a separate roadmap or dependency version baseline.
+- Read the repository skill for the touched scope (`.devin/skills/<name>/SKILL.md`; shared files,
+  not installed commands; they defer to this contract):
+
+  | Scope | Skill |
+  |---|---|
+  | Environment, commands | `maria-dev-setup` |
+  | Persistence, migrations, RLS | `maria-database-rls` |
+  | Fastify routes, guards | `maria-api-development` |
+  | Vendored UI components | `maria-shadcn` |
+  | Visual/copy direction in `apps/web` | `maria-frontend-design` |
+  | Test selection and evidence | `maria-testing` |
+  | Agent config/skill audits only | `maria-devin-adaptation` |
 - Use local Git for working-tree operations and `gh` for routine PR/check queries; use the
   GitHub connector for richer queries when available. Use Context7 for newly introduced libraries
   or uncertain APIs, with official documentation as fallback. If a tool is unavailable, record
@@ -159,7 +164,7 @@ Before completion, run required gates for the touched scope, inspect the final d
 | Deploy | Docker images → GHCR → Coolify · `local → staging → production` |
 
 Exact patch versions belong in manifests, lockfile and container digests. Production MUST NOT use
-mutable `latest` image tags. Exact versions belong in manifests and lockfiles.
+mutable `latest` image tags.
 
 ## 6. Repository-wide engineering rules
 
@@ -244,6 +249,6 @@ A task is complete only when:
 
 Update `HANDOFF.md` before ending a development session or handing work to a new context,
 unless the user requested a read-only task.
-Keep it short: current objective, verified state, outstanding work, checks and environment blockers.
+Keep it under ~120 lines: current objective, verified state of open branches, outstanding work, checks and environment blockers. Merged-slice history belongs in PRs and ADRs, not here; durable lessons belong in the relevant skill.
 Replace stale entries; never include secrets or private reasoning. It is a checkpoint, not an
 instruction source or a substitute for this contract, current Git state or PR evidence.

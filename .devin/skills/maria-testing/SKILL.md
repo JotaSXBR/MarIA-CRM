@@ -25,6 +25,14 @@ apps/api/test/server.e2e.test.ts and apps/web/test/app.test.tsx.
   Submit forms with fireEvent.submit(form) where the existing tests require it.
 - Await expected rejections before rollback assertions; close pools/containers in cleanup.
 - Record command, revision/dirty scope, date, environment, result and missing checks.
+- Integration/e2e scripts pass `--testTimeout=30000`; the Vitest 5s default flakes under CI CPU
+  contention. Do not lower it per test.
+- Every test pool must go through `silencePoolErrors()` from `@maria/database/testing`: idle-client
+  `57P01` errors re-emitted by `pg.Pool` on container stop are otherwise unhandled rejections.
+- Expired-lease assertions use `leaseMs: -60_000`, never `-1`: Node and Postgres `now()` differ by
+  ~1ms across the clock boundary and `-1` races it.
+- Known transient CI flakes: concurrent-accept invitation test racing to zero winners, `pnpm audit`
+  503s. Rerun once first; investigate only on repeat.
 
 The ADR 0010 dispatch ledger is implemented: packages/database/test/messaging.integration.test.ts
 covers exclusive claims on independent connections, fencing/lease expiry and cross-tenant
