@@ -17,6 +17,7 @@ import { registerAttributeRoutes } from "./routes/attributes.ts";
 import { registerSearchRoutes } from "./routes/search.ts";
 import { registerTagRoutes } from "./routes/tags.ts";
 import { registerInvitationRoutes } from "./routes/invitations.ts";
+import { registerOnboardingRoutes } from "./routes/onboarding.ts";
 
 export type AppDependencies = {
   media?: MediaStore;
@@ -99,6 +100,10 @@ export function buildApp(dependencies?: AppDependencies) {
     registerAttributeRoutes(app, scoped);
     registerSearchRoutes(app, scoped);
     registerInvitationRoutes(app, {
+      auth,
+      requireWorkspaceRole: guards.requireWorkspaceRole,
+    });
+    registerOnboardingRoutes(app, {
       auth,
       requireWorkspaceRole: guards.requireWorkspaceRole,
     });

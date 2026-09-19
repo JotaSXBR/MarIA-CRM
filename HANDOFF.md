@@ -1,6 +1,6 @@
 # MarIA CRM handoff
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 ## Verify first
 
@@ -12,15 +12,49 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#79 merged (…global search, accepted ADR 0015,
+- `main` — PRs #61–#80 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
   `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
-  invitations).
+  invitations, delegated member management).
 - Product track: **onboarding + workspace roles** per `ROADMAP.md` and
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
-- Branch `feat/member-management` — **Slice 1.4, delegated membership
-  administration** (ADR 0015 item 4):
+- Branch `feat/workspace-onboarding` — **Slice 1.5, workspace onboarding
+  wizard** (ADR 0015 item 6), PR #81 open:
+  - Migration `0019_workspace_onboarding.sql`: `workspaces` gains
+    `onboarding_state` jsonb (default `'{}'`) + `onboarded_at`.
+    `workspaces` is an identity table (no RLS; runtime holds
+    SELECT/INSERT/UPDATE) — access gated by membership at route level.
+  - `@maria/auth`: `ONBOARDING_STEPS` registry (`basics → channel → team
+→ review`), `getOnboarding` (stored status wins; else auto-resolve —
+    `channel` done when a channel instance exists, `team` when members
+    > 1), `updateOnboardingStep` (manager-facing write; `review` is
+    > `invalid-step`; frozen after `onboarded_at`), `completeOnboarding`
+    > (requires every non-review step done|skipped; sets `onboarded_at` +
+    > marks `review` done; idempotent). Both mutations take `FOR UPDATE`
+    > on the workspace row — read-modify-write merge, no lost updates.
+    > `listUserWorkspaces` now returns `onboarded: boolean`.
+  - API `routes/onboarding.ts`: `GET /onboarding` (viewer+),
+    `PATCH /onboarding/steps/:step` (manager+; `review` excluded from
+    the params enum → 400), `POST /onboarding/complete` (manager+; 409
+    incomplete). `/me/workspaces` items gain `onboarded`.
+  - Web: standalone `/onboarding` wizard (numbered checklist — niche
+    form, WhatsApp step linking to `/settings/channels`, inline invite
+    link generator, review summary + "Concluir e entrar"). `appRoute`
+    `beforeLoad` redirects members of a non-onboarded workspace to
+    `/onboarding` — except `/settings/channels` (the wizard links
+    there). `< manager` members see read-only progress. Vite proxies
+    `/onboarding` with a GET bypass when `workspaceId` is absent (SPA
+    page vs API, same pattern as `/setup`).
+  - Tests: auth integration 7 (default state, persist/skip, auto-resolve
+    facts, rejection matrix, complete+freeze, concurrent complete via
+    independent pools, `onboarded` flag); API 4 (read matrix, PATCH
+    roles/statuses, complete 409/200); web 3 (gate redirect, wizard
+    save+complete, viewer read-only); migrate 0019 (prefix upgrade,
+    defaults).
+  - Gotcha recorded: `jsonb_set` does NOT create intermediate path keys
+    — onboarding writes use FOR UPDATE + whole-object merge instead.
+- Slice 1.4 detail (merged in #80) — delegated membership administration:
   - `@maria/auth`: new `canManageRole(actor, target)` — `admin` manages
     any role incl. `admin`; `manager` manages `agent`/`viewer` only;
     `viewer`/`agent` manage nothing. `updateMembershipRole` and
@@ -88,6 +122,16 @@ gh pr status
 
 ## Verified state
 
+- `feat/workspace-onboarding` (2026-09-19, Windows/pnpm):
+  - Step status precedence: stored record > auto-resolve from facts
+    (`channel`←channel_instances exist, `team`←members>1) > pending.
+  - `updateOnboardingStep`/`completeOnboarding` serialize via
+    `SELECT ... FOR UPDATE` on the workspace row inside `withWorkspace`;
+    step writes merge `{...state.steps, [step]: record}` (jsonb_set does
+    not create intermediate keys — don't regress to it).
+  - Gates: typecheck 6/6, lint 0/0, fmt clean, unit web 22/22 + api 26 +
+    auth 9; integration api 61, auth 25 (incl. concurrent complete),
+    database 28 (incl. 0019 prefix upgrade); e2e 2/2; build 6/6.
 - `feat/member-management` (2026-09-19, Windows/pnpm):
   - `canManageRole` rule: `admin` → any; `manager` → `{agent, viewer}`
     only (requires ≥ manager — the rank-only variant wrongly let
@@ -485,12 +529,14 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #80 (Slice 1.4 member management) once checks pass.
-2. Development paused (2026-09-19): deep research on selliq.io /
-   synthor.cloud / helenacrm.com saved at
-   `research/monitoring-mode-crms-2026-09-19.md` — key finding: Selliq's
-   "Modo Monitoramento" (observer agent, read-only, suggests KB changes,
-   telemetry before trust) maps cleanly onto our "AI last" ordering.
-3. On resume: Phase 1.5 workspace onboarding wizard, or reassess whether
-   a passive-observer/knowledge-base slice now outranks it.
-4. Deferred alternative: attribute-based filtering in list views.
+1. Merge PR #81 (workspace onboarding) once checks pass — Phase 1
+   (access foundation + onboarding) is then complete per ROADMAP.md.
+2. On resume: Phase 2 — human operator workflow (conversation
+   ownership/queues is the first candidate), or reassess whether a
+   passive-observer/knowledge-base slice now outranks it. Research at
+   `research/monitoring-mode-crms-2026-09-19.md` — key findings:
+   Selliq's "Modo Monitoramento" (observer agent, read-only, suggests KB
+   changes, telemetry before trust) and Score Duplo; deskcomm's
+   62-tool/9-domain MCP catalog with risk-tiered bundles is the model
+   for the future Execution Plane.
+3. Deferred alternative: attribute-based filtering in list views.

@@ -356,6 +356,79 @@ test("0018 evolves invitations to hashed tokens with a live-unique index", async
   });
 }, 120000);
 
+test("0019 adds onboarding state to workspaces on a prior-prefix database", async () => {
+  const all = await loadMigrations();
+  const onboarding = all.find(
+    (migration) => migration.name === "0019_workspace_onboarding.sql",
+  );
+  if (!onboarding) throw new Error("0019_workspace_onboarding.sql not found");
+  const prefix = all.filter((migration) => migration.name < onboarding.name);
+  const directory = await migrationDirectory(
+    Object.fromEntries(
+      prefix.map((migration) => [migration.name, migration.sql]),
+    ),
+  );
+  await withEmptyDatabase(async (connectionString, admin) => {
+    try {
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toHaveLength(prefix.length);
+
+      await writeFile(join(directory, onboarding.name), onboarding.sql);
+      expect(
+        (
+          await applyMigrations({
+            connectionString,
+            migrationsDirectory: directory,
+          })
+        ).applied,
+      ).toEqual([onboarding.name]);
+
+      const { rows: columns } = await admin.query<{
+        column_name: string;
+        is_nullable: string;
+        column_default: string | null;
+      }>(
+        "select column_name, is_nullable, column_default from information_schema.columns where table_name = 'workspaces' and column_name in ('onboarding_state', 'onboarded_at') order by column_name",
+      );
+      expect(columns).toEqual([
+        {
+          column_name: "onboarded_at",
+          is_nullable: "YES",
+          column_default: null,
+        },
+        {
+          column_name: "onboarding_state",
+          is_nullable: "NO",
+          column_default: "'{}'::jsonb",
+        },
+      ]);
+
+      // Existing workspaces start unonboarded with empty state.
+      const { rows: orgs } = await admin.query<{ id: string }>(
+        "insert into organizations (name) values ('Org') returning id",
+      );
+      const { rows: ws } = await admin.query<{
+        id: string;
+        onboarding_state: unknown;
+        onboarded_at: string | null;
+      }>(
+        "insert into workspaces (org_id, name) values ($1, 'WS') returning id, onboarding_state, onboarded_at",
+        [orgs[0]!.id],
+      );
+      expect(ws[0]!.onboarding_state).toEqual({});
+      expect(ws[0]!.onboarded_at).toBeNull();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}, 120000);
+
 test("rejects changed checksums and untracked existing databases", async () => {
   const directory = await migrationDirectory({
     "0100_checksum.sql":

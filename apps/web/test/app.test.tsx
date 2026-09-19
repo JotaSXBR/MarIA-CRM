@@ -1548,3 +1548,201 @@ test("settings members page manages only ranks below the actor", async () => {
     expect(calls).toContainEqual(expect.objectContaining({ method: "DELETE" })),
   );
 });
+
+test("a member of a non-onboarded workspace is routed to the wizard", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          {
+            workspaceId,
+            workspaceName: "Workspace",
+            role: "admin",
+            onboarded: false,
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/onboarding")) {
+      return new Response(
+        JSON.stringify({
+          workspaceName: "Workspace",
+          onboardedAt: null,
+          steps: [
+            { id: "basics", status: "pending" },
+            { id: "channel", status: "pending" },
+            { id: "team", status: "pending" },
+            { id: "review", status: "pending" },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/inbox");
+  expect(
+    await screen.findByRole("heading", { name: "Configure Workspace" }),
+  ).toBeDefined();
+  expect(screen.getByText("Sobre o workspace")).toBeDefined();
+  expect(screen.getByText("Conectar o WhatsApp")).toBeDefined();
+  expect(screen.getByText("Convidar a equipe")).toBeDefined();
+  expect(screen.getByText("Revisar e concluir")).toBeDefined();
+});
+
+test("the onboarding wizard saves basics and completes the flow", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const calls: { url: string; method: string; body?: unknown }[] = [];
+  let basicsDone = false;
+  let onboarded = false;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      calls.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            {
+              workspaceId,
+              workspaceName: "Workspace",
+              role: "admin",
+              onboarded,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/onboarding/complete")) {
+        onboarded = true;
+        return new Response(
+          JSON.stringify({ onboardedAt: new Date().toISOString() }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/onboarding/steps/basics")) {
+        basicsDone = true;
+        return new Response("{}", { status: 200 });
+      }
+      if (url.includes("/onboarding")) {
+        return new Response(
+          JSON.stringify({
+            workspaceName: "Workspace",
+            onboardedAt: null,
+            steps: [
+              {
+                id: "basics",
+                status: basicsDone ? "done" : "pending",
+                ...(basicsDone ? { data: { niche: "clínica" } } : {}),
+              },
+              { id: "channel", status: "skipped" },
+              { id: "team", status: "skipped" },
+              { id: "review", status: "pending" },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/conversations")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "user@example.com",
+            name: "User",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/onboarding");
+  const user = userEvent.setup();
+  const nicheInput = await screen.findByLabelText("Nicho de atuação");
+  await user.type(nicheInput, "clínica");
+  await user.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "PATCH",
+        body: { status: "done", data: { niche: "clínica" } },
+      }),
+    ),
+  );
+
+  await user.click(
+    await screen.findByRole("button", { name: "Concluir e entrar" }),
+  );
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        url: expect.stringContaining("/onboarding/complete"),
+        method: "POST",
+      }),
+    ),
+  );
+});
+
+test("a viewer sees onboarding progress without edit controls", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/me/workspaces")) {
+      return new Response(
+        JSON.stringify([
+          {
+            workspaceId,
+            workspaceName: "Workspace",
+            role: "viewer",
+            onboarded: false,
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/onboarding")) {
+      return new Response(
+        JSON.stringify({
+          workspaceName: "Workspace",
+          onboardedAt: null,
+          steps: [
+            { id: "basics", status: "done", data: { niche: "clínica" } },
+            { id: "channel", status: "pending" },
+            { id: "team", status: "pending" },
+            { id: "review", status: "pending" },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("not found", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  setToken("session-token");
+
+  renderApp("/onboarding");
+  expect(
+    await screen.findByText(/administrador ou manager precisa concluir/i),
+  ).toBeDefined();
+  expect(screen.queryByLabelText("Nicho de atuação")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Concluir e entrar" }),
+  ).toBeNull();
+});

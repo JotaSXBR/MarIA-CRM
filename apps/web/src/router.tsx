@@ -6,9 +6,11 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { api, getToken } from "./lib/api.ts";
+import { WORKSPACE_KEY } from "./lib/workspace.tsx";
 import { LoginPage } from "./routes/login.tsx";
 import { SetupPage } from "./routes/setup.tsx";
 import { InvitePage } from "./routes/invite.tsx";
+import { OnboardingPage } from "./routes/onboarding.tsx";
 import { AppShell } from "./routes/shell.tsx";
 import { ContactsPage } from "./routes/contacts.tsx";
 import { ContactDetailPage } from "./routes/contact-detail.tsx";
@@ -56,11 +58,30 @@ const inviteRoute = createRoute({
   component: InvitePage,
 });
 
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/onboarding",
+  component: OnboardingPage,
+});
+
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
-  beforeLoad: () => {
+  beforeLoad: async ({ location }) => {
     if (!getToken()) throw redirect({ to: "/login" });
+    // ADR 0015 item 6: members of a workspace that never finished onboarding
+    // are routed to the wizard. Channel settings stay reachable — the
+    // wizard's WhatsApp step links there.
+    if (location.pathname === "/settings/channels") return;
+    const memberships = await api<
+      { workspaceId: string; onboarded: boolean }[]
+    >("/me/workspaces").catch(() => []);
+    const selectedId = localStorage.getItem(WORKSPACE_KEY);
+    const workspace =
+      memberships.find((m) => m.workspaceId === selectedId) ?? memberships[0];
+    if (workspace && workspace.onboarded === false) {
+      throw redirect({ to: "/onboarding" });
+    }
   },
   component: AppShell,
 });
@@ -178,6 +199,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
   inviteRoute,
+  onboardingRoute,
   appRoute.addChildren([
     indexRoute,
     pipelinesRoute,

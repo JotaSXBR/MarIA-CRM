@@ -25,6 +25,9 @@ function createAuthStub(overrides: Partial<AuthPort> = {}) {
     revokeInvitation: vi.fn().mockResolvedValue("not-found"),
     previewInvitation: vi.fn().mockResolvedValue("invalid"),
     acceptInvitation: vi.fn().mockResolvedValue("invalid"),
+    getOnboarding: vi.fn().mockResolvedValue(undefined),
+    updateOnboardingStep: vi.fn().mockResolvedValue("not-found"),
+    completeOnboarding: vi.fn().mockResolvedValue("not-found"),
     seedAdmin: vi.fn().mockResolvedValue(undefined),
   };
   return Object.assign(stub, overrides);
@@ -1784,7 +1787,12 @@ test("me/workspaces lists the caller's workspace memberships", async () => {
           }
         : undefined,
     listUserWorkspaces: vi.fn(async () => [
-      { workspaceId, workspaceName: "Workspace", role: "agent" as const },
+      {
+        workspaceId,
+        workspaceName: "Workspace",
+        role: "agent" as const,
+        onboarded: true,
+      },
     ]),
   });
   const app = buildApp({ database: createDatabaseStub(), auth });
@@ -1798,7 +1806,12 @@ test("me/workspaces lists the caller's workspace memberships", async () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual([
-      { workspaceId, workspaceName: "Workspace", role: "agent" },
+      {
+        workspaceId,
+        workspaceName: "Workspace",
+        role: "agent",
+        onboarded: true,
+      },
     ]);
     expect(auth.listUserWorkspaces).toHaveBeenCalledWith("user-id");
   } finally {

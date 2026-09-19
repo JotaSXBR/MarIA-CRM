@@ -190,7 +190,12 @@ test("local auth supports login, session verification and workspace authorizatio
 
   const memberships = await auth.listUserWorkspaces(memberSession!.userId);
   expect(memberships).toEqual([
-    { workspaceId: workspace, workspaceName: "Workspace", role: "agent" },
+    {
+      workspaceId: workspace,
+      workspaceName: "Workspace",
+      role: "agent",
+      onboarded: false,
+    },
   ]);
 
   await expect(

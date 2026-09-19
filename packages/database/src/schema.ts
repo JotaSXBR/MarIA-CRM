@@ -21,6 +21,15 @@ export const organizations = pgTable("organizations", {
     .notNull(),
 });
 
+/** Persisted wizard state (ADR 0015 item 6): per-step entries keyed by step
+ * id; step ids and status semantics live in `@maria/auth`. */
+export type WorkspaceOnboardingState = {
+  steps?: Record<
+    string,
+    { status: "done" | "skipped"; data?: Record<string, unknown> }
+  >;
+};
+
 export const workspaces = pgTable(
   "workspaces",
   {
@@ -29,6 +38,11 @@ export const workspaces = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
     name: text().notNull(),
+    onboardingState: jsonb("onboarding_state")
+      .$type<WorkspaceOnboardingState>()
+      .notNull()
+      .default({}),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

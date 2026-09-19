@@ -139,7 +139,12 @@ test("built server responds over HTTP, logs in, runs contact CRUD, and shuts dow
       });
       expect(myWorkspaces.status).toBe(200);
       expect(await myWorkspaces.json()).toEqual([
-        { workspaceId: workspaceB, workspaceName: "B", role: "agent" },
+        {
+          workspaceId: workspaceB,
+          workspaceName: "B",
+          role: "agent",
+          onboarded: false,
+        },
       ]);
 
       const created = await fetch(
@@ -397,6 +402,7 @@ test("built server logs a single-use setup URL on an empty install", async () =>
           workspaceId: expect.any(String),
           workspaceName: "E2E Workspace",
           role: "admin",
+          onboarded: false,
         },
       ]);
 

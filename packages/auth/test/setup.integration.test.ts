@@ -87,6 +87,7 @@ test("first-run bootstrap creates master, org, workspace and admin membership", 
       workspaceId,
       workspaceName: input.workspaceName,
       role: "admin",
+      onboarded: false,
     },
   ]);
 

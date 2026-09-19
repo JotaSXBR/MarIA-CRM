@@ -153,11 +153,12 @@ export function registerSessionRoutes(
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["workspaceId", "workspaceName", "role"],
+              required: ["workspaceId", "workspaceName", "role", "onboarded"],
               properties: {
                 workspaceId: { type: "string", format: "uuid" },
                 workspaceName: { type: "string" },
                 role: workspaceRoleSchema,
+                onboarded: { type: "boolean" },
               },
             },
           },

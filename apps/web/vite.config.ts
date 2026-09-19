@@ -31,6 +31,16 @@ export default defineConfig({
       // `/invitations` API calls proxy through; the SPA acceptance route lives
       // at `/invite/$token` so there is no path collision.
       "/invitations": api,
+      // `/onboarding` is both a SPA route and an API prefix: browser page
+      // loads stay local, API calls (which always carry `workspaceId`) proxy
+      // through — same pattern as `/setup`.
+      "/onboarding": {
+        target: api,
+        bypass: (req) =>
+          req.method === "GET" && !req.url?.includes("workspaceId=")
+            ? req.url
+            : undefined,
+      },
       "/contacts": api,
       "/companies": api,
       "/pipelines": api,
