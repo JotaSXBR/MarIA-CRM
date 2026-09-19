@@ -1,10 +1,10 @@
 ---
 name: maria-pattern-research
-description: Research official examples and maintained external patterns before designing a non-trivial MarIA CRM module or UI workflow.
+description: Research official examples and maintained external patterns before designing a non-trivial MarIA CRM module or UI workflow. Use when a new module, domain workflow or UI interaction has no local precedent and needs reference evidence (license, provenance, fit). Read-only; do not use for routine features that follow an existing MarIA pattern.
 permissions:
   deny:
     - Write(**)
-    - Exec(**)
+    - exec
 ---
 
 # MarIA CRM pattern research

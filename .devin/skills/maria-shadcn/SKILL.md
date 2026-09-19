@@ -30,6 +30,10 @@ as source code to the user's project via the CLI.
 - Start every shadcn task by running `pnpm dlx shadcn@latest info --json` inside
   `apps/web` — the JSON is the project context (aliases, base, icon library,
   tailwind version, installed components, resolved paths).
+- `DropdownMenuLabel` must sit inside `DropdownMenuGroup` — Base UI throws
+  `MenuGroupContext is missing` otherwise (caught once by a web test; keep that test).
+- `components.json` reports `"style": "base-nova"`; it works — do not "fix" it unless the CLI
+  rejects it on `add`.
 
 ## Principles
 

@@ -1,7 +1,6 @@
 ---
 name: code-simplifier
-description: Reviews the current slice's diff and applies safe, behavior-preserving simplifications before tests, commits and PRs. Applies at the end of each implementation slice; repository-wide analysis only when explicitly requested.
-model: opus
+description: Reviews the current slice's diff and applies safe, behavior-preserving simplifications before tests, commits and PRs. Use at the end of every implementation slice, before running gates or committing. Repository-wide analysis only when explicitly requested; not for feature work or bug fixing.
 ---
 
 # Code simplifier

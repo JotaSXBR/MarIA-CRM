@@ -30,3 +30,5 @@ packages/database/src/index.ts owns scoped transaction helpers.
   In-process mutexes and sequential tests cannot prove safety.
 - Use maria-testing for real PostgreSQL runtime-role isolation, rollback, context cleanup
   and concurrency checks.
+- `jsonb_set` does not create intermediate path keys. For jsonb state columns (e.g.
+  `workspaces.onboarding_state`) take `FOR UPDATE` and write the merged whole object.
