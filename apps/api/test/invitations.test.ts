@@ -343,3 +343,122 @@ test("POST /invitations/:token/accept maps each outcome", async () => {
     await app.close();
   }
 });
+
+test("PATCH and DELETE /members/:id require manager rank", async () => {
+  const membershipId = randomUUID();
+  for (const role of ["viewer", "agent"] as const) {
+    const app = buildApp({ database, auth: memberAuth(role) });
+    try {
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+            headers: bearer("t"),
+            payload: { role: "viewer" },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+            headers: bearer("t"),
+          })
+        ).statusCode,
+      ).toBe(403);
+    } finally {
+      await app.close();
+    }
+  }
+});
+
+test("PATCH /members/:id maps outcomes and forwards the actor role", async () => {
+  const auth = memberAuth("manager");
+  const membershipId = randomUUID();
+  const app = buildApp({ database, auth });
+  try {
+    auth.updateMembershipRole.mockResolvedValue("updated");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+          headers: bearer("t"),
+          payload: { role: "viewer" },
+        })
+      ).statusCode,
+    ).toBe(204);
+    // The workspace actor's rank — not the platform bypass — is forwarded so
+    // the grant check runs inside the membership lock.
+    expect(auth.updateMembershipRole).toHaveBeenLastCalledWith(
+      workspaceId,
+      membershipId,
+      "viewer",
+      "manager",
+    );
+
+    for (const [result, status] of [
+      ["forbidden", 403],
+      ["not-found", 404],
+      ["last-admin", 409],
+    ] as const) {
+      auth.updateMembershipRole.mockResolvedValue(result);
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+            headers: bearer("t"),
+            payload: { role: "agent" },
+          })
+        ).statusCode,
+      ).toBe(status);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("DELETE /members/:id maps outcomes", async () => {
+  const auth = memberAuth("admin");
+  const membershipId = randomUUID();
+  const app = buildApp({ database, auth });
+  try {
+    auth.removeMembership.mockResolvedValue("removed");
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+          headers: bearer("t"),
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(auth.removeMembership).toHaveBeenLastCalledWith(
+      workspaceId,
+      membershipId,
+      "admin",
+    );
+
+    for (const [result, status] of [
+      ["forbidden", 403],
+      ["not-found", 404],
+      ["last-admin", 409],
+    ] as const) {
+      auth.removeMembership.mockResolvedValue(result);
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: `/members/${membershipId}?workspaceId=${workspaceId}`,
+            headers: bearer("t"),
+          })
+        ).statusCode,
+      ).toBe(status);
+    }
+  } finally {
+    await app.close();
+  }
+});

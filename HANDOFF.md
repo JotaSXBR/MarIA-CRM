@@ -12,49 +12,70 @@ gh pr status
 
 ## Current objective
 
-- `main` — PRs #61–#78 merged (…global search, accepted ADR 0015,
+- `main` — PRs #61–#79 merged (…global search, accepted ADR 0015,
   phased product `ROADMAP.md`, centralized workspace RBAC, first-run
-  `/setup`, Ajv `allowUnionTypes` fix closing issue #76).
+  `/setup`, Ajv `allowUnionTypes` fix closing issue #76, workspace
+  invitations).
 - Product track: **onboarding + workspace roles** per `ROADMAP.md` and
   ADR 0015 (accepted). Slices proceed one at a time; the next is chosen
   after each merge.
-- Branch `feat/workspace-invitations` — **Slice 1.3, workspace
-  invitations** — PR #79 OPEN (commit `3dced3a` + merge of `origin/main`
-  incl. #78):
-  - Migration `0018_workspace_invitations.sql`: `token`→`token_hash`,
-    `used_at`→`consumed_at`, new `invited_by`, partial unique index on
-    `(workspace_id, email) WHERE consumed_at IS NULL` (one live invite),
-    and `invitations_scope` policy adds an `app.invite_token_hash` OR
-    clause — the token itself authorizes reading exactly its own row
-    (mirrors `memberships_scope`); `database.withInvitation(tokenHash)`
-    is the new scoping helper (`RouteDatabase` omits it).
-  - `@maria/auth`: `createInvitation` (revokes predecessors + partial
-    unique race → `conflict`; member → `already-member`; 24-byte
-    base64url token, sha256 hash stored, plaintext returned once;
-    7-day TTL), `listInvitations` (live only), `revokeInvitation`
-    (consume without membership), `previewInvitation` (token-scoped
-    read), `acceptInvitation` — identity checks first (leave invite
-    live), then workspace ctx + atomic consume inside the token-scoped
-    tx (row lock serializes racing acceptors), then user create or
-    attach + membership.
-  - `routes/invitations.ts`: `GET /members` (viewer+);
-    `POST|GET|DELETE /invitations` (manager+; grant must stay strictly
-    below inviter rank → 403; `admin` excluded in schema → 400);
-    public `GET /invitations/:token` (200 | 404 invalid | 410
-    consumed/expired) and `POST /invitations/:token/accept` (Bearer →
-    attach, else name+password → create + auto-login; 400 missing
-    fields, 403 email-mismatch, 409 user-exists).
-  - Web: public `/invite/$token` (preview, mismatch state with
-    switch-account, create-account form, lands on the invited
-    workspace); Settings → **Equipe** lists members (all roles) and
-    manages invites (manager+): create form, one-time copyable link,
-    revoke. Vite proxies `/members` + `/invitations`.
-  - Tests: auth integration 8 (hash-only storage, preview/accept/
-    replay, attach + mismatch, already-member, live-unique reissue,
-    scoped list/revoke, expiry, concurrent accept via independent
-    pools); API 6 (matrix, grant limits, statuses); migrate 0018 test
-    (prefix upgrade, renames, index, policy); web 3 (accept→inbox,
-    invalid/expired states, Equipe page).
+- Branch `feat/member-management` — **Slice 1.4, delegated membership
+  administration** (ADR 0015 item 4):
+  - `@maria/auth`: new `canManageRole(actor, target)` — `admin` manages
+    any role incl. `admin`; `manager` manages `agent`/`viewer` only;
+    `viewer`/`agent` manage nothing. `updateMembershipRole` and
+    `removeMembership` take a required `actorRole` and return
+    `"forbidden"` when the actor cannot manage the target's current (or
+    new) role — the check runs **inside** the per-workspace advisory
+    lock, so a racing promotion cannot slip an unmanageable target past
+    the actor. `/admin/*` routes pass `"admin"` (platform admin keeps
+    full reach; `forbidden` is unreachable there but mapped to 403).
+  - API (`routes/invitations.ts`, the workspace team surface):
+    `PATCH /members/:id` `{role}` and `DELETE /members/:id` — manager+
+    minimum via `requireWorkspaceRole`, actor rank forwarded from the
+    session membership; 403 forbidden, 404 not-found, 409 last-admin.
+    Unlike invitations (schema-excluded), `admin` IS grantable via PATCH.
+  - Web Settings → **Equipe**: member rows render a role `<select>`
+    (options limited to grantable ranks) + remove button when the actor
+    can manage that member's current role — manager sees controls only
+    on `agent`/`viewer` rows; admin sees them on every row (self-edit
+    guarded by last-admin). New `canManageWorkspaceRole` +
+    `WORKSPACE_ROLES` in `lib/workspace.tsx`.
+  - Slice 1.3 detail (for reference — merged in #79):
+    - Migration `0018_workspace_invitations.sql`: `token`→`token_hash`,
+      `used_at`→`consumed_at`, new `invited_by`, partial unique index on
+      `(workspace_id, email) WHERE consumed_at IS NULL` (one live invite),
+      and `invitations_scope` policy adds an `app.invite_token_hash` OR
+      clause — the token itself authorizes reading exactly its own row
+      (mirrors `memberships_scope`); `database.withInvitation(tokenHash)`
+      is the new scoping helper (`RouteDatabase` omits it).
+    - `@maria/auth`: `createInvitation` (revokes predecessors + partial
+      unique race → `conflict`; member → `already-member`; 24-byte
+      base64url token, sha256 hash stored, plaintext returned once;
+      7-day TTL), `listInvitations` (live only), `revokeInvitation`
+      (consume without membership), `previewInvitation` (token-scoped
+      read), `acceptInvitation` — identity checks first (leave invite
+      live), then workspace ctx + atomic consume inside the token-scoped
+      tx (row lock serializes racing acceptors), then user create or
+      attach + membership.
+    - `routes/invitations.ts`: `GET /members` (viewer+);
+      `POST|GET|DELETE /invitations` (manager+; grant must stay strictly
+      below inviter rank → 403; `admin` excluded in schema → 400);
+      public `GET /invitations/:token` (200 | 404 invalid | 410
+      consumed/expired) and `POST /invitations/:token/accept` (Bearer →
+      attach, else name+password → create + auto-login; 400 missing
+      fields, 403 email-mismatch, 409 user-exists).
+    - Web: public `/invite/$token` (preview, mismatch state with
+      switch-account, create-account form, lands on the invited
+      workspace); Settings → **Equipe** lists members (all roles) and
+      manages invites (manager+): create form, one-time copyable link,
+      revoke. Vite proxies `/members` + `/invitations`.
+    - Tests: auth integration 8 (hash-only storage, preview/accept/
+      replay, attach + mismatch, already-member, live-unique reissue,
+      scoped list/revoke, expiry, concurrent accept via independent
+      pools); API 6 (matrix, grant limits, statuses); migrate 0018 test
+      (prefix upgrade, renames, index, policy); web 3 (accept→inbox,
+      invalid/expired states, Equipe page).
 
 ## Memory model
 
@@ -67,6 +88,17 @@ gh pr status
 
 ## Verified state
 
+- `feat/member-management` (2026-09-19, Windows/pnpm):
+  - `canManageRole` rule: `admin` → any; `manager` → `{agent, viewer}`
+    only (requires ≥ manager — the rank-only variant wrongly let
+    `agent` manage `viewer`, caught by the new integration test);
+    `viewer`/`agent` → nothing.
+  - Rank check + last-admin guard both inside `lockWorkspaceMemberships`
+    (advisory `pg_advisory_xact_lock`); race test proves a promote/remove
+    pair serializes to `{updated, forbidden}` or `{removed, not-found}`.
+  - Gates: typecheck 6/6, lint 0/0, fmt clean, unit web 19/19, api
+    invitations 9/9; integration api 57, auth 18 (incl. grant-rank
+    matrix + serialized race), database 27; e2e 2/2; build 6/6.
 - `feat/workspace-invitations` (2026-09-18, Windows/pnpm):
   - `@maria/auth` `AuthPort` +5 methods; token hash = sha256 over a
     24-byte base64url secret; accept order = token-scoped read → identity
@@ -453,8 +485,7 @@ companies,pipelines,messaging}.ts` + `routes/shared.ts` (auth guards,
 
 ## Next actions
 
-1. Merge PR #79 (Slice 1.3 invitations) once checks pass.
-2. Reassess before Phase 1.4 — member management surface (change role,
-   suspend/remove beyond the current last-admin protection) or the
-   workspace onboarding checklist.
+1. Merge the `feat/member-management` PR (Slice 1.4) once checks pass.
+2. Phase 1.5 — workspace onboarding wizard (`onboarding_state` jsonb +
+   `onboarded_at`, step registry: basics → WhatsApp → invite → review).
 3. Deferred alternative: attribute-based filtering in list views.

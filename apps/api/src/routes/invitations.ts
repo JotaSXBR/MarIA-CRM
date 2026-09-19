@@ -33,10 +33,12 @@ const memberSchema = {
   },
 } as const;
 
-/** Workspace invitation lifecycle (ADR 0015 item 5): managers/admins issue
+/** Workspace team surface (ADR 0015 items 4-5): member listing plus
+ * manager/admin membership mutations (rank-checked inside the workspace
+ * advisory lock) and the invitation lifecycle — managers/admins issue
  * copyable links whose tokens are stored only as hashes; acceptance is public
  * because the token itself is the credential. `admin` is never invitable and
- * a grant may not exceed the inviter's own rank. */
+ * an invitation grant may not reach the inviter's own rank. */
 export function registerInvitationRoutes(
   app: FastifyInstance,
   deps: {
@@ -61,6 +63,86 @@ export function registerInvitationRoutes(
       const authorized = await requireWorkspaceRole(request, reply, "viewer");
       if (!authorized) return reply;
       return auth.listMembers(authorized.workspaceId);
+    },
+  );
+
+  const memberParamsSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["id"],
+    properties: { id: { type: "string", format: "uuid" } },
+  } as const;
+
+  app.patch(
+    "/members/:id",
+    {
+      schema: {
+        params: memberParamsSchema,
+        querystring: workspaceQuerySchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["role"],
+          // ADR 0015 item 4: workspace admins may grant `admin` here even
+          // though it is never invitable; the rank check lives in the auth
+          // layer under the workspace advisory lock.
+          properties: { role: workspaceRoleSchema },
+        },
+        response: {
+          204: { type: "null" },
+          401: { type: "null" },
+          403: { type: "null" },
+          404: { type: "null" },
+          409: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
+      if (!authorized) return reply;
+      const { id } = request.params as { id: string };
+      const { role } = request.body as { role: WorkspaceRole };
+      const result = await auth.updateMembershipRole(
+        authorized.workspaceId,
+        id,
+        role,
+        authorized.membership.role,
+      );
+      if (result === "not-found") return reply.code(404).send();
+      if (result === "forbidden") return reply.code(403).send();
+      if (result === "last-admin") return reply.code(409).send();
+      return reply.code(204).send();
+    },
+  );
+
+  app.delete(
+    "/members/:id",
+    {
+      schema: {
+        params: memberParamsSchema,
+        querystring: workspaceQuerySchema,
+        response: {
+          204: { type: "null" },
+          401: { type: "null" },
+          403: { type: "null" },
+          404: { type: "null" },
+          409: { type: "null" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorized = await requireWorkspaceRole(request, reply, "manager");
+      if (!authorized) return reply;
+      const { id } = request.params as { id: string };
+      const result = await auth.removeMembership(
+        authorized.workspaceId,
+        id,
+        authorized.membership.role,
+      );
+      if (result === "not-found") return reply.code(404).send();
+      if (result === "forbidden") return reply.code(403).send();
+      if (result === "last-admin") return reply.code(409).send();
+      return reply.code(204).send();
     },
   );
 

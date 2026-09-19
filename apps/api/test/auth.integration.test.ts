@@ -1973,6 +1973,7 @@ test("admin management covers users, organizations, workspaces and memberships",
       workspaceId,
       membershipId,
       "admin",
+      "admin",
     );
     auth.updateMembershipRole.mockResolvedValue("last-admin");
     expect(
