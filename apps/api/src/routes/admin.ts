@@ -363,6 +363,7 @@ export function registerAdminRoutes(
         response: {
           204: { type: "null" },
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           409: { type: "null" },
         },
@@ -374,9 +375,15 @@ export function registerAdminRoutes(
       const { id } = request.params as { id: string };
       const { workspaceId } = request.query as { workspaceId: string };
       const { role } = request.body as { role: WorkspaceRole };
-      const result = await auth.updateMembershipRole(workspaceId, id, role);
+      const result = await auth.updateMembershipRole(
+        workspaceId,
+        id,
+        role,
+        "admin",
+      );
       if (result === "not-found") return reply.code(404).send();
       if (result === "last-admin") return reply.code(409).send();
+      if (result === "forbidden") return reply.code(403).send();
       return reply.code(204).send();
     },
   );
@@ -391,6 +398,7 @@ export function registerAdminRoutes(
         response: {
           204: { type: "null" },
           401: { type: "null" },
+          403: { type: "null" },
           404: { type: "null" },
           409: { type: "null" },
         },
@@ -401,9 +409,10 @@ export function registerAdminRoutes(
       if (!session) return;
       const { id } = request.params as { id: string };
       const { workspaceId } = request.query as { workspaceId: string };
-      const result = await auth.removeMembership(workspaceId, id);
+      const result = await auth.removeMembership(workspaceId, id, "admin");
       if (result === "not-found") return reply.code(404).send();
       if (result === "last-admin") return reply.code(409).send();
+      if (result === "forbidden") return reply.code(403).send();
       return reply.code(204).send();
     },
   );

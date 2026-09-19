@@ -30,6 +30,19 @@ export function hasWorkspaceRole(
   return ROLE_RANK[role] >= ROLE_RANK[minimum];
 }
 
+/** ADR 0015 item 4: a grant never exceeds the grantor's rank — `admin` may
+ * manage/grant any role (including `admin`); `manager` manages `agent` and
+ * `viewer` only; `viewer`/`agent` manage nothing. */
+export function canManageRole(
+  actor: WorkspaceRole,
+  target: WorkspaceRole,
+): boolean {
+  return (
+    actor === "admin" ||
+    (hasWorkspaceRole(actor, "manager") && ROLE_RANK[target] < ROLE_RANK[actor])
+  );
+}
+
 export type AuthPort = {
   login(
     email: string,
@@ -95,15 +108,21 @@ export type AuthPort = {
     workspaceId: string;
     role: WorkspaceRole;
   }): Promise<"created" | "duplicate" | "not-found">;
+  /** Membership mutations enforce the grant rank inside the workspace
+   * advisory lock (ADR 0015 item 4): `actorRole` must be able to manage the
+   * target's current role and, for updates, the new role — `forbidden`
+   * otherwise. Platform administration passes `"admin"`. */
   updateMembershipRole(
     workspaceId: string,
     membershipId: string,
     role: WorkspaceRole,
-  ): Promise<"updated" | "not-found" | "last-admin">;
+    actorRole: WorkspaceRole,
+  ): Promise<"updated" | "not-found" | "last-admin" | "forbidden">;
   removeMembership(
     workspaceId: string,
     membershipId: string,
-  ): Promise<"removed" | "not-found" | "last-admin">;
+    actorRole: WorkspaceRole,
+  ): Promise<"removed" | "not-found" | "last-admin" | "forbidden">;
   /** Workspace-scoped invitation lifecycle (ADR 0015 item 5). The plaintext
    * token is returned exactly once at creation; only its sha256 hash is
    * persisted. The caller must already be authorized for the workspace. */
@@ -503,7 +522,8 @@ export function createLocalAuth(
     workspaceId: string,
     membershipId: string,
     role: WorkspaceRole,
-  ): Promise<"updated" | "not-found" | "last-admin"> => {
+    actorRole: WorkspaceRole,
+  ): Promise<"updated" | "not-found" | "last-admin" | "forbidden"> => {
     return database.withWorkspace(workspaceId, async (tx) => {
       await lockWorkspaceMemberships(tx, workspaceId);
       const rows = await tx
@@ -512,6 +532,14 @@ export function createLocalAuth(
         .where(eq(memberships.id, membershipId));
       const membership = rows[0];
       if (!membership) return "not-found";
+      // Rank checks run under the advisory lock so a concurrent promotion
+      // cannot slip a now-unmanageable target past the actor.
+      if (
+        !canManageRole(actorRole, membership.role) ||
+        !canManageRole(actorRole, role)
+      ) {
+        return "forbidden";
+      }
       if (
         membership.role === "admin" &&
         role !== "admin" &&
@@ -530,7 +558,8 @@ export function createLocalAuth(
   const removeMembership = async (
     workspaceId: string,
     membershipId: string,
-  ): Promise<"removed" | "not-found" | "last-admin"> => {
+    actorRole: WorkspaceRole,
+  ): Promise<"removed" | "not-found" | "last-admin" | "forbidden"> => {
     return database.withWorkspace(workspaceId, async (tx) => {
       await lockWorkspaceMemberships(tx, workspaceId);
       const rows = await tx
@@ -539,6 +568,9 @@ export function createLocalAuth(
         .where(eq(memberships.id, membershipId));
       const membership = rows[0];
       if (!membership) return "not-found";
+      if (!canManageRole(actorRole, membership.role)) {
+        return "forbidden";
+      }
       if (
         membership.role === "admin" &&
         (await isLastWorkspaceAdmin(tx, workspaceId, membershipId))

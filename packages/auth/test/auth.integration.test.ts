@@ -81,7 +81,7 @@ type WorkspaceMutation = (
   auth: AuthPort,
   workspaceId: string,
   membershipId: string,
-) => Promise<"updated" | "removed" | "not-found" | "last-admin">;
+) => Promise<"updated" | "removed" | "not-found" | "last-admin" | "forbidden">;
 
 async function assertWorkspaceAdminRace(
   scenario: string,
@@ -250,7 +250,12 @@ test("admin management runs under the runtime role with least privilege", async 
   const members = await auth.listMembers(workspace!.id);
   expect(members).toHaveLength(1);
   expect(
-    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "agent"),
+    await auth.updateMembershipRole(
+      workspace!.id,
+      members[0]!.id,
+      "agent",
+      "admin",
+    ),
   ).toBe("last-admin");
 
   const second = await auth.createUser({
@@ -264,17 +269,24 @@ test("admin management runs under the runtime role with least privilege", async 
     role: "admin",
   });
   expect(
-    await auth.updateMembershipRole(workspace!.id, members[0]!.id, "agent"),
+    await auth.updateMembershipRole(
+      workspace!.id,
+      members[0]!.id,
+      "agent",
+      "admin",
+    ),
   ).toBe("updated");
 
   const members2 = await auth.listMembers(workspace!.id);
   const lastAdmin = members2.find((member) => member.role === "admin")!;
   const member = members2.find((member) => member.role === "agent")!;
-  expect(await auth.removeMembership(workspace!.id, lastAdmin.id)).toBe(
-    "last-admin",
+  expect(
+    await auth.removeMembership(workspace!.id, lastAdmin.id, "admin"),
+  ).toBe("last-admin");
+  expect(await auth.removeMembership(workspace!.id, member.id, "admin")).toBe(
+    "removed",
   );
-  expect(await auth.removeMembership(workspace!.id, member.id)).toBe("removed");
-  expect(await auth.removeMembership(workspace!.id, member.id)).toBe(
+  expect(await auth.removeMembership(workspace!.id, member.id, "admin")).toBe(
     "not-found",
   );
 
@@ -290,6 +302,149 @@ test("admin management runs under the runtime role with least privilege", async 
   expect(await auth.updateUser(globalAdmin!.id, { active: false })).toBe(
     "last-admin",
   );
+});
+
+test("workspace membership mutations enforce the grant rank (ADR 0015)", async () => {
+  const organization = await database.createOrganization({ name: "Rank Org" });
+  const workspace = await database.createWorkspace({
+    orgId: organization!.id,
+    name: "Rank Workspace",
+  });
+  const addMember = async (role: "admin" | "manager" | "agent" | "viewer") => {
+    const user = await auth.createUser({
+      email: `rank-${role}-${randomUUID()}@example.com`,
+      name: `Rank ${role}`,
+      password: "password",
+    });
+    await auth.addMembership({
+      userId: user!.userId,
+      workspaceId: workspace!.id,
+      role,
+    });
+    return user!.userId;
+  };
+  const [adminUser, managerUser, agentUser, viewerUser] = [
+    await addMember("admin"),
+    await addMember("manager"),
+    await addMember("agent"),
+    await addMember("viewer"),
+  ];
+  const members = await auth.listMembers(workspace!.id);
+  const [adminId, managerId, agentId, viewerId] = [
+    adminUser,
+    managerUser,
+    agentUser,
+    viewerUser,
+  ].map((userId) => members.find((m) => m.userId === userId)!.id);
+
+  // manager manages/grants agent+viewer only.
+  expect(
+    await auth.updateMembershipRole(
+      workspace!.id,
+      agentId,
+      "viewer",
+      "manager",
+    ),
+  ).toBe("updated");
+  expect(
+    await auth.updateMembershipRole(
+      workspace!.id,
+      viewerId,
+      "agent",
+      "manager",
+    ),
+  ).toBe("updated");
+  // …never a grant at/above their own rank, nor a peer/higher target.
+  expect(
+    await auth.updateMembershipRole(
+      workspace!.id,
+      agentId,
+      "manager",
+      "manager",
+    ),
+  ).toBe("forbidden");
+  expect(
+    await auth.updateMembershipRole(
+      workspace!.id,
+      managerId,
+      "viewer",
+      "manager",
+    ),
+  ).toBe("forbidden");
+  expect(
+    await auth.updateMembershipRole(
+      workspace!.id,
+      adminId,
+      "viewer",
+      "manager",
+    ),
+  ).toBe("forbidden");
+  expect(await auth.removeMembership(workspace!.id, adminId, "manager")).toBe(
+    "forbidden",
+  );
+  expect(await auth.removeMembership(workspace!.id, managerId, "manager")).toBe(
+    "forbidden",
+  );
+  // viewer/agent actors manage nothing.
+  expect(
+    await auth.updateMembershipRole(workspace!.id, agentId, "viewer", "agent"),
+  ).toBe("forbidden");
+  expect(await auth.removeMembership(workspace!.id, viewerId, "viewer")).toBe(
+    "forbidden",
+  );
+
+  // admin may grant admin — and a member promoted to admin is then
+  // unmanageable for a manager.
+  expect(
+    await auth.updateMembershipRole(workspace!.id, agentId, "admin", "admin"),
+  ).toBe("updated");
+  expect(await auth.removeMembership(workspace!.id, agentId, "manager")).toBe(
+    "forbidden",
+  );
+});
+
+test("rank enforcement is serialized by the workspace membership lock", async () => {
+  const organization = await database.createOrganization({ name: "Race Org" });
+  const workspace = await database.createWorkspace({
+    orgId: organization!.id,
+    name: "Race Workspace",
+  });
+  const makeMember = async (role: "admin" | "manager" | "agent") => {
+    const user = await auth.createUser({
+      email: `race-${role}-${randomUUID()}@example.com`,
+      name: `Race ${role}`,
+      password: "password",
+    });
+    await auth.addMembership({
+      userId: user!.userId,
+      workspaceId: workspace!.id,
+      role,
+    });
+  };
+  await makeMember("admin");
+  await makeMember("manager");
+  await makeMember("agent");
+  const target = (await auth.listMembers(workspace!.id)).find(
+    (member) => member.role === "agent",
+  )!;
+
+  const [firstAuth, secondAuth] = await Promise.all([
+    createIndependentRuntimeAuth(`race-promote-${randomUUID()}`),
+    createIndependentRuntimeAuth(`race-remove-${randomUUID()}`),
+  ]);
+  // admin promotes agent→admin while a manager removes the same membership.
+  // The advisory lock serializes them: if the promotion lands first the
+  // removal sees an admin target and fails "forbidden"; if the removal lands
+  // first the promotion returns "not-found". Either way the rank check ran
+  // inside the lock — no promote-then-remove bypass.
+  const results = await Promise.all([
+    firstAuth.updateMembershipRole(workspace!.id, target.id, "admin", "admin"),
+    secondAuth.removeMembership(workspace!.id, target.id, "manager"),
+  ]);
+  expect(
+    (results.includes("updated") && results.includes("forbidden")) ||
+      (results.includes("removed") && results.includes("not-found")),
+  ).toBe(true);
 });
 
 test("session expires after token lifetime", async () => {
@@ -406,20 +561,35 @@ test("concurrent admin removals preserve the last administrators", async () => {
 
   await assertWorkspaceAdminRace("demote-demote", [
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
+      raceAuth.updateMembershipRole(
+        workspaceId,
+        membershipId,
+        "agent",
+        "admin",
+      ),
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
+      raceAuth.updateMembershipRole(
+        workspaceId,
+        membershipId,
+        "agent",
+        "admin",
+      ),
   ]);
   await assertWorkspaceAdminRace("remove-remove", [
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.removeMembership(workspaceId, membershipId),
+      raceAuth.removeMembership(workspaceId, membershipId, "admin"),
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.removeMembership(workspaceId, membershipId),
+      raceAuth.removeMembership(workspaceId, membershipId, "admin"),
   ]);
   await assertWorkspaceAdminRace("demote-remove", [
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.updateMembershipRole(workspaceId, membershipId, "agent"),
+      raceAuth.updateMembershipRole(
+        workspaceId,
+        membershipId,
+        "agent",
+        "admin",
+      ),
     (raceAuth, workspaceId, membershipId) =>
-      raceAuth.removeMembership(workspaceId, membershipId),
+      raceAuth.removeMembership(workspaceId, membershipId, "admin"),
   ]);
 });

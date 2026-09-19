@@ -1451,3 +1451,100 @@ test("settings members page lists the team and issues invite links", async () =>
   );
   expect(await screen.findByText(/\/invite\/plaintext-token/)).toBeDefined();
 });
+
+test("settings members page manages only ranks below the actor", async () => {
+  const workspaceId = "123e4567-e89b-12d3-a456-426614174000";
+  setToken("session-token");
+  const calls: { method: string; url: string; body?: unknown }[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      if (url.includes("/me/workspaces")) {
+        return new Response(
+          JSON.stringify([
+            { workspaceId, workspaceName: "Acme", role: "manager" },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/me")) {
+        return new Response(
+          JSON.stringify({
+            userId: "123e4567-e89b-12d3-a456-426614174001",
+            email: "manager@example.com",
+            name: "Manager",
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.match(/\/members\/[^?]+/) && method !== "GET") {
+        calls.push({
+          method,
+          url,
+          body: init?.body ? JSON.parse(init.body as string) : undefined,
+        });
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/members")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "123e4567-e89b-12d3-a456-426614174010",
+              userId: "123e4567-e89b-12d3-a456-426614174020",
+              role: "admin",
+              email: "admin@example.com",
+              name: "Admin",
+            },
+            {
+              id: "123e4567-e89b-12d3-a456-426614174011",
+              userId: "123e4567-e89b-12d3-a456-426614174021",
+              role: "manager",
+              email: "peer@example.com",
+              name: "Peer",
+            },
+            {
+              id: "123e4567-e89b-12d3-a456-426614174012",
+              userId: "123e4567-e89b-12d3-a456-426614174022",
+              role: "agent",
+              email: "agent@example.com",
+              name: "Agent",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/invitations")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp("/settings/members");
+  // A manager manages agent/viewer only: the admin and the peer-manager rows
+  // render the static badge, the agent row gets the role select + remove.
+  expect(await screen.findByText("agent@example.com")).toBeDefined();
+  expect(screen.getAllByLabelText(/^Papel de /)).toHaveLength(1);
+  expect(screen.getAllByLabelText(/^Remover /)).toHaveLength(1);
+  // The grant options exclude manager/admin for a manager actor.
+  const roleSelect = screen.getByLabelText("Papel de agent@example.com");
+  expect(roleSelect).toHaveProperty("children.length", 2);
+
+  const user = userEvent.setup();
+  await user.selectOptions(roleSelect, "viewer");
+  await waitFor(() =>
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "PATCH",
+        body: { role: "viewer" },
+      }),
+    ),
+  );
+  await user.click(screen.getByLabelText("Remover agent@example.com"));
+  await waitFor(() =>
+    expect(calls).toContainEqual(expect.objectContaining({ method: "DELETE" })),
+  );
+});

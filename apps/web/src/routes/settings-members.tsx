@@ -4,9 +4,11 @@ import { CopyIcon, TrashIcon } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Invitation, WorkspaceMember } from "@/lib/types";
 import {
+  canManageWorkspaceRole,
   hasWorkspaceRole,
   useWorkspace,
   WORKSPACE_ROLE_LABELS,
+  WORKSPACE_ROLES,
   type WorkspaceRole,
 } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
@@ -200,12 +202,58 @@ export function SettingsMembersPage() {
   const workspaceId = workspace?.workspaceId;
   const role = workspace?.role;
   const canManage = hasWorkspaceRole(role, "manager");
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["members", workspaceId],
     queryFn: () => api<WorkspaceMember[]>("/members", { workspaceId }),
     enabled: Boolean(workspaceId),
   });
+
+  const memberError = (cause: unknown, fallback: string) =>
+    setError(
+      cause instanceof ApiError && cause.status === 409
+        ? "Não é possível alterar o último administrador do workspace."
+        : cause instanceof ApiError && cause.status === 403
+          ? "Você não pode gerenciar esse papel."
+          : fallback,
+    );
+
+  const changeRole = useMutation({
+    mutationFn: (input: { id: string; role: WorkspaceRole }) =>
+      api<undefined>(`/members/${input.id}`, {
+        method: "PATCH",
+        workspaceId,
+        body: { role: input.role },
+      }),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["members", workspaceId],
+      });
+    },
+    onError: (cause) => memberError(cause, "Não foi possível alterar o papel."),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      api<undefined>(`/members/${id}`, { method: "DELETE", workspaceId }),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["members", workspaceId],
+      });
+    },
+    onError: (cause) =>
+      memberError(cause, "Não foi possível remover o membro."),
+  });
+
+  // Roles this actor may grant — admin grants everything, managers only
+  // agent/viewer (ADR 0015 item 4).
+  const grantable = role
+    ? WORKSPACE_ROLES.filter((r) => canManageWorkspaceRole(role, r))
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -216,27 +264,67 @@ export function SettingsMembersPage() {
             Pessoas com acesso a este workspace e seus papéis.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
           {isLoading ? (
             <Skeleton className="h-20 w-full" />
           ) : (
             <ul className="flex flex-col gap-2">
-              {members.map((member) => (
-                <li
-                  key={member.id}
-                  className="flex flex-wrap items-center gap-2 text-sm"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium">{member.name}</span>{" "}
-                    <span className="text-muted-foreground">
-                      {member.email}
+              {members.map((member) => {
+                const manageable =
+                  canManage && canManageWorkspaceRole(role, member.role);
+                return (
+                  <li
+                    key={member.id}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{member.name}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {member.email}
+                      </span>
                     </span>
-                  </span>
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                    {WORKSPACE_ROLE_LABELS[member.role]}
-                  </span>
-                </li>
-              ))}
+                    {manageable ? (
+                      <>
+                        <select
+                          aria-label={`Papel de ${member.email}`}
+                          value={member.role}
+                          onChange={(event) =>
+                            changeRole.mutate({
+                              id: member.id,
+                              role: event.target.value as WorkspaceRole,
+                            })
+                          }
+                          className="h-9 w-32 rounded-md border border-input bg-transparent px-3 text-sm"
+                        >
+                          {grantable.map((r) => (
+                            <option key={r} value={r}>
+                              {WORKSPACE_ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Remover ${member.email}`}
+                          onClick={() => remove.mutate(member.id)}
+                        >
+                          <TrashIcon data-icon="inline-start" />
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                        {WORKSPACE_ROLE_LABELS[member.role]}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>

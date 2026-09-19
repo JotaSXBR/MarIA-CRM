@@ -2,7 +2,8 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api.ts";
 
-export type WorkspaceRole = "viewer" | "agent" | "manager" | "admin";
+export const WORKSPACE_ROLES = ["viewer", "agent", "manager", "admin"] as const;
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 
 export type WorkspaceMembership = {
   workspaceId: string;
@@ -25,6 +26,20 @@ export function hasWorkspaceRole(
   return (
     role !== undefined &&
     WORKSPACE_ROLE_RANK[role] >= WORKSPACE_ROLE_RANK[minimum]
+  );
+}
+
+/** Mirrors `canManageRole` in @maria/auth (ADR 0015 item 4) — UI visibility
+ * only; the API re-checks inside the workspace advisory lock. */
+export function canManageWorkspaceRole(
+  actor: WorkspaceRole | undefined,
+  target: WorkspaceRole,
+): boolean {
+  return (
+    actor === "admin" ||
+    (actor !== undefined &&
+      hasWorkspaceRole(actor, "manager") &&
+      WORKSPACE_ROLE_RANK[target] < WORKSPACE_ROLE_RANK[actor])
   );
 }
 
