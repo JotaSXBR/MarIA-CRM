@@ -18,9 +18,19 @@ export type TestDatabase = {
   close: () => Promise<void>;
 };
 
+// When the container stops, PostgreSQL terminates every remaining client with
+// 57P01. pg.Pool re-emits idle-client errors as an "error" event; without a
+// listener it surfaces as an unhandled Vitest error during teardown.
+export function silencePoolErrors<T extends Pool>(pool: T): T {
+  pool.on("error", () => {});
+  return pool;
+}
+
 export async function startTestDatabase(): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer(image).start();
-  const admin = new Pool({ connectionString: container.getConnectionUri() });
+  const admin = silencePoolErrors(
+    new Pool({ connectionString: container.getConnectionUri() }),
+  );
   try {
     await applyMigrations({ connectionString: container.getConnectionUri() });
     await provisionRuntimePassword({
@@ -31,7 +41,9 @@ export async function startTestDatabase(): Promise<TestDatabase> {
     const uri = new URL(container.getConnectionUri());
     uri.username = "maria_runtime";
     uri.password = "runtime";
-    const runtime = new Pool({ connectionString: uri.toString(), max: 1 });
+    const runtime = silencePoolErrors(
+      new Pool({ connectionString: uri.toString(), max: 1 }),
+    );
 
     return {
       container,

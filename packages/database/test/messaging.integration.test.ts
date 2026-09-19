@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { createDatabase } from "../src/index.ts";
-import { startTestDatabase } from "@maria/database/testing";
+import { silencePoolErrors, startTestDatabase } from "@maria/database/testing";
 import { channelInstances } from "../src/schema.ts";
 
 const workspaceA = randomUUID();
@@ -378,10 +378,12 @@ test("outbound dispatch ledger enforces claim fencing, expiry and tenancy", asyn
   ).toBe("missing");
 
   // Concurrent claimers on independent connections: exactly one wins.
-  const secondPool = new Pool({
-    connectionString: runtimeUri,
-    max: 1,
-  });
+  const secondPool = silencePoolErrors(
+    new Pool({
+      connectionString: runtimeUri,
+      max: 1,
+    }),
+  );
   const database2 = createDatabase(secondPool);
   try {
     const [first, second] = await Promise.all([
